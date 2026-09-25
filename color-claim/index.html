@@ -18,7 +18,10 @@
     <ul id="feed"></ul>
     <div class="right">
       <ol id="board"></ol>
-      <button id="mute-btn" title="Sound on/off (M)">🔊</button>
+      <div class="btns">
+        <button id="pause-btn" class="icon-btn" title="Pause (P)" aria-label="Pause"></button>
+        <button id="mute-btn" class="icon-btn" title="Sound on/off (M)" aria-label="Sound on/off"></button>
+      </div>
     </div>
   </div>
 
@@ -54,6 +57,7 @@
   </div>
 
   <script src="../shared/sfx.js"></script>
+  <script src="../shared/icons.js"></script>
   <script src="game.js"></script>
 </body>
 </html>

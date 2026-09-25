@@ -13,7 +13,7 @@ A territory game inspired by Paper.io.
 - Pick your own name and color. There's a live leaderboard, a crown on the leader, a kill feed and a minimap.
 - Your trail flashes red with a warning sound when an enemy gets close to it.
 - Animations: claimed land flashes, lost land dissolves, confetti bursts, and squares that squash, bob and blink. The camera zooms out as you grow.
-- **Controls:** mouse, WASD / arrow keys, or drag on a touch screen. **P** pauses, **M** mutes.
+- **Controls:** mouse, WASD / arrow keys, or drag on a touch screen. **P** or the pause button pauses, **M** mutes.
 
 ### ✨ Glow Survivors (`survivors/`)
 A small "survivors-like" game.
@@ -22,7 +22,7 @@ A small "survivors-like" game.
 - Every minute a swarm arrives with a 👑 boss. Beat it for a 🎁 treasure chest (a free upgrade).
 - Enemies sometimes drop items: ❤️ heals, 🧲 pulls in every gem, and 💣 clears the screen.
 - Effects: parallax starfield, glowing bullets with trails, wobbling enemies, damage numbers that pop (crits in gold), a level-up shockwave, screen shake and a low-health warning.
-- **Controls:** WASD / arrow keys, or drag on a touch screen. **P** pauses, **M** mutes.
+- **Controls:** WASD / arrow keys, or drag on a touch screen. **P** or the pause button pauses, **M** mutes.
 
 ## Play
 

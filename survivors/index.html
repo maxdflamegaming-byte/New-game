@@ -17,7 +17,10 @@
     <div class="stats">
       <span id="time-text">0:00</span>
       <span id="kills-text">0 kills</span>
-      <button id="mute-btn" title="Sound on/off (M)">🔊</button>
+      <div class="btns">
+        <button id="pause-btn" class="icon-btn" title="Pause (P)" aria-label="Pause"></button>
+        <button id="mute-btn" class="icon-btn" title="Sound on/off (M)" aria-label="Sound on/off"></button>
+      </div>
     </div>
   </div>
   <div id="inv"></div>
@@ -53,6 +56,7 @@
   </div>
 
   <script src="../shared/sfx.js"></script>
+  <script src="../shared/icons.js"></script>
   <script src="game.js"></script>
 </body>
 </html>

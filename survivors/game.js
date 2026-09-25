@@ -51,7 +51,7 @@ const UPGRADES = [
   { id: 'lightning', icon: '🌩️', name: 'Storm Call', desc: lv => (lv ? '+1 lightning strike' : 'Lightning strikes random enemies'), max: 5, apply: p => { p.lightning += 1; } },
   { id: 'aura', icon: '🔥', name: 'Fire Aura', desc: lv => (lv ? 'Bigger, hotter aura' : 'Burn every enemy near you'), max: 5, apply: p => { p.aura += 1; } },
   { id: 'crit', icon: '🍀', name: 'Lucky Hits', desc: '+10% critical hit chance', max: 4, apply: p => { p.crit += 0.1; } },
-  { id: 'speed', icon: '👟', name: 'Swift Boots', desc: '+12% move speed', max: 5, apply: p => { p.speed *= 1.12; } },
+  { id: 'speed', icon: '👟', name: 'Swift Boots', desc: '+12% move speed', max: 3, apply: p => { p.speed *= 1.12; } },
   { id: 'heart', icon: '❤️', name: 'Big Heart', desc: '+25 max HP & full heal', apply: p => { p.maxHp += 25; p.hp = p.maxHp; } },
   { id: 'magnet', icon: '🧲', name: 'Magnet', desc: '+50% pickup range', max: 4, apply: p => { p.magnet *= 1.5; } },
   { id: 'regen', icon: '🌿', name: 'Regeneration', desc: 'Heal +1 HP per second', max: 5, apply: p => { p.regen += 1; } },
@@ -65,12 +65,8 @@ const ENEMY_TYPES = {
   boss: { r: 40, hp: 500, speed: 62, color: '#ff8c42', xp: 30, dmg: 30 },
 };
 
-const PICKUPS = {
-  heart: { icon: '❤️', glow: '#ff4d6d' },
-  magnet: { icon: '🧲', glow: '#3ad7ff' },
-  bomb: { icon: '💣', glow: '#ffd23f' },
-  chest: { icon: '🎁', glow: '#ffd23f' },
-};
+const PICKUP_GLOW = { heart: '#ff4d6d', magnet: '#3ad7ff', bomb: '#ffd23f', chest: '#ffd23f' };
+const MAX_ENEMIES = 350;
 
 // Background stars at two depths for a parallax effect
 const stars = Array.from({ length: 140 }, () => ({
@@ -145,7 +141,7 @@ let state = 'menu';
 let best = loadBest();
 let player, enemies, bullets, gems, pickups, particles, texts, rings, bolts, trailPts;
 let time, kills, spawnTimer, shootTimer, lightTimer, auraTimer, orbAngle, nextSwarm;
-let shake, hurtFlash, whiteFlash, choices = [];
+let shake, hurtFlash, whiteFlash, gemMergeTimer, nextEnemyId = 0, choices = [];
 const cam = { x: 0, y: 0 };
 
 function resetWorld() {
@@ -175,6 +171,7 @@ function resetWorld() {
   shake = 0;
   hurtFlash = 0;
   whiteFlash = 0;
+  gemMergeTimer = 1;
   cam.x = cam.y = 0;
 }
 
@@ -192,7 +189,8 @@ function togglePause() {
 }
 
 function toggleMute() {
-  $('mute-btn').textContent = Sfx.toggle() ? '🔇' : '🔊';
+  Sfx.toggle();
+  $('mute-btn').innerHTML = Icons.sound(!Sfx.muted);
 }
 
 function gameOver() {
@@ -230,7 +228,7 @@ function gainXp(v) {
 function levelUp() {
   player.xp -= player.xpNext;
   player.level++;
-  player.xpNext = Math.floor(4 + player.level * 2.5);
+  player.xpNext = Math.floor(4 + player.level * 2.5 + player.level * player.level * 0.15);
   Sfx.play('levelup');
   openUpgradeMenu('Level up!');
 }
@@ -285,10 +283,10 @@ function updateInventory() {
 function makeEnemy(typeName, x, y) {
   const t = ENEMY_TYPES[typeName];
   const minutes = time / 60;
-  const hp = t.hp * (1 + minutes * (typeName === 'boss' ? 0.8 : 0.4));
+  const hp = t.hp * (1 + minutes * (typeName === 'boss' ? 0.8 : 0.4) + minutes * minutes * 0.06);
   const e = {
-    type: typeName, x, y, r: t.r, hp, maxHp: hp, speed: t.speed * (1 + minutes * 0.05),
-    color: t.color, xp: t.xp, dmg: t.dmg, flash: 0, orbCd: 0, auraCd: 0,
+    id: nextEnemyId++, type: typeName, x, y, r: t.r, hp, maxHp: hp, speed: t.speed * (1 + minutes * 0.07),
+    color: t.color, xp: t.xp, dmg: t.dmg * (1 + minutes * 0.1), flash: 0, orbCd: 0, auraCd: 0,
     dead: false, age: 0, seed: Math.random() * TAU,
   };
   enemies.push(e);
@@ -307,17 +305,47 @@ function spawnEnemy() {
 }
 
 function spawnSwarm() {
-  const count = 16 + Math.floor(time / 60) * 6;
+  const count = Math.min(16 + Math.floor(time / 60) * 6, Math.max(0, MAX_ENEMIES - enemies.length));
   const dist = Math.hypot(W, H) / 2 + 20;
   for (let i = 0; i < count; i++) {
     const a = (i / count) * TAU;
-    makeEnemy('basic', player.x + Math.cos(a) * dist, player.y + Math.sin(a) * dist);
+    makeEnemy('basic', player.x + Math.cos(a) * dist, player.y + Math.sin(a) * dist).speed *= 1.3;
   }
   const a = Math.random() * TAU;
   makeEnemy('boss', player.x + Math.cos(a) * (dist + 40), player.y + Math.sin(a) * (dist + 40));
   showBanner('BOSS + SWARM!');
   Sfx.play('warn');
   shake = 10;
+}
+
+// ---------- Spatial grid ----------
+// Enemies are sorted into square buckets each frame, so "what's near this point?"
+// only looks at a few buckets instead of every enemy on the map.
+const BUCKET = 64;
+let buckets = new Map();
+const bucketKey = (bx, by) => (bx + 50000) * 100000 + (by + 50000);
+
+function buildGrid() {
+  buckets = new Map();
+  for (const e of enemies) {
+    const k = bucketKey(Math.floor(e.x / BUCKET), Math.floor(e.y / BUCKET));
+    const b = buckets.get(k);
+    if (b) b.push(e);
+    else buckets.set(k, [e]);
+  }
+}
+
+function nearby(x, y, r) {
+  const out = [];
+  const x0 = Math.floor((x - r) / BUCKET), x1 = Math.floor((x + r) / BUCKET);
+  const y0 = Math.floor((y - r) / BUCKET), y1 = Math.floor((y + r) / BUCKET);
+  for (let bx = x0; bx <= x1; bx++) {
+    for (let by = y0; by <= y1; by++) {
+      const b = buckets.get(bucketKey(bx, by));
+      if (b) for (const e of b) out.push(e);
+    }
+  }
+  return out;
 }
 
 // ---------- Combat ----------
@@ -432,8 +460,10 @@ function update(dt) {
 
   // Spawning
   spawnTimer -= dt;
-  if (spawnTimer <= 0 && enemies.length < 300) {
-    spawnEnemy();
+  if (spawnTimer <= 0 && enemies.length < MAX_ENEMIES) {
+    // Later on, several enemies arrive at once
+    const n = 1 + Math.floor(time / 120);
+    for (let i = 0; i < n && enemies.length < MAX_ENEMIES; i++) spawnEnemy();
     spawnTimer = Math.max(0.1, 0.7 - time * 0.003);
   }
   if (time >= nextSwarm) {
@@ -460,11 +490,12 @@ function update(dt) {
     }
   }
 
+  buildGrid();
   for (const b of bullets) {
     b.x += b.vx * dt;
     b.y += b.vy * dt;
     b.life -= dt;
-    for (const e of enemies) {
+    for (const e of nearby(b.x, b.y, 50)) {
       if (e.dead || b.hits.has(e)) continue;
       if ((e.x - b.x) ** 2 + (e.y - b.y) ** 2 < (e.r + 5) ** 2) {
         b.hits.add(e);
@@ -482,7 +513,7 @@ function update(dt) {
   for (let i = 0; i < player.orbs; i++) {
     const a = orbAngle + (i / player.orbs) * TAU;
     const ox = player.x + Math.cos(a) * 70, oy = player.y + Math.sin(a) * 70;
-    for (const e of enemies) {
+    for (const e of nearby(ox, oy, 50)) {
       if (e.dead || e.orbCd > 0) continue;
       if ((e.x - ox) ** 2 + (e.y - oy) ** 2 < (e.r + 10) ** 2) {
         e.orbCd = 0.35;
@@ -513,7 +544,7 @@ function update(dt) {
     if (auraTimer <= 0) {
       auraTimer = 0.4;
       const r = auraRadius();
-      for (const e of enemies) {
+      for (const e of nearby(player.x, player.y, r + 40)) {
         if (!e.dead && (e.x - player.x) ** 2 + (e.y - player.y) ** 2 < (r + e.r) ** 2) {
           hurtEnemy(e, player.damage * (0.3 + player.aura * 0.12));
           if (Math.random() < 0.5) burst(e.x, e.y, '#ff8c42', 2, 80);
@@ -539,10 +570,9 @@ function update(dt) {
       Sfx.play('hurt');
     }
   }
-  for (let i = 0; i < enemies.length; i++) {
-    const a = enemies[i];
-    for (let j = i + 1; j < enemies.length; j++) {
-      const b = enemies[j];
+  for (const a of enemies) {
+    for (const b of nearby(a.x, a.y, a.r + 40)) {
+      if (b.id <= a.id) continue; // handle each pair once
       const dx = b.x - a.x, dy = b.y - a.y, min = a.r + b.r;
       const d2 = dx * dx + dy * dy;
       if (d2 < min * min && d2 > 0.01) {
@@ -571,6 +601,20 @@ function update(dt) {
     }
   }
   gems = gems.filter(g => !g.taken);
+
+  gemMergeTimer -= dt;
+  if (gemMergeTimer <= 0) {
+    gemMergeTimer = 1;
+    // Normally only off-screen gems merge; if lots are lying around, anything out of reach does
+    const far = gems.length > 150 ? player.magnet : Math.max(W, H);
+    const faraway = gems.filter(g => !g.pulled && Math.hypot(g.x - player.x, g.y - player.y) > far);
+    if (faraway.length > 15) {
+      const keep = faraway[0];
+      for (const g of faraway) g.taken = true;
+      gems = gems.filter(g => !g.taken);
+      gems.push({ x: keep.x, y: keep.y, v: faraway.reduce((sum, g) => sum + g.v, 0), seed: keep.seed });
+    }
+  }
 
   // Pickups
   for (const pk of pickups) {
@@ -643,6 +687,66 @@ function drawBackground(camX, camY) {
   ctx.stroke();
 }
 
+function drawCrown(x, y, w) {
+  const h = w * 0.7;
+  ctx.fillStyle = '#ffd23f';
+  ctx.strokeStyle = '#b8860b';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x - w / 2, y + h / 2);
+  ctx.lineTo(x - w / 2, y - h / 2);
+  ctx.lineTo(x - w / 4, y);
+  ctx.lineTo(x, y - h / 2);
+  ctx.lineTo(x + w / 4, y);
+  ctx.lineTo(x + w / 2, y - h / 2);
+  ctx.lineTo(x + w / 2, y + h / 2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+}
+
+function drawPickup(kind, x, y) {
+  ctx.save();
+  ctx.translate(x, y);
+  if (kind === 'heart') {
+    ctx.fillStyle = '#ff4d6d';
+    ctx.beginPath();
+    ctx.moveTo(0, 9);
+    ctx.bezierCurveTo(-14, -1, -9, -13, 0, -5);
+    ctx.bezierCurveTo(9, -13, 14, -1, 0, 9);
+    ctx.fill();
+    circle(-4, -5, 2.5, 'rgba(255, 255, 255, 0.6)');
+  } else if (kind === 'magnet') {
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = '#ff4d6d';
+    ctx.beginPath();
+    ctx.arc(0, 0, 8, Math.PI, 0, true);
+    ctx.stroke();
+    ctx.fillStyle = '#e8ecff';
+    ctx.fillRect(-11, -8, 6, 6);
+    ctx.fillRect(5, -8, 6, 6);
+  } else if (kind === 'bomb') {
+    circle(0, 3, 10, '#2a2f45');
+    circle(-3, 0, 3, 'rgba(255, 255, 255, 0.35)');
+    ctx.strokeStyle = '#c9a36b';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(4, -6);
+    ctx.quadraticCurveTo(8, -12, 12, -10);
+    ctx.stroke();
+    circle(12, -10, 3 + Math.sin(time * 20), '#ffd23f');
+  } else if (kind === 'chest') {
+    ctx.fillStyle = '#8b5a2b';
+    ctx.fillRect(-14, -6, 28, 18);
+    ctx.fillStyle = '#a86b33';
+    ctx.fillRect(-14, -12, 28, 8);
+    ctx.fillStyle = '#ffd23f';
+    ctx.fillRect(-14, -5, 28, 3);
+    ctx.fillRect(-3, -7, 6, 8);
+  }
+  ctx.restore();
+}
+
 function drawEnemy(e) {
   const born = Math.min(1, e.age * 4);
   const wob = Math.sin(time * 9 + e.seed) * 0.09;
@@ -661,10 +765,7 @@ function drawEnemy(e) {
   circle(eo + lx * 1.3, -e.r * 0.1 + ly * 1.3, er, '#0b0d17');
   ctx.restore();
   if (e.type === 'boss') {
-    ctx.font = '28px system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#ffd23f';
-    ctx.fillText('👑', e.x, e.y - e.r - 6 + Math.sin(time * 4) * 3);
+    drawCrown(e.x, e.y - e.r - 12 + Math.sin(time * 4) * 3, 30);
   } else if (e.hp < e.maxHp && e.r > 20) {
     ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
     ctx.fillRect(e.x - e.r, e.y + e.r + 6, e.r * 2, 4);
@@ -692,25 +793,21 @@ function draw() {
   }
 
   // Pickups
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
   for (const pk of pickups) {
     const bob = Math.sin(time * 4 + pk.seed) * 4;
-    circle(pk.x, pk.y + bob, 20 + Math.sin(time * 6) * 2, PICKUPS[pk.kind].glow + '33');
-    ctx.font = `${pk.kind === 'chest' ? 30 : 22}px system-ui, sans-serif`;
-    ctx.fillStyle = '#fff';
-    ctx.fillText(PICKUPS[pk.kind].icon, pk.x, pk.y + bob);
+    circle(pk.x, pk.y + bob, 20 + Math.sin(time * 6) * 2, PICKUP_GLOW[pk.kind] + '33');
+    drawPickup(pk.kind, pk.x, pk.y + bob);
   }
-  ctx.textBaseline = 'alphabetic';
 
   // Glowing things use additive blending
   ctx.globalCompositeOperation = 'lighter';
   for (const gm of gems) {
-    const s = gm.v > 2 ? 7 : 5;
+    const big = gm.v >= 10, mid = gm.v > 2;
+    const s = big ? 10 : mid ? 7 : 5;
     const y = gm.y + Math.sin(time * 5 + gm.seed) * 2;
     const spin = Math.cos(time * 4 + gm.seed);
-    circle(gm.x, y, s * 2.2, gm.v > 2 ? 'rgba(140, 255, 176, 0.12)' : 'rgba(58, 215, 255, 0.12)');
-    ctx.fillStyle = gm.v > 2 ? '#8cffb0' : '#3ad7ff';
+    circle(gm.x, y, s * 2.2, big ? 'rgba(255, 93, 115, 0.15)' : mid ? 'rgba(140, 255, 176, 0.12)' : 'rgba(58, 215, 255, 0.12)');
+    ctx.fillStyle = big ? '#ff5d73' : mid ? '#8cffb0' : '#3ad7ff';
     ctx.beginPath();
     ctx.moveTo(gm.x, y - s);
     ctx.lineTo(gm.x + s * spin, y);
@@ -869,7 +966,9 @@ $('play-btn').addEventListener('click', () => { if (state === 'menu') startGame(
 $('again-btn').addEventListener('click', () => { if (state === 'over') startGame(); });
 $('resume-btn').addEventListener('click', () => { if (state === 'paused') togglePause(); });
 $('mute-btn').addEventListener('click', toggleMute);
-$('mute-btn').textContent = Sfx.muted ? '🔇' : '🔊';
+$('mute-btn').innerHTML = Icons.sound(!Sfx.muted);
+$('pause-btn').innerHTML = Icons.pause;
+$('pause-btn').addEventListener('click', () => { if (state === 'play') togglePause(); });
 
 resetWorld();
 showScreen('menu');

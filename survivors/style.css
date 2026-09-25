@@ -6,7 +6,7 @@ html, body {
   overflow: hidden;
   background: #0b0d17;
   color: #e8ecff;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji";
   user-select: none;
   -webkit-user-select: none;
 }
@@ -60,15 +60,20 @@ canvas { display: block; touch-action: none; }
 #time-text { font-size: 26px; }
 #kills-text { font-size: 13px; opacity: 0.8; }
 
-#mute-btn {
+.btns { display: flex; gap: 6px; margin-top: 6px; }
+.icon-btn {
   pointer-events: auto;
-  margin-top: 6px;
-  padding: 4px 8px;
-  font-size: 16px;
-  background: rgba(255, 255, 255, 0.08);
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  color: #e8ecff;
+  background: rgba(255, 255, 255, 0.1);
   box-shadow: none;
   border-radius: 8px;
 }
+.icon-btn svg { width: 20px; height: 20px; }
 
 #inv {
   position: fixed;

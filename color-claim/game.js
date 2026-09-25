@@ -92,28 +92,38 @@ function makePlayer(id, name, color, isBot) {
   };
 }
 
-function spawn(p, fx, fy) {
-  let bx = fx, by = fy;
-  if (bx === undefined) {
-    let bestScore = Infinity;
-    for (let t = 0; t < 40; t++) {
-      const x = randInt(6, N - 7), y = randInt(6, N - 7);
-      let score = 0;
-      for (let dy = -5; dy <= 5; dy++) for (let dx = -5; dx <= 5; dx++) if (owner[(y + dy) * N + x + dx]) score++;
-      for (const o of players) if (o && o.alive && Math.hypot(o.x - x, o.y - y) < 12) score += 100;
-      if (score < bestScore) { bestScore = score; bx = x; by = y; }
-    }
-  }
+// Cells in the small starting disc around (x, y) that nobody owns and no trail crosses
+function freeStartCells(x, y) {
   const cells = [];
   for (let dy = -3; dy <= 3; dy++) {
     for (let dx = -3; dx <= 3; dx++) {
-      if (dx * dx + dy * dy <= 7) {
-        const i = (by + dy) * N + bx + dx;
-        setOwner(i, p.id);
-        cells.push(i);
-      }
+      const i = (y + dy) * N + x + dx;
+      if (dx * dx + dy * dy <= 7 && !owner[i] && !trail[i]) cells.push(i);
     }
   }
+  return cells;
+}
+
+// Returns false if there was no free space; the bot then tries again a moment later.
+// Spawning only ever claims empty cells, so it can never eat into someone else's land.
+function spawn(p, fx, fy) {
+  let bx = fx, by = fy;
+  if (bx === undefined) {
+    let bestScore = -Infinity;
+    for (let t = 0; t < 60; t++) {
+      const x = randInt(4, N - 5), y = randInt(4, N - 5);
+      if (owner[y * N + x] || trail[y * N + x]) continue;
+      let score = freeStartCells(x, y).length;
+      for (const o of players) if (o && o !== p && o.alive && Math.hypot(o.x - x, o.y - y) < 10) score -= 30;
+      if (score > bestScore) { bestScore = score; bx = x; by = y; }
+    }
+    if (bx === undefined || freeStartCells(bx, by).length < 5) {
+      p.respawn = 1;
+      return false;
+    }
+  }
+  const cells = freeStartCells(bx, by);
+  for (const i of cells) setOwner(i, p.id);
   flashes.push({ cells, life: 0.45 });
   p.x = bx + 0.5;
   p.y = by + 0.5;
@@ -125,7 +135,9 @@ function spawn(p, fx, fy) {
   p.wp = [];
   p.mode = 'idle';
   p.think = rand(0.2, 1);
+  p.route = null;
   p.squash = 1;
+  return true;
 }
 
 function kill(victim, killer, how = 'cut') {
@@ -142,13 +154,16 @@ function kill(victim, killer, how = 'cut') {
   if (killer && killer !== victim) killer.kills++;
   if (killer === victim) addFeed(`💥 ${victim.name} crossed their own trail`);
   else if (how === 'swallow') addFeed(`🍽️ ${killer.name} swallowed ${victim.name}`);
+  else if (how === 'bump') addFeed(`💢 ${killer.name} bumped ${victim.name}`);
   else addFeed(`✂️ ${killer.name} cut ${victim.name}`);
 
   if (victim === me) {
     shake = 1;
     Sfx.play('death');
     const reason = killer === me ? 'You crossed your own trail!'
-      : how === 'swallow' ? `${killer.name} swallowed all your land!` : `${killer.name} cut your trail!`;
+      : how === 'swallow' ? `${killer.name} swallowed all your land!`
+      : how === 'bump' ? `You bumped into ${killer.name} outside your land!`
+      : `${killer.name} cut your trail!`;
     setTimeout(() => endGame(false, reason), 900);
   } else if (killer === me) {
     toast(`You knocked out ${victim.name}!`);
@@ -247,6 +262,95 @@ function move(p, dt) {
   p.cy = cy;
 }
 
+// Two squares touching: whoever is safe on their own land wins. If both are outside,
+// the one with the longer trail loses; equal trails knock both out.
+function checkBumps() {
+  for (let a = 1; a < players.length; a++) {
+    for (let b = a + 1; b < players.length; b++) {
+      const p = players[a], q = players[b];
+      if (!p.alive || !q.alive || dist(p, q) > 0.9) continue;
+      const pSafe = owner[p.cy * N + p.cx] === p.id, qSafe = owner[q.cy * N + q.cx] === q.id;
+      if (pSafe && qSafe) continue;
+      if (pSafe) kill(q, p, 'bump');
+      else if (qSafe) kill(p, q, 'bump');
+      else if (p.trail.length > q.trail.length) kill(p, q, 'bump');
+      else if (q.trail.length > p.trail.length) kill(q, p, 'bump');
+      else { kill(p, q, 'bump'); kill(q, p, 'bump'); }
+    }
+  }
+}
+
+// ---------- Bot pathfinding ----------
+// Breadth-first search from a bot's head to its nearest own land that never steps on
+// its own trail. The first pass also keeps a one-cell gap from the trail, because
+// squares can't turn on the spot; if that finds nothing, a tighter path is used.
+const bfsPrev = new Int32Array(N * N);
+const bfsMark = new Uint32Array(N * N);
+const bfsQueue = new Int32Array(N * N);
+let bfsGen = 0;
+
+function touchesOwnTrail(p, x, y) {
+  const i = y * N + x;
+  return (x > 0 && trail[i - 1] === p.id) || (x < N - 1 && trail[i + 1] === p.id) ||
+    (y > 0 && trail[i - N] === p.id) || (y < N - 1 && trail[i + N] === p.id);
+}
+
+function bfsHome(p, padded) {
+  bfsGen++;
+  const start = p.cy * N + p.cx;
+  let head = 0, tail = 0;
+  bfsQueue[tail++] = start;
+  bfsMark[start] = bfsGen;
+  const step = (from, x, y) => {
+    if (x < 0 || y < 0 || x >= N || y >= N) return;
+    const j = y * N + x;
+    if (bfsMark[j] === bfsGen || trail[j] === p.id) return;
+    const nearHead = Math.abs(x - p.cx) <= 2 && Math.abs(y - p.cy) <= 2;
+    if (padded && !nearHead && touchesOwnTrail(p, x, y)) return;
+    bfsMark[j] = bfsGen;
+    bfsPrev[j] = from;
+    bfsQueue[tail++] = j;
+  };
+  while (head < tail) {
+    const i = bfsQueue[head++];
+    if (owner[i] === p.id) {
+      const path = [];
+      for (let c = i; c !== start; c = bfsPrev[c]) path.push(c);
+      return path.reverse();
+    }
+    const x = i % N, y = (i - x) / N;
+    step(i, x + 1, y);
+    step(i, x - 1, y);
+    step(i, x, y + 1);
+    step(i, x, y - 1);
+  }
+  return null;
+}
+
+function routeHome(p) {
+  return bfsHome(p, true) || bfsHome(p, false);
+}
+
+// Simulate the curve a square really drives (it can only turn so fast) while aiming at
+// `desired`, and return how many steps it survives before touching its own trail.
+function safeSteps(p, desired, steps = 10, dt = 0.05) {
+  let x = p.x, y = p.y, a = p.angle, cx = p.cx, cy = p.cy;
+  for (let k = 0; k < steps; k++) {
+    let diff = Math.atan2(Math.sin(desired - a), Math.cos(desired - a));
+    a += clamp(diff, -TURN * dt, TURN * dt);
+    x = clamp(x + Math.cos(a) * SPEED * dt, 0.01, N - 0.01);
+    y = clamp(y + Math.sin(a) * SPEED * dt, 0.01, N - 0.01);
+    const nx = Math.floor(x), ny = Math.floor(y);
+    if (nx === cx && ny === cy) continue;
+    if (nx !== cx && ny !== cy && trail[cy * N + nx] === p.id) return k;
+    if (trail[ny * N + nx] === p.id) return k;
+    if (owner[ny * N + nx] === p.id) return steps; // made it home
+    cx = nx;
+    cy = ny;
+  }
+  return steps;
+}
+
 // ---------- Bot brains ----------
 function nearestOwn(p) {
   for (let r = 0; r < N; r++) {
@@ -267,25 +371,24 @@ function planLoop(p) {
   const ax = p.x + Math.cos(a) * len, ay = p.y + Math.sin(a) * len;
   const bx = ax + Math.cos(a + Math.PI / 2) * wid, by = ay + Math.sin(a + Math.PI / 2) * wid;
   const c = v => clamp(v, 1.5, N - 1.5);
-  p.wp = [{ x: c(ax), y: c(ay) }, { x: c(bx), y: c(by) }, { x: p.x, y: p.y }];
+  p.wp = [{ x: c(ax), y: c(ay) }, { x: c(bx), y: c(by) }];
   p.mode = 'loop';
 }
 
 function think(p) {
   const outside = p.trail.length > 0;
 
-  // Flee home if an enemy gets close while our trail is exposed, or if we got greedy
-  if (outside && p.mode !== 'flee') {
+  // Head home if an enemy gets close while our trail is exposed, or if we got greedy
+  if (outside && p.mode !== 'home') {
     const threat = p.mode !== 'hunt' && players.some(o => o && o !== p && o.alive && dist(o, p) < 5);
     if (threat || p.trail.length > p.greed) {
-      p.wp = [nearestOwn(p)];
-      p.mode = 'flee';
+      goHome(p);
       return;
     }
   }
 
   // Hunt: go for a nearby enemy trail
-  if (p.mode !== 'flee' && p.mode !== 'hunt' && p.trail.length < 25) {
+  if (p.mode !== 'home' && p.mode !== 'hunt' && p.trail.length < 25) {
     for (const o of players) {
       if (!o || o === p || !o.alive || o.trail.length < 4) continue;
       if (dist(o, p) < 14 && Math.random() < p.aggro) {
@@ -301,6 +404,12 @@ function think(p) {
   if (!outside && p.wp.length === 0) planLoop(p);
 }
 
+function goHome(p) {
+  p.wp = [];
+  p.mode = 'home';
+  p.route = null;
+}
+
 function steerBot(p, dt) {
   p.think -= dt;
   if (p.think <= 0) {
@@ -308,11 +417,36 @@ function steerBot(p, dt) {
     think(p);
   }
   while (p.wp.length && dist(p, p.wp[0]) < 0.8) p.wp.shift();
-  if (!p.wp.length && p.trail.length) {
-    p.wp = [nearestOwn(p)];
-    p.mode = 'flee';
+  if (!p.wp.length && p.trail.length && p.mode !== 'home') goHome(p);
+
+  let target = p.wp[0];
+  if (p.mode === 'home') {
+    // Re-plan often: the route is cheap and the board keeps changing
+    p.routeTimer = (p.routeTimer || 0) - dt;
+    if (!p.route || p.routeTimer <= 0) {
+      p.route = routeHome(p);
+      p.routeTimer = 0.1;
+    }
+    if (p.route && p.route.length) {
+      const i = p.route[Math.min(2, p.route.length - 1)];
+      target = { x: (i % N) + 0.5, y: Math.floor(i / N) + 0.5 };
+    } else {
+      target = nearestOwn(p);
+    }
   }
-  if (p.wp.length) p.desired = Math.atan2(p.wp[0].y - p.y, p.wp[0].x - p.x);
+  if (target) p.desired = Math.atan2(target.y - p.y, target.x - p.x);
+
+  // Last-moment safety: never steer into our own trail. Try nearby directions and
+  // keep whichever survives longest.
+  if (p.trail.length && safeSteps(p, p.desired) < 10) {
+    let bestDir = p.desired, bestSteps = -1;
+    for (const off of [0.5, -0.5, 1, -1, 1.5, -1.5, 2, -2, 2.6, -2.6, Math.PI]) {
+      const n = safeSteps(p, p.desired + off);
+      if (n > bestSteps) { bestSteps = n; bestDir = p.desired + off; }
+      if (n >= 10) break;
+    }
+    p.desired = bestDir;
+  }
 }
 
 // ---------- Human input ----------
@@ -444,7 +578,8 @@ function togglePause() {
 }
 
 function toggleMute() {
-  $('mute-btn').textContent = Sfx.toggle() ? '🔇' : '🔊';
+  Sfx.toggle();
+  $('mute-btn').innerHTML = Icons.sound(!Sfx.muted);
 }
 
 function endGame(won, reason) {
@@ -523,6 +658,7 @@ function update(dt) {
     if (p.isBot) steerBot(p, dt);
     if (p !== me || state === 'play') move(p, dt);
   }
+  checkBumps();
 
   // Danger: is an enemy close to your exposed trail?
   danger = 0;
@@ -627,6 +763,24 @@ function forCellsInView(cells, c0, c1, r0, r1, fn) {
   }
 }
 
+function drawCrown(x, y, w) {
+  const h = w * 0.7;
+  ctx.fillStyle = '#ffc93c';
+  ctx.strokeStyle = '#c98a00';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(x - w / 2, y + h / 2);
+  ctx.lineTo(x - w / 2, y - h / 2);
+  ctx.lineTo(x - w / 4, y);
+  ctx.lineTo(x, y - h / 2);
+  ctx.lineTo(x + w / 4, y);
+  ctx.lineTo(x + w / 2, y - h / 2);
+  ctx.lineTo(x + w / 2, y + h / 2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+}
+
 function drawHead(p, x0, y0, leaderId) {
   const hx = p.x * CELL - x0, hy = p.y * CELL - y0;
   if (hx < -60 || hy < -60 || hx > W + 60 || hy > H + 60) return;
@@ -673,11 +827,7 @@ function drawHead(p, x0, y0, leaderId) {
   ctx.strokeText(p.name, hx, hy - s * 0.85 + bob);
   ctx.fillStyle = 'rgba(38, 48, 74, 0.9)';
   ctx.fillText(p.name, hx, hy - s * 0.85 + bob);
-  if (p.id === leaderId) {
-    ctx.font = `${Math.round(CELL * 1.1)}px system-ui, sans-serif`;
-    ctx.fillStyle = '#ffb84d';
-    ctx.fillText('👑', hx, hy - s * 1.6 + bob + Math.sin(time * 4) * 2);
-  }
+  if (p.id === leaderId) drawCrown(hx, hy - s * 1.75 + bob + Math.sin(time * 4) * 2, CELL * 0.9);
 }
 
 function draw(dt) {
@@ -871,7 +1021,9 @@ $('menu-btn').addEventListener('click', () => {
 });
 $('resume-btn').addEventListener('click', () => { if (state === 'paused') togglePause(); });
 $('mute-btn').addEventListener('click', toggleMute);
-$('mute-btn').textContent = Sfx.muted ? '🔇' : '🔊';
+$('mute-btn').innerHTML = Icons.sound(!Sfx.muted);
+$('pause-btn').innerHTML = Icons.pause;
+$('pause-btn').addEventListener('click', () => { if (state === 'play') togglePause(); });
 
 buildSwatches();
 showScreen('menu');

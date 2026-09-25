@@ -6,7 +6,7 @@ html, body {
   overflow: hidden;
   background: #cfd6e4;
   color: #26304a;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji";
   user-select: none;
   -webkit-user-select: none;
 }
@@ -37,15 +37,20 @@ canvas { display: block; touch-action: none; }
 #goal-fill { height: 100%; width: 0; background: #4f8cff; transition: width 0.3s; }
 
 .right { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
-#mute-btn {
+.btns { display: flex; gap: 6px; }
+.icon-btn {
   pointer-events: auto;
-  padding: 4px 8px;
-  font-size: 16px;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
   color: #26304a;
   background: rgba(255, 255, 255, 0.75);
   box-shadow: none;
   border-radius: 8px;
 }
+.icon-btn svg { width: 20px; height: 20px; }
 
 #feed {
   list-style: none;
