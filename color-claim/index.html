@@ -31,17 +31,13 @@
   <div id="toast"></div>
 
   <div id="menu" class="screen show">
+    <div class="wallet"><span class="coin"></span> <span class="coin-count">0</span></div>
     <h1>Color Claim</h1>
-    <p>Leave your land to draw a trail, then loop back to claim everything inside.</p>
-    <p>Cut other players' trails to knock them out, but don't let anyone touch yours!</p>
-    <p class="small">Grab power-ups: <b style="color:#e09a2e">Speed</b>, <b style="color:#4f8cff">Shield</b> (nobody can cut your trail) and <b style="color:#2aa9d6">Freeze</b> (everyone else slows down).</p>
+    <p>Loop back to your land to claim everything inside. Cut other trails, and protect yours!</p>
     <div class="custom">
       <input id="name-input" maxlength="12" placeholder="Your name" autocomplete="off" spellcheck="false">
       <div id="swatches"></div>
-      <div id="skins"></div>
-      <p id="skin-info" class="small">Tap a skin to wear it. Locked skins show how to unlock them.</p>
     </div>
-    <p class="small">Steer: mouse, WASD / Arrow keys, or drag on touch screens &middot; Pause: P &middot; Sound: M &middot; Music: N</p>
     <div class="pickers">
       <div class="seg" id="modes" aria-label="Game mode"></div>
       <div class="seg" id="maps" aria-label="Map"></div>
@@ -49,7 +45,38 @@
     </div>
     <button id="play-btn">Play</button>
     <p class="small"><b id="menu-best"></b></p>
-    <button id="howto-open" class="link-btn">How to play</button>
+    <nav class="menu-nav">
+      <button class="nav-btn" data-open="locker">Locker</button>
+      <button class="nav-btn" data-open="trophies">Trophies</button>
+      <button class="nav-btn" data-open="stats">Stats</button>
+      <button id="howto-open" class="nav-btn">How to play</button>
+    </nav>
+    <p class="small keys">Steer: mouse, WASD / arrows, or drag on touch screens &middot; P pause &middot; M sound &middot; N music</p>
+  </div>
+
+  <div id="locker" class="screen">
+    <div class="wallet"><span class="coin"></span> <span class="coin-count">0</span></div>
+    <h2>Locker</h2>
+    <p class="small">Earn coins every game. Unlock skins by playing, or buy them. Trail effects puff out behind you.</p>
+    <div class="seg">
+      <button class="seg-btn tab" data-tab="skins">Skins</button>
+      <button class="seg-btn tab" data-tab="trails">Trail effects</button>
+    </div>
+    <div id="locker-items"></div>
+    <button class="secondary" data-back>Back</button>
+  </div>
+
+  <div id="trophies" class="screen">
+    <h2>Trophies</h2>
+    <p id="trophy-count" class="small"></p>
+    <ul id="trophy-list"></ul>
+    <button class="secondary" data-back>Back</button>
+  </div>
+
+  <div id="stats" class="screen">
+    <h2>Your stats</h2>
+    <div id="stats-grid"></div>
+    <button class="secondary" data-back>Back</button>
   </div>
 
   <div id="howto" class="screen">
@@ -73,7 +100,9 @@
     <p id="over-reason"></p>
     <p id="over-stats"></p>
     <p id="over-best" class="small"></p>
+    <p id="over-coins" class="coins-earned"></p>
     <p id="over-unlock" class="unlock hidden"></p>
+    <ul id="over-ach" class="hidden"></ul>
     <div class="row">
       <button id="again-btn">Play again</button>
       <button id="menu-btn" class="secondary">Menu</button>
@@ -84,5 +113,6 @@
   <script src="../shared/icons.js"></script>
   <script src="../shared/music.js"></script>
   <script src="game.js"></script>
+  <script src="progress.js"></script>
 </body>
 </html>

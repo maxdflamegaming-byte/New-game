@@ -2,6 +2,7 @@
 
 // Small inline SVG icons for HUD buttons (these render the same on every device, unlike emoji).
 const Icons = {
+  trophy: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 3h10v4a5 5 0 0 1-10 0z"/><path d="M5 4H2v2a4 4 0 0 0 4 4M19 4h3v2a4 4 0 0 1-4 4" fill="none" stroke="currentColor" stroke-width="1.8"/><rect x="10.5" y="11" width="3" height="5"/><rect x="7" y="17" width="10" height="3" rx="1"/></svg>',
   lock: '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2.5"/></svg>',
   pause: '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>',
   music(on) {

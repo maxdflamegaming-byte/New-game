@@ -168,7 +168,13 @@ let myName = load('color-claim-name', '');
 let stats = { games: 0, kills: 0, wins: 0, bestPct: 0 };
 try { Object.assign(stats, JSON.parse(load('color-claim-stats', '{}'))); } catch { /* bad saved data */ }
 stats.bestPct = Math.max(stats.bestPct, best);
-const isUnlocked = sk => !sk.need || stats[sk.need.stat] >= sk.need.n;
+let ownedSkins = [];
+try { ownedSkins = JSON.parse(load('color-claim-owned-skins', '[]')); } catch { /* bad saved data */ }
+// A skin is yours if you reached its milestone or bought it in the Locker
+const isUnlocked = sk => !sk.need || stats[sk.need.stat] >= sk.need.n || ownedSkins.includes(sk.id);
+let myFx = load('color-claim-fx', 'none');
+let run = { powerups: 0, bigLoop: 0, freezeKO: false, trophies: [] }; // this game's numbers, for achievements
+let fxParts = [], fxTimer = 0, achTimer = 1;
 let mySkin = load('color-claim-skin', 'classic');
 if (!SKINS.some(sk => sk.id === mySkin && isUnlocked(sk))) mySkin = 'classic';
 let powerups = [], powerTimer = 5, freezer = null;
@@ -271,6 +277,7 @@ function kill(victim, killer, how = 'cut') {
   victim.respawn = 3;
 
   if (killer && killer !== victim) killer.kills++;
+  if (killer === me && victim !== me && me.fx.freeze > 0) run.freezeKO = true;
   if (killer === victim) addFeed(`💥 ${victim.name} crossed their own trail`);
   else if (how === 'swallow') addFeed(`🍽️ ${killer.name} swallowed ${victim.name}`);
   else if (how === 'bump') addFeed(`💢 ${killer.name} bumped ${victim.name}`);
@@ -333,6 +340,7 @@ function capture(p) {
 
   if (p === me && gained.length) {
     const gainPct = (gained.length / playCells) * 100;
+    run.bigLoop = Math.max(run.bigLoop, gainPct);
     if (gainPct >= 0.1) floats.push({ x: p.x, y: p.y - 3, text: `+${gainPct.toFixed(1)}%`, life: 1.2, big: gainPct > 3 });
     burst(p.x, p.y, p.color, Math.min(40, 8 + gained.length / 10), 8);
     Sfx.play('capture');
@@ -413,6 +421,7 @@ function spawnPowerup() {
 function grabPowerup(p, pu) {
   const def = POWERUPS[pu.kind];
   p.fx[pu.kind] = def.time;
+  if (p === me) run.powerups++;
   burst(pu.x, pu.y, def.color, 16, 8);
   if (p === me) {
     toast(pu.kind === 'speed' ? 'Speed boost!' : pu.kind === 'shield' ? 'Shield! Nobody can cut your trail' : 'Freeze! Everyone else slows down');
@@ -746,36 +755,7 @@ function buildSwatches() {
   });
   $('play-btn').style.background = COLORS[myColor];
   $('play-btn').style.boxShadow = `0 5px 0 ${shade(COLORS[myColor], -0.3)}`;
-  buildSkins();
-}
-
-function buildSkins() {
-  const box = $('skins');
-  box.innerHTML = '';
-  for (const sk of SKINS) {
-    const open = isUnlocked(sk);
-    const b = document.createElement('button');
-    b.className = 'skin' + (sk.id === mySkin ? ' picked' : '') + (open ? '' : ' locked');
-    b.title = open ? sk.name : `Locked: ${sk.need.text}`;
-    b.setAttribute('aria-label', b.title);
-    const c = document.createElement('canvas');
-    c.width = c.height = 88;
-    const g = c.getContext('2d');
-    g.translate(44, 40);
-    g.rotate(-Math.PI / 2);
-    drawBody(g, { color: COLORS[myColor], dark: shade(COLORS[myColor], -0.28), skin: sk.id, blink: 1, hueOff: 200 }, 46, 0);
-    b.appendChild(c);
-    if (!open) b.insertAdjacentHTML('beforeend', Icons.lock);
-    b.addEventListener('click', () => {
-      if (open) {
-        mySkin = sk.id;
-        save('color-claim-skin', sk.id);
-        buildSkins();
-      }
-      $('skin-info').textContent = open ? `${sk.name} skin` : `🔒 ${sk.name}: ${sk.need.text}`;
-    });
-    box.appendChild(b);
-  }
+  refreshLocker();
 }
 
 function buildPickers() {
@@ -835,6 +815,9 @@ function startGame() {
   for (const p of players) if (p && p.isBot) spawn(p);
   random = Math.random;
   playTime = 0;
+  run = { powerups: 0, bigLoop: 0, freezeKO: false, trophies: [] };
+  fxParts = [];
+  achTimer = 1;
   cam.x = me.x;
   cam.y = me.y;
   cam.zoom = 1;
@@ -885,16 +868,16 @@ function endGame(won, reason) {
 
   // Update lifetime stats and announce any skins that just unlocked
   const before = SKINS.filter(isUnlocked);
-  stats.games++;
-  stats.kills += me.kills;
-  if (won) stats.wins++;
-  stats.bestPct = Math.max(stats.bestPct, score);
-  save('color-claim-stats', JSON.stringify(stats));
+  const { earned, fresh: trophies } = finishRun(won, score);
   const fresh = SKINS.filter(sk => isUnlocked(sk) && !before.includes(sk));
-  $('over-unlock').textContent = fresh.length ? `🎁 New skin unlocked: ${fresh.map(sk => sk.name).join(', ')}! Pick it on the menu.` : '';
+  $('over-unlock').textContent = fresh.length ? `🎁 New skin unlocked: ${fresh.map(sk => sk.name).join(', ')}! Find it in the Locker.` : '';
   $('over-unlock').classList.toggle('hidden', !fresh.length);
-  if (fresh.length) Sfx.play('win');
-  buildSkins();
+  if (fresh.length || trophies.length) Sfx.play('trophy');
+  const bonus = trophies.length * ACH_REWARD;
+  $('over-coins').innerHTML = `+${earned} <span class="coin"></span> coins${bonus ? ` <small>(+${bonus} from trophies)</small>` : ''}`;
+  $('over-ach').innerHTML = trophies.map(a => `<li>${Icons.trophy}${a.name} <small>+${ACH_REWARD}</small></li>`).join('');
+  $('over-ach').classList.toggle('hidden', !trophies.length);
+  refreshLocker();
   $('over-title').textContent = won ? '🏆 You win!' : 'Game Over';
   $('over-reason').textContent = reason;
   $('over-stats').textContent = `Best size: ${score.toFixed(1)}% · ${me.kills} knockouts`;
@@ -991,7 +974,24 @@ function update(dt) {
   if (state === 'play') {
     playTime += dt;
     if (gameMode.time && playTime >= gameMode.time && me.alive) timeUp();
+    achTimer -= dt;
+    if (achTimer <= 0 && me.alive) { achTimer = 1; liveAchievementCheck(); }
   }
+
+  // Your trail effect (from the Locker) puffs out behind you while you're outside your land
+  if (myFx !== 'none' && me.alive && me.trail.length) {
+    fxTimer -= dt;
+    if (fxTimer <= 0) {
+      fxTimer = 0.05;
+      const back = me.angle + Math.PI;
+      fxParts.push({
+        kind: myFx, x: me.x + Math.cos(back) * 0.8 + rand(-0.3, 0.3), y: me.y + Math.sin(back) * 0.8 + rand(-0.3, 0.3),
+        vx: rand(-0.6, 0.6), vy: rand(-1.5, -0.3), life: 1, rot: rand(0, TAU), hue: (time * 200) % 360, size: rand(0.7, 1.1),
+      });
+    }
+  }
+  for (const f of fxParts) { f.x += f.vx * dt; f.y += f.vy * dt; f.life -= dt * 1.2; f.rot += dt * 3; }
+  fxParts = fxParts.filter(f => f.life > 0);
   if (state === 'play' && me.alive) steerHuman();
   for (const p of players) {
     if (!p) continue;
@@ -1261,6 +1261,56 @@ function drawBody(g, look, s, t) {
   }
 }
 
+// One trail-effect particle, drawn at (x, y). `size` is in pixels.
+function drawFxShape(g, f, x, y, size) {
+  const s = size * f.size * (f.kind === 'bubbles' ? 1.2 - f.life * 0.4 : 0.5 + f.life * 0.5);
+  g.save();
+  g.translate(x, y);
+  g.globalAlpha = Math.min(1, f.life * 1.5);
+  const star = (points, outer, inner) => {
+    g.beginPath();
+    for (let k = 0; k < points * 2; k++) {
+      const r = k % 2 ? inner : outer, a = (k * Math.PI) / points - Math.PI / 2;
+      g.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+    }
+    g.closePath();
+    g.fill();
+  };
+  if (f.kind === 'sparkle') {
+    g.fillStyle = '#fff3a0';
+    star(4, s * 0.5, s * 0.12);
+  } else if (f.kind === 'bubbles') {
+    g.strokeStyle = 'rgba(120, 200, 255, 0.9)';
+    g.lineWidth = Math.max(1, s * 0.1);
+    g.beginPath();
+    g.arc(0, 0, s * 0.35, 0, TAU);
+    g.stroke();
+    g.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    g.fillRect(-s * 0.15, -s * 0.18, s * 0.08, s * 0.08);
+  } else if (f.kind === 'hearts') {
+    g.fillStyle = '#ff6fa5';
+    g.beginPath();
+    g.moveTo(0, s * 0.35);
+    g.bezierCurveTo(-s * 0.6, -s * 0.05, -s * 0.3, -s * 0.5, 0, -s * 0.18);
+    g.bezierCurveTo(s * 0.3, -s * 0.5, s * 0.6, -s * 0.05, 0, s * 0.35);
+    g.fill();
+  } else if (f.kind === 'fire') {
+    g.fillStyle = f.life > 0.6 ? '#ffd23f' : f.life > 0.3 ? '#ff8c42' : '#ff5d73';
+    g.beginPath();
+    g.arc(0, 0, s * 0.3, 0, TAU);
+    g.fill();
+  } else if (f.kind === 'stars') {
+    g.rotate(f.rot);
+    g.fillStyle = '#ffc93c';
+    star(5, s * 0.45, s * 0.2);
+  } else if (f.kind === 'rainbow') {
+    g.rotate(f.rot);
+    g.fillStyle = `hsl(${f.hue}, 85%, 60%)`;
+    g.fillRect(-s * 0.22, -s * 0.22, s * 0.44, s * 0.44);
+  }
+  g.restore();
+}
+
 function drawPowerupIcon(kind, x, y, r) {
   const def = POWERUPS[kind];
   ctx.fillStyle = '#fff';
@@ -1476,6 +1526,8 @@ function draw(dt) {
   const leaderId = leader && leader.id;
   for (const p of players) if (p && p.alive && p !== me) drawHead(p, x0, y0, leaderId);
   if (me.alive) drawHead(me, x0, y0, leaderId);
+
+  for (const f of fxParts) drawFxShape(ctx, f, f.x * CELL - x0, f.y * CELL - y0, CELL * 1.1);
 
   // Confetti particles
   for (const pt of particles) {
@@ -1793,8 +1845,4 @@ $('music-btn').addEventListener('click', toggleMusic);
 $('pause-btn').innerHTML = Icons.pause;
 $('pause-btn').addEventListener('click', () => { if (state === 'play') togglePause(); });
 
-allocWorld(80);
-buildSwatches();
-buildPickers();
-showScreen('menu');
-requestAnimationFrame(frame);
+// Start-up happens at the end of progress.js, once everything is loaded
