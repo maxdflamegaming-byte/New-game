@@ -27,11 +27,13 @@
   <div id="boss" class="hidden"><span>👑 BOSS</span><div class="bar"><div id="boss-fill"></div></div></div>
 
   <div id="banner"></div>
+  <div id="hint"></div>
 
   <div id="menu" class="screen show">
     <h1>Glow Survivors</h1>
     <p>Survive the swarm. Your magic fires on its own. All you do is move!</p>
-    <p class="small">Unlock lightning, fire auras and orbiting blades. Beat the boss for treasure!</p>
+    <p class="small">Max a weapon and take its partner upgrade to <b>evolve</b> it. Beat bosses for treasure. At 10:00, the Reaper comes…</p>
+    <div id="chars"></div>
     <p class="small">Move: WASD / Arrow keys &middot; Touch: drag anywhere &middot; Pause: P &middot; Sound: M</p>
     <p class="small">Best time: <b id="menu-best">0:00</b></p>
     <button id="play-btn">Play</button>
@@ -50,8 +52,10 @@
 
   <div id="over" class="screen">
     <h2>Game Over</h2>
+    <p id="over-reason"></p>
     <p id="over-stats"></p>
     <p id="over-best" class="small"></p>
+    <p id="over-unlock" class="unlock hidden"></p>
     <button id="again-btn">Play again</button>
   </div>
 

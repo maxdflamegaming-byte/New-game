@@ -20,8 +20,27 @@ A territory game inspired by Paper.io.
 ### ✨ Glow Survivors (`survivors/`)
 A small "survivors-like" game.
 - Move to dodge the swarm while your weapons fire on their own: magic bolts, orbiting blades, lightning strikes and a fire aura.
+- **4 characters**, each with its own starting weapon and stats:
+
+  | Character | Starts with | Unlock |
+  |---|---|---|
+  | Mage | Magic Bolt | Free |
+  | Knight | 2 orbiting blades, 150 HP, a bit slower | Survive 3:00 |
+  | Storm Witch | Storm Call Lv 2, 80 HP, quick | Defeat a boss |
+  | Pyro | Fire Aura Lv 2 + Regeneration | Reach level 15 |
+
+- **Weapon evolutions:** max a weapon, take its partner upgrade, and an evolution card appears.
+
+  | Weapon (max level) | + Partner | Evolves into |
+  |---|---|---|
+  | Split Shot (5) | Quick Cast | 🌠 Arcane Barrage: homing bolts that pierce 3 more and hit 50% harder |
+  | Orbiting Blade (6) | Swift Boots | 💫 Blade Storm: wide-swinging, faster, double-damage blades |
+  | Storm Call (5) | Lucky Hits | ⛈️ Thunder God: faster strikes that chain to 2 more enemies |
+  | Fire Aura (5) | Regeneration | ☄️ Inferno: huge double-damage aura that heals you |
+
 - Collect XP gems, level up, and choose 1 of 3 upgrades each time. Upgrades include critical hits, piercing, extra bolts, speed, magnet range and regeneration.
 - Every minute a swarm arrives with a 👑 boss. Beat it for a 🎁 treasure chest (a free upgrade).
+- **At 10:00 the Reaper arrives.** It can't be hurt and keeps getting faster, and another one comes every minute after that. How long can you last?
 - Enemies sometimes drop items: ❤️ heals, 🧲 pulls in every gem, and 💣 clears the screen.
 - Effects: parallax starfield, glowing bullets with trails, wobbling enemies, damage numbers that pop (crits in gold), a level-up shockwave, screen shake and a low-health warning.
 - **Controls:** WASD / arrow keys, or drag on a touch screen. **P** or the pause button pauses, **M** mutes.
