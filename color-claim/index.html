@@ -12,9 +12,14 @@
   <div id="hud" class="hidden">
     <div class="left">
       <div id="pct">0.0%</div>
-      <div id="kills">0 kills</div>
+      <div class="goal" title="Goal: 50%"><div id="goal-fill"></div></div>
+      <div id="kills">0 knockouts</div>
     </div>
-    <ol id="board"></ol>
+    <ul id="feed"></ul>
+    <div class="right">
+      <ol id="board"></ol>
+      <button id="mute-btn" title="Sound on/off (M)">🔊</button>
+    </div>
   </div>
 
   <div id="toast"></div>
@@ -23,7 +28,11 @@
     <h1>Color Claim</h1>
     <p>Leave your land to draw a trail, then loop back to claim everything inside.</p>
     <p>Cut other players' trails to knock them out, but don't let anyone touch yours!</p>
-    <p class="small">Steer: mouse, WASD / Arrow keys, or drag on touch screens &middot; Pause: P</p>
+    <div class="custom">
+      <input id="name-input" maxlength="12" placeholder="Your name" autocomplete="off" spellcheck="false">
+      <div id="swatches"></div>
+    </div>
+    <p class="small">Steer: mouse, WASD / Arrow keys, or drag on touch screens &middot; Pause: P &middot; Sound: M</p>
     <p class="small">Reach <b>50%</b> of the map to win &middot; Best: <b id="menu-best">0%</b></p>
     <button id="play-btn">Play</button>
   </div>
@@ -38,9 +47,13 @@
     <p id="over-reason"></p>
     <p id="over-stats"></p>
     <p id="over-best" class="small"></p>
-    <button id="again-btn">Play again</button>
+    <div class="row">
+      <button id="again-btn">Play again</button>
+      <button id="menu-btn" class="secondary">Menu</button>
+    </div>
   </div>
 
+  <script src="../shared/sfx.js"></script>
   <script src="game.js"></script>
 </body>
 </html>

@@ -60,6 +60,51 @@ canvas { display: block; touch-action: none; }
 #time-text { font-size: 26px; }
 #kills-text { font-size: 13px; opacity: 0.8; }
 
+#mute-btn {
+  pointer-events: auto;
+  margin-top: 6px;
+  padding: 4px 8px;
+  font-size: 16px;
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+  border-radius: 8px;
+}
+
+#inv {
+  position: fixed;
+  top: 64px;
+  left: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: min(320px, 60vw);
+  pointer-events: none;
+}
+#inv span {
+  position: relative;
+  font-size: 18px;
+  padding: 2px 4px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+}
+#inv b { font-size: 10px; margin-left: 1px; color: #ffd23f; }
+
+#boss {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  width: min(420px, calc(100% - 32px));
+  text-align: center;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: #ff8c42;
+  pointer-events: none;
+}
+#boss .bar { margin-top: 4px; height: 10px; }
+#boss-fill { background: linear-gradient(90deg, #ff8c42, #ffd23f); }
+
 #banner {
   position: fixed;
   top: 28%;
@@ -144,6 +189,11 @@ button:active { transform: scale(0.97); }
   border: 2px solid #2d3563;
   border-radius: 14px;
   box-shadow: none;
+  animation: card-in 0.35s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(30px) scale(0.85); }
+  to { opacity: 1; transform: none; }
 }
 .card:hover { border-color: #3ad7ff; box-shadow: 0 0 20px rgba(58, 215, 255, 0.35); }
 .card .icon { font-size: 34px; }
@@ -151,6 +201,18 @@ button:active { transform: scale(0.97); }
 .card .name { font-size: 17px; font-weight: 800; }
 .card .desc { font-size: 13px; font-weight: 500; opacity: 0.8; }
 .card .key { font-size: 11px; opacity: 0.5; }
+.card .tag {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  padding: 1px 6px;
+  margin-bottom: 3px;
+  border-radius: 6px;
+  color: #0b0d17;
+  background: #8cf3ff;
+}
+.card .tag.new { background: #ffd23f; }
 
 @media (max-width: 660px) {
   .card { width: 100%; max-width: 320px; min-height: 0; flex-direction: row; justify-content: flex-start; text-align: left; }
