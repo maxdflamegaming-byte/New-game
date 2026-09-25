@@ -154,6 +154,33 @@ canvas { display: block; touch-action: none; }
 .swatch.picked { outline: 3px solid #26304a; outline-offset: 2px; transform: translateY(-2px); }
 
 .row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.link-btn {
+  font-size: 15px;
+  font-weight: 700;
+  padding: 4px 10px;
+  color: #26304a;
+  background: none;
+  box-shadow: none;
+  text-decoration: underline;
+}
+.link-btn:hover, .link-btn:active { box-shadow: none; }
+
+.steps { display: grid; grid-template-columns: repeat(2, minmax(0, 190px)); gap: 12px; }
+.step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 3px 0 #c7cfe0;
+  font-size: 13px;
+}
+.step canvas { width: 160px; max-width: 100%; border-radius: 8px; }
+.step b { font-size: 15px; }
+@media (min-width: 860px) { .steps { grid-template-columns: repeat(4, 190px); } }
+
 button.secondary { color: #26304a; background: #fff; box-shadow: 0 5px 0 #c7cfe0; }
 
 /* ---------- Screens ---------- */

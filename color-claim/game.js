@@ -78,6 +78,7 @@ const POWERUPS = {
   freeze: { name: 'Freeze', color: '#3fc7f5', time: 4 },
 };
 const MAX_POWERUPS = 4;
+const SPAWN_SHIELD = 3; // seconds of protection after (re)spawning
 
 let players = [];     // players[id], id starts at 1
 let me = null;
@@ -94,6 +95,7 @@ if (!SKINS.some(sk => sk.id === mySkin && isUnlocked(sk))) mySkin = 'classic';
 let powerups = [], powerTimer = 5, freezer = null;
 let particles = [], flashes = [], fades = [], floats = [], feed = [];
 let peakPct = 0, minimapTimer = 0, time = 0, shake = 0, danger = 0, wasInDanger = false;
+let countdown = 0, goFlash = 0, threats = [];
 const cam = { x: N / 2, y: N / 2, zoom: 1 };
 
 function pct(p) { return (counts[p.id] / (N * N)) * 100; }
@@ -166,7 +168,7 @@ function spawn(p, fx, fy) {
   p.think = rand(0.2, 1);
   p.route = null;
   p.squash = 1;
-  p.fx = { speed: 0, shield: 0, freeze: 0 };
+  p.fx = { speed: 0, shield: SPAWN_SHIELD, freeze: 0 };
   return true;
 }
 
@@ -476,14 +478,15 @@ function think(p) {
     }
   }
 
-  // Hunt: go for a nearby enemy trail
+  // Hunt: go for the closest part of a nearby enemy trail. The bigger you get,
+  // the further bots look for your trail and the more often they come for it.
   if (p.mode !== 'home' && p.mode !== 'hunt' && p.trail.length < 25) {
+    const growth = me && me.alive ? clamp(pct(me) / 30, 0, 1) : 0;
     for (const o of players) {
       if (!o || o === p || !o.alive || o.trail.length < 4 || o.fx.shield > 0) continue;
-      if (dist(o, p) < 14 && Math.random() < p.aggro) {
-        const i = o.trail[Math.max(0, o.trail.length - 4)];
-        const tx = i % N, ty = (i - tx) / N;
-        p.wp = [{ x: tx + 0.5, y: ty + 0.5 }];
+      const bold = o === me ? growth : 0;
+      if (dist(o, p) < 14 + bold * 12 && Math.random() < p.aggro + bold * 0.4) {
+        p.wp = [closestTrailPoint(p, o)];
         p.mode = 'hunt';
         return;
       }
@@ -501,6 +504,16 @@ function think(p) {
   }
 
   if (!outside && p.wp.length === 0) planLoop(p);
+}
+
+function closestTrailPoint(p, o) {
+  let bestI = o.trail[0], bestD = Infinity;
+  for (let k = 0; k < o.trail.length; k += 2) {
+    const i = o.trail[k], x = (i % N) + 0.5, y = Math.floor(i / N) + 0.5;
+    const d = (x - p.x) ** 2 + (y - p.y) ** 2;
+    if (d < bestD) { bestD = d; bestI = i; }
+  }
+  return { x: (bestI % N) + 0.5, y: Math.floor(bestI / N) + 0.5 };
 }
 
 function goHome(p) {
@@ -561,9 +574,11 @@ window.addEventListener('keydown', e => {
   if (k.startsWith('arrow') || 'wasd'.includes(k)) mouse.active = false;
   if ((k === 'p' || k === 'escape') && (state === 'play' || state === 'paused')) togglePause();
   if (k === 'm') toggleMute();
-  if ((k === 'enter' || k === ' ') && (state === 'menu' || state === 'over')) {
+  if (k === 'n') toggleMusic();
+  if ((k === 'enter' || k === ' ') && (state === 'menu' || state === 'over') && !document.querySelector('.screen.show:not(#menu):not(#over)')) {
     e.preventDefault();
-    startGame();
+    if (state === 'menu') playFromMenu();
+    else startGame();
   }
 });
 window.addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
@@ -698,25 +713,42 @@ function startGame() {
   peakPct = 0;
   time = 0;
   shake = 0;
+  countdown = 3;
+  goFlash = 0;
+  threats = [];
   stick.active = false;
   $('name-input').blur();
   state = 'play';
   showScreen(null);
+  Sfx.play('beep');
+  Music.start();
 }
 
 function togglePause() {
   state = state === 'play' ? 'paused' : 'play';
   showScreen(state === 'paused' ? 'paused' : null);
+  if (state === 'paused') Music.stop();
+  else Music.start();
 }
 
 function toggleMute() {
   Sfx.toggle();
   $('mute-btn').innerHTML = Icons.sound(!Sfx.muted);
+  if (Sfx.muted) Music.stop();
+  else if (state === 'play') Music.start();
+}
+
+function toggleMusic() {
+  const on = Music.toggle();
+  $('music-btn').innerHTML = Icons.music(on);
+  if (on && state === 'play') Music.start();
+  else Music.stop();
 }
 
 function endGame(won, reason) {
   if (state === 'over' || state === 'menu') return;
   state = 'over';
+  Music.stop();
   const score = Math.round(peakPct * 10) / 10;
   const isBest = score > best;
   if (isBest) { best = score; save('color-claim-best', best); }
@@ -786,8 +818,28 @@ function burst(x, y, color, n, speed = 9) {
 
 // ---------- Update ----------
 let feedTimer = 0;
+function updateCamera(dt) {
+  // Camera glides after you and zooms out as your land grows
+  const k = Math.min(1, dt * 6);
+  cam.x += (me.x - cam.x) * k;
+  cam.y += (me.y - cam.y) * k;
+  const targetZoom = 1 - Math.min(0.35, pct(me) / 80);
+  cam.zoom += (targetZoom - cam.zoom) * Math.min(1, dt * 2);
+}
+
 function update(dt) {
   time += dt;
+  if (countdown > 0) {
+    // 3-2-1: everyone waits, but you can already choose which way to go
+    const before = Math.ceil(countdown);
+    countdown -= dt;
+    if (me.alive) { steerHuman(); me.angle = me.desired; }
+    if (countdown <= 0) { goFlash = 0.8; Sfx.play('go'); }
+    else if (Math.ceil(countdown) !== before) Sfx.play('beep');
+    updateCamera(dt);
+    return;
+  }
+  goFlash = Math.max(0, goFlash - dt);
   if (state === 'play' && me.alive) steerHuman();
   for (const p of players) {
     if (!p) continue;
@@ -806,16 +858,19 @@ function update(dt) {
   checkBumps();
   updatePowerups(dt);
 
-  // Danger: is an enemy close to your exposed trail?
+  // Danger: is an enemy close to your exposed trail? Close ones also get marked.
   danger = 0;
+  threats = [];
   if (me.alive && me.trail.length && me.fx.shield <= 0) {
     for (const o of players) {
       if (!o || o === me || !o.alive) continue;
+      let closest = Infinity;
       for (let k = 0; k < me.trail.length; k += 2) {
         const i = me.trail[k], tx = (i % N) + 0.5, ty = Math.floor(i / N) + 0.5;
-        const d = Math.hypot(o.x - tx, o.y - ty);
-        if (d < 7) danger = Math.max(danger, 1 - d / 7);
+        closest = Math.min(closest, Math.hypot(o.x - tx, o.y - ty));
       }
+      if (closest < 7) danger = Math.max(danger, 1 - closest / 7);
+      if (closest < 10) threats.push(o);
     }
   }
   if (danger > 0.3 && !wasInDanger) Sfx.play('warn');
@@ -850,12 +905,7 @@ function update(dt) {
     if (pct(me) >= WIN_PCT) win();
   }
 
-  // Camera glides after you and zooms out as your land grows
-  const k = Math.min(1, dt * 6);
-  cam.x += (me.x - cam.x) * k;
-  cam.y += (me.y - cam.y) * k;
-  const targetZoom = 1 - Math.min(0.35, pct(me) / 80);
-  cam.zoom += (targetZoom - cam.zoom) * Math.min(1, dt * 2);
+  updateCamera(dt);
 }
 
 // ---------- Drawing ----------
@@ -1218,6 +1268,18 @@ function draw(dt) {
     return p.trailColor;
   }, 0);
 
+  // A shimmer runs along every trail toward the head
+  const inner = CELL * 0.5;
+  for (const p of players) {
+    if (!p || !p.alive || !p.trail.length) continue;
+    p.trail.forEach((i, k) => {
+      const x = i % N, y = (i - x) / N;
+      if (x < c0 || x > c1 || y < r0 || y > r1 || trail[i] !== p.id) return;
+      ctx.fillStyle = `rgba(255, 255, 255, ${0.16 + 0.16 * Math.sin(k * 0.7 - time * 9)})`;
+      ctx.fillRect(x * CELL - x0 + (CELL - inner) / 2, y * CELL - y0 + (CELL - inner) / 2, inner, inner);
+    });
+  }
+
   // Power-ups bob and pop in
   for (const pu of powerups) {
     const px = pu.x * CELL - x0, py = pu.y * CELL - y0 + Math.sin(time * 4 + pu.x) * CELL * 0.15;
@@ -1289,6 +1351,62 @@ function draw(dt) {
     grad.addColorStop(1, `rgba(255, 60, 80, ${a})`);
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
+  }
+
+  // Enemies near your trail: a "!" above them, or an arrow at the screen edge if off-screen
+  for (const o of threats) {
+    const sx = o.x * CELL - x0, sy = o.y * CELL - y0;
+    const pulse = 1 + 0.15 * Math.sin(time * 14);
+    if (sx > 20 && sy > 20 && sx < W - 20 && sy < H - 20) {
+      const bx = sx, by = sy - CELL * 2.9;
+      ctx.fillStyle = '#ff3c50';
+      ctx.beginPath();
+      ctx.arc(bx, by, CELL * 0.6 * pulse, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = `900 ${Math.round(CELL * 0.9)}px system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('!', bx, by + 1);
+      ctx.textBaseline = 'alphabetic';
+    } else {
+      const a = Math.atan2(sy - H / 2, sx - W / 2);
+      const t = Math.min((W / 2 - 36) / Math.abs(Math.cos(a) || 1e-6), (H / 2 - 36) / Math.abs(Math.sin(a) || 1e-6));
+      ctx.save();
+      ctx.translate(W / 2 + Math.cos(a) * t, H / 2 + Math.sin(a) * t);
+      ctx.rotate(a);
+      ctx.scale(pulse, pulse);
+      ctx.fillStyle = '#ff3c50';
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(16, 0);
+      ctx.lineTo(-8, -12);
+      ctx.lineTo(-8, 12);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  // 3-2-1-GO!
+  if (countdown > 0 || goFlash > 0) {
+    const text = countdown > 0 ? String(Math.ceil(countdown)) : 'GO!';
+    const frac = countdown > 0 ? countdown % 1 : goFlash / 0.8;
+    ctx.save();
+    ctx.translate(W / 2, H * 0.38);
+    ctx.scale(1 + frac * 0.5, 1 + frac * 0.5);
+    ctx.globalAlpha = countdown > 0 ? 1 : Math.min(1, goFlash * 2);
+    ctx.font = `900 ${Math.round(Math.min(W, H) * 0.16)}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = me.dark;
+    ctx.strokeText(text, 0, 0);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(text, 0, 0);
+    ctx.restore();
   }
 
   // Touch joystick
@@ -1405,7 +1523,77 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
-$('play-btn').addEventListener('click', () => { if (state === 'menu') startGame(); });
+// ---------- How to play ----------
+// Four little diagrams drawn on canvases: leave land, loop back, cut trails, protect yours.
+function drawHowtoStep(g, step) {
+  const C = 10, blue = COLORS[myColor], red = COLORS[myColor === 1 ? 2 : 1];
+  const cell = (x, y, col) => { g.fillStyle = col; g.fillRect(x * C, y * C, C, C); };
+  const head = (x, y, col) => {
+    g.fillStyle = shade(col, -0.3);
+    g.fillRect(x * C - 3, y * C - 1, C + 6, C + 6);
+    g.fillStyle = col;
+    g.fillRect(x * C - 3, y * C - 3, C + 6, C + 6);
+  };
+  g.fillStyle = '#f5f7fc';
+  g.fillRect(0, 0, 160, 110);
+  for (let x = 1; x <= 5; x++) for (let y = 3; y <= 8; y++) cell(x, y, blue);
+  if (step === 0) {
+    for (let x = 6; x <= 11; x++) cell(x, 5, alpha(blue, 0.45));
+    head(12, 5, blue);
+  } else if (step === 1) {
+    for (let x = 6; x <= 11; x++) for (let y = 2; y <= 8; y++) cell(x, y, alpha(blue, x === 11 || y === 2 || y === 8 ? 0.85 : 0.55));
+    head(6, 8, blue);
+  } else if (step === 2) {
+    for (let y = 1; y <= 9; y++) cell(11, y, alpha(red, 0.5));
+    head(11, 0.2, red);
+    for (let x = 6; x <= 10; x++) cell(x, 5, alpha(blue, 0.45));
+    head(11, 5, blue);
+    g.strokeStyle = '#ffb84d';
+    g.lineWidth = 3;
+    for (let k = 0; k < 6; k++) {
+      const a = (k * Math.PI) / 3;
+      g.beginPath();
+      g.moveTo(115 + Math.cos(a) * 12, 55 + Math.sin(a) * 12);
+      g.lineTo(115 + Math.cos(a) * 20, 55 + Math.sin(a) * 20);
+      g.stroke();
+    }
+  } else {
+    for (let x = 6; x <= 13; x++) cell(x, 5, 'rgba(255, 60, 80, 0.6)');
+    head(14, 5, blue);
+    head(9, 3.6, red);
+    g.fillStyle = '#ff3c50';
+    g.beginPath();
+    g.arc(95, 20, 9, 0, TAU);
+    g.fill();
+    g.fillStyle = '#fff';
+    g.font = '900 13px system-ui';
+    g.textAlign = 'center';
+    g.fillText('!', 95, 25);
+    g.textAlign = 'left';
+  }
+}
+
+let howtoThenPlay = false;
+function showHowto(thenPlay) {
+  howtoThenPlay = thenPlay;
+  document.querySelectorAll('#howto canvas').forEach(c => drawHowtoStep(c.getContext('2d'), Number(c.dataset.step)));
+  $('howto-btn').textContent = thenPlay ? "Let's go!" : 'Got it';
+  showScreen('howto');
+}
+$('howto-btn').addEventListener('click', () => {
+  save('color-claim-howto-seen', '1');
+  if (howtoThenPlay) startGame();
+  else showScreen('menu');
+});
+$('howto-open').addEventListener('click', () => showHowto(false));
+
+// The first time someone presses Play, show them how the game works
+function playFromMenu() {
+  if (load('color-claim-howto-seen', '') !== '1') showHowto(true);
+  else startGame();
+}
+
+$('play-btn').addEventListener('click', () => { if (state === 'menu') playFromMenu(); });
 $('again-btn').addEventListener('click', () => { if (state === 'over') startGame(); });
 $('menu-btn').addEventListener('click', () => {
   if (state !== 'over') return;
@@ -1416,6 +1604,8 @@ $('menu-btn').addEventListener('click', () => {
 $('resume-btn').addEventListener('click', () => { if (state === 'paused') togglePause(); });
 $('mute-btn').addEventListener('click', toggleMute);
 $('mute-btn').innerHTML = Icons.sound(!Sfx.muted);
+$('music-btn').innerHTML = Icons.music(Music.enabled);
+$('music-btn').addEventListener('click', toggleMusic);
 $('pause-btn').innerHTML = Icons.pause;
 $('pause-btn').addEventListener('click', () => { if (state === 'play') togglePause(); });
 

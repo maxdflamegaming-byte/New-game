@@ -66,6 +66,10 @@ const Sfx = (() => {
     speed: { gap: 0.2, fn: () => { noise({ dur: 0.25, vol: 0.06 }); tone({ freq: 300, to: 1400, dur: 0.25, type: 'sawtooth', vol: 0.04 }); } },
     shield: { gap: 0.2, fn: () => arp([392, 587, 784], 0.07, { type: 'sine', vol: 0.09 }) },
     freeze: { gap: 0.3, fn: () => arp([2093, 1760, 1568, 1319], 0.05, { type: 'sine', vol: 0.05 }) },
+    beep: { gap: 0.3, fn: () => tone({ freq: 660, dur: 0.12, type: 'square', vol: 0.06 }) },
+    go: { gap: 0.3, fn: () => arp([784, 1175], 0.07, { type: 'square', vol: 0.07 }) },
+    coin: { gap: 0.05, fn: () => arp([988, 1319], 0.05, { type: 'square', vol: 0.05 }) },
+    trophy: { gap: 0.5, fn: () => arp([784, 988, 1175, 1568], 0.08, { type: 'triangle', vol: 0.09 }) },
     win: { gap: 1, fn: () => arp([523, 659, 784, 1047, 1319, 1568], 0.09, { type: 'triangle', vol: 0.09 }) },
   };
 

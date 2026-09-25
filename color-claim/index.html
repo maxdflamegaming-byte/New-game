@@ -21,6 +21,7 @@
       <ol id="board"></ol>
       <div class="btns">
         <button id="pause-btn" class="icon-btn" title="Pause (P)" aria-label="Pause"></button>
+        <button id="music-btn" class="icon-btn" title="Music on/off (N)" aria-label="Music on/off"></button>
         <button id="mute-btn" class="icon-btn" title="Sound on/off (M)" aria-label="Sound on/off"></button>
       </div>
     </div>
@@ -39,9 +40,21 @@
       <div id="skins"></div>
       <p id="skin-info" class="small">Tap a skin to wear it. Locked skins show how to unlock them.</p>
     </div>
-    <p class="small">Steer: mouse, WASD / Arrow keys, or drag on touch screens &middot; Pause: P &middot; Sound: M</p>
+    <p class="small">Steer: mouse, WASD / Arrow keys, or drag on touch screens &middot; Pause: P &middot; Sound: M &middot; Music: N</p>
     <p class="small">Reach <b>50%</b> of the map to win &middot; Best: <b id="menu-best">0%</b></p>
     <button id="play-btn">Play</button>
+    <button id="howto-open" class="link-btn">How to play</button>
+  </div>
+
+  <div id="howto" class="screen">
+    <h2>How to play</h2>
+    <div class="steps">
+      <div class="step"><canvas data-step="0" width="160" height="110"></canvas><b>1. Leave your land</b><span>Moving outside draws a trail behind you.</span></div>
+      <div class="step"><canvas data-step="1" width="160" height="110"></canvas><b>2. Loop back home</b><span>Close the loop to claim everything inside it.</span></div>
+      <div class="step"><canvas data-step="2" width="160" height="110"></canvas><b>3. Cut their trails</b><span>Touch another player's trail to knock them out.</span></div>
+      <div class="step"><canvas data-step="3" width="160" height="110"></canvas><b>4. Protect yours</b><span>If anyone touches your trail, or you cross it, you're out. Watch for red <b>!</b> warnings.</span></div>
+    </div>
+    <button id="howto-btn">Let's go!</button>
   </div>
 
   <div id="paused" class="screen">
@@ -63,6 +76,7 @@
 
   <script src="../shared/sfx.js"></script>
   <script src="../shared/icons.js"></script>
+  <script src="../shared/music.js"></script>
   <script src="game.js"></script>
 </body>
 </html>
