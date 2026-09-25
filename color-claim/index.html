@@ -12,7 +12,8 @@
   <div id="hud" class="hidden">
     <div class="left">
       <div id="pct">0.0%</div>
-      <div class="goal" title="Goal: 50%"><div id="goal-fill"></div></div>
+      <div id="goal" class="goal" title="Goal"><div id="goal-fill"></div></div>
+      <div id="timer" class="hidden"></div>
       <div id="kills">0 knockouts</div>
       <div id="effects"></div>
     </div>
@@ -41,8 +42,13 @@
       <p id="skin-info" class="small">Tap a skin to wear it. Locked skins show how to unlock them.</p>
     </div>
     <p class="small">Steer: mouse, WASD / Arrow keys, or drag on touch screens &middot; Pause: P &middot; Sound: M &middot; Music: N</p>
-    <p class="small">Reach <b>50%</b> of the map to win &middot; Best: <b id="menu-best">0%</b></p>
+    <div class="pickers">
+      <div class="seg" id="modes" aria-label="Game mode"></div>
+      <div class="seg" id="maps" aria-label="Map"></div>
+      <p id="mode-desc" class="small"></p>
+    </div>
     <button id="play-btn">Play</button>
+    <p class="small"><b id="menu-best"></b></p>
     <button id="howto-open" class="link-btn">How to play</button>
   </div>
 

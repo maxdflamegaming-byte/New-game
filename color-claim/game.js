@@ -22,10 +22,32 @@ resize();
 // ---------- Helpers ----------
 const $ = id => document.getElementById(id);
 const TAU = Math.PI * 2;
-const rand = (a, b) => a + Math.random() * (b - a);
+// `random` is swapped for a seeded generator while a Daily map is set up
+let random = Math.random;
+const rand = (a, b) => a + random() * (b - a);
 const randInt = (a, b) => Math.floor(rand(a, b + 1));
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const fmtTime = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+
+function mulberry32(seed) {
+  return () => {
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function hashStr(str) {
+  let h = 2166136261;
+  for (const c of str) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+function todayKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 const escapeHtml = s => s.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
 
 function shade(hex, amt) {
@@ -46,12 +68,61 @@ function save(key, value) {
 }
 
 // ---------- World ----------
-const N = 80;                         // map is N x N cells
-const WIN_PCT = 50;
-const owner = new Uint8Array(N * N);  // which player owns each cell (0 = nobody)
-const trail = new Uint8Array(N * N);  // whose trail is on each cell (0 = none)
-const seen = new Uint8Array(N * N);   // scratch buffer for flood fill
-const counts = new Int32Array(16);    // cells owned per player id
+let N = 80;           // map is N x N cells (Marathon uses a bigger map)
+let owner;            // which player owns each cell (0 = nobody)
+let trail;            // whose trail is on each cell (0 = none)
+let wall;             // 0 = floor, 1 = pillar, 2 = outside the arena
+let seen;             // scratch buffer for flood fill
+let playCells = 1;    // number of floor cells, for percentages
+const counts = new Int32Array(16); // cells owned per player id
+
+function allocWorld(size) {
+  N = size;
+  owner = new Uint8Array(N * N);
+  trail = new Uint8Array(N * N);
+  wall = new Uint8Array(N * N);
+  seen = new Uint8Array(N * N);
+  bfsPrev = new Int32Array(N * N);
+  bfsMark = new Uint32Array(N * N);
+  bfsQueue = new Int32Array(N * N);
+  mini = document.createElement('canvas');
+  mini.width = mini.height = N;
+  miniCtx = mini.getContext('2d');
+  miniImg = miniCtx.createImageData(N, N);
+}
+
+const MODES = {
+  classic: { name: 'Classic', desc: 'Claim 50% of the map to win', size: 80, win: 50, powerups: 4 },
+  timed: { name: 'Timed', desc: 'Biggest player after 3:00 wins', size: 80, win: 0, time: 180, powerups: 5 },
+  daily: { name: 'Daily', desc: 'Same starting map for everyone today · claim 50%', size: 80, win: 50, powerups: 4, daily: true },
+  marathon: { name: 'Marathon', desc: 'A huge map · claim 60% to win', size: 120, win: 60, powerups: 7 },
+};
+
+const MAPS = {
+  square: { name: 'Square' },
+  round: { name: 'Round' },
+  pillars: { name: 'Pillars' },
+};
+
+function buildMap(id) {
+  if (id === 'round') {
+    const c = (N - 1) / 2, r = N / 2 - 1;
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (Math.hypot(x - c, y - c) > r) wall[y * N + x] = 2;
+  } else if (id === 'pillars') {
+    const s = Math.round(N * 0.07);
+    for (const fx of [0.22, 0.5, 0.78]) {
+      for (const fy of [0.22, 0.5, 0.78]) {
+        if (fx === 0.5 && fy === 0.5) continue; // keep the middle free for your start
+        const x0 = Math.round(N * fx - s / 2), y0 = Math.round(N * fy - s / 2);
+        for (let y = y0; y < y0 + s; y++) for (let x = x0; x < x0 + s; x++) wall[y * N + x] = 1;
+      }
+    }
+  }
+  playCells = 0;
+  for (let i = 0; i < N * N; i++) if (!wall[i]) playCells++;
+}
+
+const isWallAt = (x, y) => wall[Math.floor(y) * N + Math.floor(x)] !== 0;
 
 const COLORS = ['#4f8cff', '#ff5d73', '#ffb84d', '#2ec4b6', '#b06bff', '#ff7ac6', '#8bd346', '#ff8c42'];
 const BOT_NAMES = ['Mango', 'Zigzag', 'Pixel', 'Turbo', 'Luna', 'Nacho', 'Bloop'];
@@ -77,13 +148,21 @@ const POWERUPS = {
   shield: { name: 'Shield', color: '#4f8cff', time: 6 },
   freeze: { name: 'Freeze', color: '#3fc7f5', time: 4 },
 };
-const MAX_POWERUPS = 4;
 const SPAWN_SHIELD = 3; // seconds of protection after (re)spawning
 
 let players = [];     // players[id], id starts at 1
 let me = null;
 let state = 'menu';
-let best = Number(load('color-claim-best', 0)) || 0;
+let best = Number(load('color-claim-best', 0)) || 0; // Classic best (older saves use this key)
+let myMode = load('color-claim-mode', 'classic');
+if (!MODES[myMode]) myMode = 'classic';
+let myMap = load('color-claim-map', 'square');
+if (!MAPS[myMap]) myMap = 'square';
+let gameMode = MODES.classic, gameModeId = 'classic', gameMapId = 'square', playTime = 0;
+
+const bestKey = modeId => (modeId === 'classic' ? 'color-claim-best' : modeId === 'daily' ? `color-claim-daily-${todayKey()}` : `color-claim-best-${modeId}`);
+const bestFor = modeId => Number(load(bestKey(modeId), 0)) || 0;
+const dailyMap = () => Object.keys(MAPS)[hashStr(todayKey()) % Object.keys(MAPS).length];
 let myColor = clamp(Number(load('color-claim-color', 0)) || 0, 0, COLORS.length - 1);
 let myName = load('color-claim-name', '');
 let stats = { games: 0, kills: 0, wins: 0, bestPct: 0 };
@@ -96,9 +175,14 @@ let powerups = [], powerTimer = 5, freezer = null;
 let particles = [], flashes = [], fades = [], floats = [], feed = [];
 let peakPct = 0, minimapTimer = 0, time = 0, shake = 0, danger = 0, wasInDanger = false;
 let countdown = 0, goFlash = 0, threats = [];
-const cam = { x: N / 2, y: N / 2, zoom: 1 };
+let gameCounter = 0; // bumps every game, so delayed callbacks from an old game do nothing
+function later(ms, fn) {
+  const id = gameCounter;
+  setTimeout(() => { if (id === gameCounter) fn(); }, ms);
+}
+const cam = { x: 40, y: 40, zoom: 1 };
 
-function pct(p) { return (counts[p.id] / (N * N)) * 100; }
+function pct(p) { return (counts[p.id] / playCells) * 100; }
 
 function setOwner(i, id) {
   const prev = owner[i];
@@ -129,7 +213,7 @@ function freeStartCells(x, y) {
   for (let dy = -3; dy <= 3; dy++) {
     for (let dx = -3; dx <= 3; dx++) {
       const i = (y + dy) * N + x + dx;
-      if (dx * dx + dy * dy <= 7 && !owner[i] && !trail[i]) cells.push(i);
+      if (dx * dx + dy * dy <= 7 && !owner[i] && !trail[i] && !wall[i]) cells.push(i);
     }
   }
   return cells;
@@ -143,7 +227,7 @@ function spawn(p, fx, fy) {
     let bestScore = -Infinity;
     for (let t = 0; t < 60; t++) {
       const x = randInt(4, N - 5), y = randInt(4, N - 5);
-      if (owner[y * N + x] || trail[y * N + x]) continue;
+      if (owner[y * N + x] || trail[y * N + x] || wall[y * N + x]) continue;
       let score = freeStartCells(x, y).length;
       for (const o of players) if (o && o !== p && o.alive && Math.hypot(o.x - x, o.y - y) < 10) score -= 30;
       if (score > bestScore) { bestScore = score; bx = x; by = y; }
@@ -199,7 +283,7 @@ function kill(victim, killer, how = 'cut') {
       : how === 'swallow' ? `${killer.name} swallowed all your land!`
       : how === 'bump' ? `You bumped into ${killer.name} outside your land!`
       : `${killer.name} cut your trail!`;
-    setTimeout(() => endGame(false, reason), 900);
+    later(900, () => endGame(false, reason));
   } else if (killer === me) {
     toast(`You knocked out ${victim.name}!`);
     Sfx.play('cut');
@@ -237,7 +321,7 @@ function capture(p) {
     if (y < N - 1) push(i + N);
   }
   for (let i = 0; i < N * N; i++) {
-    if (!seen[i] && owner[i] !== p.id) {
+    if (!seen[i] && owner[i] !== p.id && !wall[i]) {
       setOwner(i, p.id);
       gained.push(i);
     }
@@ -248,7 +332,7 @@ function capture(p) {
   for (const o of players) if (o && o !== p && o.alive && counts[o.id] === 0) kill(o, p, 'swallow');
 
   if (p === me && gained.length) {
-    const gainPct = (gained.length / (N * N)) * 100;
+    const gainPct = (gained.length / playCells) * 100;
     if (gainPct >= 0.1) floats.push({ x: p.x, y: p.y - 3, text: `+${gainPct.toFixed(1)}%`, life: 1.2, big: gainPct > 3 });
     burst(p.x, p.y, p.color, Math.min(40, 8 + gained.length / 10), 8);
     Sfx.play('capture');
@@ -267,6 +351,7 @@ function speedOf(p) {
 
 function visit(p, x, y) {
   const i = y * N + x;
+  if (wall[i]) return;
   const t = trail[i];
   if (t) {
     const other = players[t];
@@ -290,14 +375,24 @@ function move(p, dt) {
   const turning = dt > 0 ? Math.abs(turn) / (TURN * dt) : 0;
   p.squash += (turning * 0.5 - p.squash) * Math.min(1, dt * 10);
   const v = speedOf(p);
-  p.x = clamp(p.x + Math.cos(p.angle) * v * dt, 0.01, N - 0.01);
-  p.y = clamp(p.y + Math.sin(p.angle) * v * dt, 0.01, N - 0.01);
+  let nx = clamp(p.x + Math.cos(p.angle) * v * dt, 0.01, N - 0.01);
+  let ny = clamp(p.y + Math.sin(p.angle) * v * dt, 0.01, N - 0.01);
+  if (isWallAt(nx, ny)) {
+    // Slide along walls instead of stopping dead
+    if (!isWallAt(p.x, ny)) nx = p.x;
+    else if (!isWallAt(nx, p.y)) ny = p.y;
+    else { nx = p.x; ny = p.y; }
+  }
+  p.blocked = nx === p.x && ny === p.y;
+  p.x = nx;
+  p.y = ny;
 
   const cx = Math.floor(p.x), cy = Math.floor(p.y);
   if (cx === p.cx && cy === p.cy) return;
   // Diagonal step: also visit a corner cell so trails never have gaps to slip through
   if (cx !== p.cx && cy !== p.cy) {
-    visit(p, cx, p.cy);
+    if (wall[p.cy * N + cx]) visit(p, p.cx, cy);
+    else visit(p, cx, p.cy);
     if (!p.alive) return;
   }
   visit(p, cx, cy);
@@ -309,7 +404,7 @@ function spawnPowerup() {
   const kinds = Object.keys(POWERUPS);
   for (let t = 0; t < 20; t++) {
     const x = randInt(3, N - 4), y = randInt(3, N - 4);
-    if (powerups.some(pu => Math.hypot(pu.x - x, pu.y - y) < 10)) continue;
+    if (wall[y * N + x] || powerups.some(pu => Math.hypot(pu.x - x, pu.y - y) < 10)) continue;
     powerups.push({ x: x + 0.5, y: y + 0.5, kind: kinds[randInt(0, kinds.length - 1)], age: 0 });
     return;
   }
@@ -332,7 +427,7 @@ function updatePowerups(dt) {
   powerTimer -= dt;
   if (powerTimer <= 0) {
     powerTimer = rand(6, 10);
-    if (powerups.length < MAX_POWERUPS) spawnPowerup();
+    if (powerups.length < gameMode.powerups) spawnPowerup();
   }
   for (const pu of powerups) {
     pu.age += dt;
@@ -374,9 +469,7 @@ function checkBumps() {
 // Breadth-first search from a bot's head to its nearest own land that never steps on
 // its own trail. The first pass also keeps a one-cell gap from the trail, because
 // squares can't turn on the spot; if that finds nothing, a tighter path is used.
-const bfsPrev = new Int32Array(N * N);
-const bfsMark = new Uint32Array(N * N);
-const bfsQueue = new Int32Array(N * N);
+let bfsPrev, bfsMark, bfsQueue; // allocated with the world
 let bfsGen = 0;
 
 function touchesOwnTrail(p, x, y) {
@@ -394,7 +487,7 @@ function bfsHome(p, padded) {
   const step = (from, x, y) => {
     if (x < 0 || y < 0 || x >= N || y >= N) return;
     const j = y * N + x;
-    if (bfsMark[j] === bfsGen || trail[j] === p.id) return;
+    if (bfsMark[j] === bfsGen || trail[j] === p.id || wall[j]) return;
     const nearHead = Math.abs(x - p.cx) <= 2 && Math.abs(y - p.cy) <= 2;
     if (padded && !nearHead && touchesOwnTrail(p, x, y)) return;
     bfsMark[j] = bfsGen;
@@ -434,7 +527,7 @@ function safeSteps(p, desired, steps = 10, dt = 0.05) {
     const nx = Math.floor(x), ny = Math.floor(y);
     if (nx === cx && ny === cy) continue;
     if (nx !== cx && ny !== cy && trail[cy * N + nx] === p.id) return k;
-    if (trail[ny * N + nx] === p.id) return k;
+    if (trail[ny * N + nx] === p.id || wall[ny * N + nx]) return k;
     if (owner[ny * N + nx] === p.id) return steps; // made it home
     cx = nx;
     cy = ny;
@@ -462,7 +555,12 @@ function planLoop(p) {
   const ax = p.x + Math.cos(a) * len, ay = p.y + Math.sin(a) * len;
   const bx = ax + Math.cos(a + Math.PI / 2) * wid, by = ay + Math.sin(a + Math.PI / 2) * wid;
   const c = v => clamp(v, 1.5, N - 1.5);
-  p.wp = [{ x: c(ax), y: c(ay) }, { x: c(bx), y: c(by) }];
+  // Pull waypoints back toward the bot until they're off any wall
+  const free = pt => {
+    for (let k = 0; k < 30 && isWallAt(pt.x, pt.y); k++) { pt.x += (p.x - pt.x) * 0.15; pt.y += (p.y - pt.y) * 0.15; }
+    return pt;
+  };
+  p.wp = [free({ x: c(ax), y: c(ay) }), free({ x: c(bx), y: c(by) })];
   p.mode = 'loop';
 }
 
@@ -529,6 +627,7 @@ function steerBot(p, dt) {
     think(p);
   }
   while (p.wp.length && dist(p, p.wp[0]) < 0.8) p.wp.shift();
+  if (p.blocked && p.wp.length) p.wp.shift(); // stuck against a wall: skip this waypoint
   if (!p.wp.length && p.trail.length && p.mode !== 'home') goHome(p);
 
   let target = p.wp[0];
@@ -679,6 +778,26 @@ function buildSkins() {
   }
 }
 
+function buildPickers() {
+  const seg = (boxId, items, current, onPick, disabled) => {
+    const box = $(boxId);
+    box.innerHTML = '';
+    for (const [id, item] of Object.entries(items)) {
+      const b = document.createElement('button');
+      b.className = 'seg-btn' + (id === current ? ' picked' : '');
+      b.textContent = item.name;
+      b.disabled = !!disabled;
+      b.addEventListener('click', () => onPick(id));
+      box.appendChild(b);
+    }
+  };
+  const daily = MODES[myMode].daily;
+  seg('modes', MODES, myMode, id => { myMode = id; save('color-claim-mode', id); buildPickers(); });
+  seg('maps', MAPS, daily ? dailyMap() : myMap, id => { myMap = id; save('color-claim-map', id); buildPickers(); }, daily);
+  $('mode-desc').textContent = MODES[myMode].desc + (daily ? ` · Today's map: ${MAPS[dailyMap()].name}` : '');
+  updateMenuBest();
+}
+
 $('name-input').value = myName;
 $('name-input').addEventListener('input', e => {
   myName = e.target.value.trim().slice(0, 12);
@@ -687,8 +806,14 @@ $('name-input').addEventListener('input', e => {
 
 // ---------- Game flow ----------
 function startGame() {
-  owner.fill(0);
-  trail.fill(0);
+  gameCounter++;
+  gameModeId = myMode;
+  gameMode = MODES[myMode];
+  gameMapId = gameMode.daily ? dailyMap() : myMap;
+  // Daily: the same seed all day, so everyone gets the same starting map
+  random = gameMode.daily ? mulberry32(hashStr('color-claim-' + todayKey())) : Math.random;
+  allocWorld(gameMode.size);
+  buildMap(gameMapId);
   counts.fill(0);
   particles = [];
   flashes = [];
@@ -701,12 +826,15 @@ function startGame() {
   me = makePlayer(1, myName || 'You', COLORS[myColor], false, mySkin);
   players.push(me);
   const botColors = COLORS.filter((_, i) => i !== myColor);
-  BOT_NAMES.forEach((name, i) => players.push(makePlayer(i + 2, name, botColors[i], true, SKINS[randInt(0, SKINS.length - 1)].id)));
+  const names = BOT_NAMES.slice().sort(() => random() - 0.5);
+  names.forEach((name, i) => players.push(makePlayer(i + 2, name, botColors[i], true, SKINS[randInt(0, SKINS.length - 1)].id)));
   powerups = [];
   powerTimer = 3;
   freezer = null;
   spawn(me, N / 2, N / 2);
   for (const p of players) if (p && p.isBot) spawn(p);
+  random = Math.random;
+  playTime = 0;
   cam.x = me.x;
   cam.y = me.y;
   cam.zoom = 1;
@@ -750,8 +878,10 @@ function endGame(won, reason) {
   state = 'over';
   Music.stop();
   const score = Math.round(peakPct * 10) / 10;
-  const isBest = score > best;
-  if (isBest) { best = score; save('color-claim-best', best); }
+  const prevBest = bestFor(gameModeId);
+  const isBest = score > prevBest;
+  if (isBest) save(bestKey(gameModeId), score);
+  if (gameModeId === 'classic') best = Math.max(best, score);
 
   // Update lifetime stats and announce any skins that just unlocked
   const before = SKINS.filter(isUnlocked);
@@ -768,7 +898,8 @@ function endGame(won, reason) {
   $('over-title').textContent = won ? '🏆 You win!' : 'Game Over';
   $('over-reason').textContent = reason;
   $('over-stats').textContent = `Best size: ${score.toFixed(1)}% · ${me.kills} knockouts`;
-  $('over-best').textContent = isBest ? 'New personal best!' : `Personal best: ${best.toFixed(1)}%`;
+  const label = gameModeId === 'daily' ? "Today's best" : `${gameMode.name} best`;
+  $('over-best').textContent = isBest ? `New ${label.toLowerCase()}!` : `${label}: ${prevBest.toFixed(1)}%`;
   showScreen('over');
 }
 
@@ -776,13 +907,30 @@ function win() {
   state = 'won';
   Sfx.play('win');
   for (let i = 0; i < 6; i++) burst(me.x + rand(-8, 8), me.y + rand(-6, 6), COLORS[i], 30, 14);
-  setTimeout(() => endGame(true, `You claimed ${WIN_PCT}% of the map!`), 1600);
+  later(1600, () => endGame(true, `You claimed ${gameMode.win}% of the map!`));
+}
+
+// Timed mode: when the clock runs out, the biggest player wins
+function timeUp() {
+  const ranked = players.filter(p => p && p.alive).sort((a, b) => counts[b.id] - counts[a.id]);
+  const rank = ranked.indexOf(me) + 1;
+  if (rank === 1) {
+    Sfx.play('win');
+    for (let i = 0; i < 6; i++) burst(me.x + rand(-8, 8), me.y + rand(-6, 6), COLORS[i], 30, 14);
+  }
+  state = 'won';
+  later(rank === 1 ? 1600 : 600, () => endGame(rank === 1, `Time's up! You finished #${rank} of ${ranked.length}.`));
 }
 
 function showScreen(id) {
   for (const el of document.querySelectorAll('.screen')) el.classList.toggle('show', el.id === id);
   $('hud').classList.toggle('hidden', state === 'menu' || state === 'over');
-  $('menu-best').textContent = `${best.toFixed(1)}%`;
+  updateMenuBest();
+}
+
+function updateMenuBest() {
+  const b = bestFor(myMode);
+  $('menu-best').textContent = `${myMode === 'daily' ? "Today's best" : MODES[myMode].name + ' best'}: ${b.toFixed(1)}%`;
 }
 
 let toastTimeout;
@@ -840,6 +988,10 @@ function update(dt) {
     return;
   }
   goFlash = Math.max(0, goFlash - dt);
+  if (state === 'play') {
+    playTime += dt;
+    if (gameMode.time && playTime >= gameMode.time && me.alive) timeUp();
+  }
   if (state === 'play' && me.alive) steerHuman();
   for (const p of players) {
     if (!p) continue;
@@ -902,17 +1054,14 @@ function update(dt) {
 
   if (me.alive && state === 'play') {
     peakPct = Math.max(peakPct, pct(me));
-    if (pct(me) >= WIN_PCT) win();
+    if (gameMode.win && pct(me) >= gameMode.win) win();
   }
 
   updateCamera(dt);
 }
 
 // ---------- Drawing ----------
-const mini = document.createElement('canvas');
-mini.width = mini.height = N;
-const miniCtx = mini.getContext('2d');
-const miniImg = miniCtx.createImageData(N, N);
+let mini, miniCtx, miniImg; // allocated with the world
 const rgbCache = [];
 
 function rgbOf(id) {
@@ -927,11 +1076,11 @@ function updateMinimap() {
   const d = miniImg.data;
   for (let i = 0; i < N * N; i++) {
     const id = owner[i] || trail[i];
-    const [r, g, b] = id ? rgbOf(id) : [245, 247, 252];
+    const [r, g, b] = id ? rgbOf(id) : wall[i] === 1 ? [107, 118, 144] : [245, 247, 252];
     d[i * 4] = r;
     d[i * 4 + 1] = g;
     d[i * 4 + 2] = b;
-    d[i * 4 + 3] = id ? 255 : 220;
+    d[i * 4 + 3] = wall[i] === 2 ? 0 : id || wall[i] ? 255 : 220;
   }
   miniCtx.putImageData(miniImg, 0, 0);
 }
@@ -1229,8 +1378,10 @@ function draw(dt) {
   const x0 = cam.x * CELL - W / 2 + rand(-sh, sh), y0 = cam.y * CELL - H / 2 + rand(-sh, sh);
 
   // Map floor: a raised board with a soft checker pattern
-  ctx.fillStyle = '#aab4c8';
-  ctx.fillRect(-x0 - 4, -y0 - 4 + CELL * 0.5, N * CELL + 8, N * CELL + 8);
+  if (gameMapId !== 'round') {
+    ctx.fillStyle = '#aab4c8';
+    ctx.fillRect(-x0 - 4, -y0 - 4 + CELL * 0.5, N * CELL + 8, N * CELL + 8);
+  }
   ctx.fillStyle = '#f5f7fc';
   ctx.fillRect(-x0, -y0, N * CELL, N * CELL);
   const c0 = clamp(Math.floor(x0 / CELL), 0, N - 1), c1 = clamp(Math.floor((x0 + W) / CELL), 0, N - 1);
@@ -1241,6 +1392,25 @@ function draw(dt) {
       ctx.fillRect(Math.floor(c * CELL - x0), Math.floor(r * CELL - y0), Math.ceil(CELL), Math.ceil(CELL));
     }
   }
+
+  // Outside the round arena, and pillars (drawn as raised blocks)
+  const wallColor = [null, null, '#cfd6e4'];
+  const drawWalls = (kind, color, yOff) => {
+    ctx.fillStyle = color;
+    for (let r = r0; r <= r1; r++) {
+      let c = c0;
+      while (c <= c1) {
+        if (wall[r * N + c] !== kind) { c++; continue; }
+        let e = c;
+        while (e + 1 <= c1 && wall[r * N + e + 1] === kind) e++;
+        ctx.fillRect(Math.floor(c * CELL - x0), Math.floor(r * CELL - y0 + yOff), Math.ceil((e - c + 1) * CELL), Math.ceil(CELL));
+        c = e + 1;
+      }
+    }
+  };
+  drawWalls(2, wallColor[2], 0);
+  drawWalls(1, '#4a5369', CELL * 0.35);
+  drawWalls(1, '#6b7690', 0);
 
   // Land: a darker copy nudged down gives a chunky 3D edge, then the top colour
   drawRuns(owner, c0, c1, r0, r1, x0, y0, p => p.dark, CELL * 0.3);
@@ -1432,9 +1602,14 @@ function draw(dt) {
   ctx.fillRect(mx - 4, my - 4, ms + 8, ms + 8);
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(mini, mx, my, ms, ms);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(mx, my, ms, ms);
+  ctx.clip();
   ctx.strokeStyle = '#26304a';
   ctx.lineWidth = 1;
   ctx.strokeRect(mx + (x0 / CELL / N) * ms, my + (y0 / CELL / N) * ms, (W / CELL / N) * ms, (H / CELL / N) * ms);
+  ctx.restore();
   if (me.alive) {
     ctx.fillStyle = '#fff';
     ctx.strokeStyle = me.dark;
@@ -1494,7 +1669,16 @@ function drawMenuBackdrop(dt) {
 function updateHud() {
   $('pct').textContent = `${pct(me).toFixed(1)}%`;
   $('kills').textContent = `${me.kills} knockouts`;
-  $('goal-fill').style.width = `${Math.min(100, (pct(me) / WIN_PCT) * 100)}%`;
+  const timed = !!gameMode.time;
+  $('goal').classList.toggle('hidden', timed);
+  $('timer').classList.toggle('hidden', !timed);
+  if (timed) {
+    const left = Math.max(0, gameMode.time - playTime);
+    $('timer').textContent = `⏱ ${fmtTime(Math.ceil(left))}`;
+    $('timer').classList.toggle('urgent', left <= 15);
+  } else {
+    $('goal-fill').style.width = `${Math.min(100, (pct(me) / gameMode.win) * 100)}%`;
+  }
   $('goal-fill').style.background = me.color;
   const fx = Object.keys(POWERUPS).filter(k => me.alive && me.fx[k] > 0)
     .map(k => `<span class="fx" style="--c:${POWERUPS[k].color}">${POWERUPS[k].name} ${Math.ceil(me.fx[k])}s</span>`);
@@ -1609,6 +1793,8 @@ $('music-btn').addEventListener('click', toggleMusic);
 $('pause-btn').innerHTML = Icons.pause;
 $('pause-btn').addEventListener('click', () => { if (state === 'play') togglePause(); });
 
+allocWorld(80);
 buildSwatches();
+buildPickers();
 showScreen('menu');
 requestAnimationFrame(frame);
