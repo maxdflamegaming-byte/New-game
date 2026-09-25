@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Color Claim</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <div id="hud" class="hidden">
+    <div class="left">
+      <div id="pct">0.0%</div>
+      <div id="kills">0 kills</div>
+    </div>
+    <ol id="board"></ol>
+  </div>
+
+  <div id="toast"></div>
+
+  <div id="menu" class="screen show">
+    <h1>Color Claim</h1>
+    <p>Leave your land to draw a trail, then loop back to claim everything inside.</p>
+    <p>Cut other players' trails to knock them out, but don't let anyone touch yours!</p>
+    <p class="small">Steer: mouse, WASD / Arrow keys, or drag on touch screens &middot; Pause: P</p>
+    <p class="small">Reach <b>50%</b> of the map to win &middot; Best: <b id="menu-best">0%</b></p>
+    <button id="play-btn">Play</button>
+  </div>
+
+  <div id="paused" class="screen">
+    <h2>Paused</h2>
+    <button id="resume-btn">Resume</button>
+  </div>
+
+  <div id="over" class="screen">
+    <h2 id="over-title">Game Over</h2>
+    <p id="over-reason"></p>
+    <p id="over-stats"></p>
+    <p id="over-best" class="small"></p>
+    <button id="again-btn">Play again</button>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>

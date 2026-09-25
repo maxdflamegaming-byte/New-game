@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Game Shelf</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      padding: 24px 16px;
+      background: #0b0d17;
+      color: #e8ecff;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    h1 { font-size: clamp(32px, 8vw, 52px); font-weight: 900; }
+    .games { display: flex; flex-wrap: wrap; justify-content: center; gap: 16px; }
+    a.game {
+      width: min(300px, 100%);
+      padding: 22px;
+      border-radius: 16px;
+      background: #171b30;
+      border: 2px solid #2d3563;
+      color: inherit;
+      text-decoration: none;
+      transition: transform 0.1s, border-color 0.1s;
+    }
+    a.game:hover { transform: translateY(-3px); border-color: #3ad7ff; }
+    .icon { font-size: 40px; }
+    h2 { margin: 8px 0 6px; font-size: 22px; }
+    p { font-size: 14px; opacity: 0.75; line-height: 1.4; }
+  </style>
+</head>
+<body>
+  <h1>Pick a game</h1>
+  <div class="games">
+    <a class="game" href="color-claim/">
+      <div class="icon">🟦</div>
+      <h2>Color Claim</h2>
+      <p>Draw loops to claim land, cut rival trails, and take over the map. Inspired by Paper.io.</p>
+    </a>
+    <a class="game" href="survivors/">
+      <div class="icon">✨</div>
+      <h2>Glow Survivors</h2>
+      <p>Your magic fires on its own. Dodge the swarm, level up, and survive as long as you can.</p>
+    </a>
+  </div>
+</body>
+</html>
