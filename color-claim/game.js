@@ -58,12 +58,40 @@ const BOT_NAMES = ['Mango', 'Zigzag', 'Pixel', 'Turbo', 'Luna', 'Nacho', 'Bloop'
 const SPEED = 7.5;    // cells per second
 const TURN = 5.5;     // radians per second
 
+// Skins change how a square looks. All but Classic are unlocked by playing.
+const SKINS = [
+  { id: 'classic', name: 'Classic' },
+  { id: 'stripes', name: 'Stripes', need: { stat: 'games', n: 3, text: 'Play 3 games' } },
+  { id: 'dots', name: 'Dots', need: { stat: 'bestPct', n: 10, text: 'Claim 10% in one game' } },
+  { id: 'shades', name: 'Shades', need: { stat: 'kills', n: 3, text: 'Get 3 knockouts (total)' } },
+  { id: 'cat', name: 'Cat', need: { stat: 'bestPct', n: 20, text: 'Claim 20% in one game' } },
+  { id: 'confetti', name: 'Confetti', need: { stat: 'kills', n: 10, text: 'Get 10 knockouts (total)' } },
+  { id: 'robot', name: 'Robot', need: { stat: 'games', n: 10, text: 'Play 10 games' } },
+  { id: 'ninja', name: 'Ninja', need: { stat: 'wins', n: 1, text: 'Win a game' } },
+  { id: 'rainbow', name: 'Rainbow', need: { stat: 'wins', n: 3, text: 'Win 3 games' } },
+];
+
+// Power-ups appear on the map; anyone (bots too) can grab them
+const POWERUPS = {
+  speed: { name: 'Speed', color: '#ffb84d', time: 4 },
+  shield: { name: 'Shield', color: '#4f8cff', time: 6 },
+  freeze: { name: 'Freeze', color: '#3fc7f5', time: 4 },
+};
+const MAX_POWERUPS = 4;
+
 let players = [];     // players[id], id starts at 1
 let me = null;
 let state = 'menu';
 let best = Number(load('color-claim-best', 0)) || 0;
 let myColor = clamp(Number(load('color-claim-color', 0)) || 0, 0, COLORS.length - 1);
 let myName = load('color-claim-name', '');
+let stats = { games: 0, kills: 0, wins: 0, bestPct: 0 };
+try { Object.assign(stats, JSON.parse(load('color-claim-stats', '{}'))); } catch { /* bad saved data */ }
+stats.bestPct = Math.max(stats.bestPct, best);
+const isUnlocked = sk => !sk.need || stats[sk.need.stat] >= sk.need.n;
+let mySkin = load('color-claim-skin', 'classic');
+if (!SKINS.some(sk => sk.id === mySkin && isUnlocked(sk))) mySkin = 'classic';
+let powerups = [], powerTimer = 5, freezer = null;
 let particles = [], flashes = [], fades = [], floats = [], feed = [];
 let peakPct = 0, minimapTimer = 0, time = 0, shake = 0, danger = 0, wasInDanger = false;
 const cam = { x: N / 2, y: N / 2, zoom: 1 };
@@ -79,9 +107,10 @@ function setOwner(i, id) {
 }
 
 // ---------- Players ----------
-function makePlayer(id, name, color, isBot) {
+function makePlayer(id, name, color, isBot, skin) {
   return {
-    id, name, color, isBot,
+    id, name, color, isBot, skin, hueOff: rand(0, 360),
+    fx: { speed: 0, shield: 0, freeze: 0 },
     dark: shade(color, -0.28),
     trailColor: alpha(color, 0.45),
     x: 0, y: 0, cx: 0, cy: 0, angle: 0, desired: 0,
@@ -137,11 +166,15 @@ function spawn(p, fx, fy) {
   p.think = rand(0.2, 1);
   p.route = null;
   p.squash = 1;
+  p.fx = { speed: 0, shield: 0, freeze: 0 };
   return true;
 }
 
 function kill(victim, killer, how = 'cut') {
   if (!victim.alive) return;
+  // A shield stops other players cutting or bumping you. Your own mistakes still count,
+  // and so does losing all your land.
+  if (victim.fx.shield > 0 && killer !== victim && how !== 'swallow') return;
   victim.alive = false;
   const lost = [];
   for (const i of victim.trail) if (trail[i] === victim.id) { trail[i] = 0; lost.push(i); }
@@ -223,6 +256,13 @@ function capture(p) {
 }
 
 // ---------- Movement ----------
+function speedOf(p) {
+  let v = SPEED;
+  if (p.fx.speed > 0) v *= 1.6;
+  if (freezer && freezer !== p) v *= 0.5;
+  return v;
+}
+
 function visit(p, x, y) {
   const i = y * N + x;
   const t = trail[i];
@@ -247,8 +287,9 @@ function move(p, dt) {
   // Squash a little while turning hard, spring back when going straight
   const turning = dt > 0 ? Math.abs(turn) / (TURN * dt) : 0;
   p.squash += (turning * 0.5 - p.squash) * Math.min(1, dt * 10);
-  p.x = clamp(p.x + Math.cos(p.angle) * SPEED * dt, 0.01, N - 0.01);
-  p.y = clamp(p.y + Math.sin(p.angle) * SPEED * dt, 0.01, N - 0.01);
+  const v = speedOf(p);
+  p.x = clamp(p.x + Math.cos(p.angle) * v * dt, 0.01, N - 0.01);
+  p.y = clamp(p.y + Math.sin(p.angle) * v * dt, 0.01, N - 0.01);
 
   const cx = Math.floor(p.x), cy = Math.floor(p.y);
   if (cx === p.cx && cy === p.cy) return;
@@ -260,6 +301,53 @@ function move(p, dt) {
   visit(p, cx, cy);
   p.cx = cx;
   p.cy = cy;
+}
+
+function spawnPowerup() {
+  const kinds = Object.keys(POWERUPS);
+  for (let t = 0; t < 20; t++) {
+    const x = randInt(3, N - 4), y = randInt(3, N - 4);
+    if (powerups.some(pu => Math.hypot(pu.x - x, pu.y - y) < 10)) continue;
+    powerups.push({ x: x + 0.5, y: y + 0.5, kind: kinds[randInt(0, kinds.length - 1)], age: 0 });
+    return;
+  }
+}
+
+function grabPowerup(p, pu) {
+  const def = POWERUPS[pu.kind];
+  p.fx[pu.kind] = def.time;
+  burst(pu.x, pu.y, def.color, 16, 8);
+  if (p === me) {
+    toast(pu.kind === 'speed' ? 'Speed boost!' : pu.kind === 'shield' ? 'Shield! Nobody can cut your trail' : 'Freeze! Everyone else slows down');
+    Sfx.play(pu.kind);
+  } else if (pu.kind === 'freeze' && me.alive && dist(p, me) < 40) {
+    toast(`${p.name} froze everyone!`);
+    Sfx.play('freeze');
+  }
+}
+
+function updatePowerups(dt) {
+  powerTimer -= dt;
+  if (powerTimer <= 0) {
+    powerTimer = rand(6, 10);
+    if (powerups.length < MAX_POWERUPS) spawnPowerup();
+  }
+  for (const pu of powerups) {
+    pu.age += dt;
+    for (const p of players) {
+      if (p && p.alive && !pu.taken && Math.hypot(p.x - pu.x, p.y - pu.y) < 1.3) {
+        pu.taken = true;
+        grabPowerup(p, pu);
+      }
+    }
+  }
+  powerups = powerups.filter(pu => !pu.taken);
+  freezer = null;
+  for (const p of players) {
+    if (!p || !p.alive) continue;
+    for (const k in p.fx) p.fx[k] = Math.max(0, p.fx[k] - dt);
+    if (p.fx.freeze > 0) freezer = p;
+  }
 }
 
 // Two squares touching: whoever is safe on their own land wins. If both are outside,
@@ -335,11 +423,12 @@ function routeHome(p) {
 // `desired`, and return how many steps it survives before touching its own trail.
 function safeSteps(p, desired, steps = 10, dt = 0.05) {
   let x = p.x, y = p.y, a = p.angle, cx = p.cx, cy = p.cy;
+  const v = speedOf(p);
   for (let k = 0; k < steps; k++) {
     let diff = Math.atan2(Math.sin(desired - a), Math.cos(desired - a));
     a += clamp(diff, -TURN * dt, TURN * dt);
-    x = clamp(x + Math.cos(a) * SPEED * dt, 0.01, N - 0.01);
-    y = clamp(y + Math.sin(a) * SPEED * dt, 0.01, N - 0.01);
+    x = clamp(x + Math.cos(a) * v * dt, 0.01, N - 0.01);
+    y = clamp(y + Math.sin(a) * v * dt, 0.01, N - 0.01);
     const nx = Math.floor(x), ny = Math.floor(y);
     if (nx === cx && ny === cy) continue;
     if (nx !== cx && ny !== cy && trail[cy * N + nx] === p.id) return k;
@@ -390,7 +479,7 @@ function think(p) {
   // Hunt: go for a nearby enemy trail
   if (p.mode !== 'home' && p.mode !== 'hunt' && p.trail.length < 25) {
     for (const o of players) {
-      if (!o || o === p || !o.alive || o.trail.length < 4) continue;
+      if (!o || o === p || !o.alive || o.trail.length < 4 || o.fx.shield > 0) continue;
       if (dist(o, p) < 14 && Math.random() < p.aggro) {
         const i = o.trail[Math.max(0, o.trail.length - 4)];
         const tx = i % N, ty = (i - tx) / N;
@@ -398,6 +487,16 @@ function think(p) {
         p.mode = 'hunt';
         return;
       }
+    }
+  }
+
+  // At home: sometimes go and grab a nearby power-up
+  if (!outside && p.mode !== 'grab') {
+    const pu = powerups.find(q => Math.hypot(q.x - p.x, q.y - p.y) < 12);
+    if (pu && Math.random() < 0.5) {
+      p.wp = [{ x: pu.x, y: pu.y }];
+      p.mode = 'grab';
+      return;
     }
   }
 
@@ -533,6 +632,36 @@ function buildSwatches() {
   });
   $('play-btn').style.background = COLORS[myColor];
   $('play-btn').style.boxShadow = `0 5px 0 ${shade(COLORS[myColor], -0.3)}`;
+  buildSkins();
+}
+
+function buildSkins() {
+  const box = $('skins');
+  box.innerHTML = '';
+  for (const sk of SKINS) {
+    const open = isUnlocked(sk);
+    const b = document.createElement('button');
+    b.className = 'skin' + (sk.id === mySkin ? ' picked' : '') + (open ? '' : ' locked');
+    b.title = open ? sk.name : `Locked: ${sk.need.text}`;
+    b.setAttribute('aria-label', b.title);
+    const c = document.createElement('canvas');
+    c.width = c.height = 88;
+    const g = c.getContext('2d');
+    g.translate(44, 40);
+    g.rotate(-Math.PI / 2);
+    drawBody(g, { color: COLORS[myColor], dark: shade(COLORS[myColor], -0.28), skin: sk.id, blink: 1, hueOff: 200 }, 46, 0);
+    b.appendChild(c);
+    if (!open) b.insertAdjacentHTML('beforeend', Icons.lock);
+    b.addEventListener('click', () => {
+      if (open) {
+        mySkin = sk.id;
+        save('color-claim-skin', sk.id);
+        buildSkins();
+      }
+      $('skin-info').textContent = open ? `${sk.name} skin` : `🔒 ${sk.name}: ${sk.need.text}`;
+    });
+    box.appendChild(b);
+  }
 }
 
 $('name-input').value = myName;
@@ -554,10 +683,13 @@ function startGame() {
   renderFeed();
   rgbCache.length = 0;
   players = [null];
-  me = makePlayer(1, myName || 'You', COLORS[myColor], false);
+  me = makePlayer(1, myName || 'You', COLORS[myColor], false, mySkin);
   players.push(me);
   const botColors = COLORS.filter((_, i) => i !== myColor);
-  BOT_NAMES.forEach((name, i) => players.push(makePlayer(i + 2, name, botColors[i], true)));
+  BOT_NAMES.forEach((name, i) => players.push(makePlayer(i + 2, name, botColors[i], true, SKINS[randInt(0, SKINS.length - 1)].id)));
+  powerups = [];
+  powerTimer = 3;
+  freezer = null;
   spawn(me, N / 2, N / 2);
   for (const p of players) if (p && p.isBot) spawn(p);
   cam.x = me.x;
@@ -588,6 +720,19 @@ function endGame(won, reason) {
   const score = Math.round(peakPct * 10) / 10;
   const isBest = score > best;
   if (isBest) { best = score; save('color-claim-best', best); }
+
+  // Update lifetime stats and announce any skins that just unlocked
+  const before = SKINS.filter(isUnlocked);
+  stats.games++;
+  stats.kills += me.kills;
+  if (won) stats.wins++;
+  stats.bestPct = Math.max(stats.bestPct, score);
+  save('color-claim-stats', JSON.stringify(stats));
+  const fresh = SKINS.filter(sk => isUnlocked(sk) && !before.includes(sk));
+  $('over-unlock').textContent = fresh.length ? `🎁 New skin unlocked: ${fresh.map(sk => sk.name).join(', ')}! Pick it on the menu.` : '';
+  $('over-unlock').classList.toggle('hidden', !fresh.length);
+  if (fresh.length) Sfx.play('win');
+  buildSkins();
   $('over-title').textContent = won ? '🏆 You win!' : 'Game Over';
   $('over-reason').textContent = reason;
   $('over-stats').textContent = `Best size: ${score.toFixed(1)}% · ${me.kills} knockouts`;
@@ -659,10 +804,11 @@ function update(dt) {
     if (p !== me || state === 'play') move(p, dt);
   }
   checkBumps();
+  updatePowerups(dt);
 
   // Danger: is an enemy close to your exposed trail?
   danger = 0;
-  if (me.alive && me.trail.length) {
+  if (me.alive && me.trail.length && me.fx.shield <= 0) {
     for (const o of players) {
       if (!o || o === me || !o.alive) continue;
       for (let k = 0; k < me.trail.length; k += 2) {
@@ -749,8 +895,11 @@ function drawRuns(grid, c0, c1, r0, r1, x0, y0, colorOf, yOffset) {
       if (!id) { c++; continue; }
       let e = c;
       while (e + 1 <= c1 && grid[r * N + e + 1] === id) e++;
-      ctx.fillStyle = colorOf(players[id]);
-      ctx.fillRect(Math.floor(c * CELL - x0), Math.floor(r * CELL - y0 + yOffset), Math.ceil((e - c + 1) * CELL), Math.ceil(CELL));
+      const style = colorOf(players[id]);
+      if (style) {
+        ctx.fillStyle = style;
+        ctx.fillRect(Math.floor(c * CELL - x0), Math.floor(r * CELL - y0 + yOffset), Math.ceil((e - c + 1) * CELL), Math.ceil(CELL));
+      }
       c = e + 1;
     }
   }
@@ -781,6 +930,179 @@ function drawCrown(x, y, w) {
   ctx.stroke();
 }
 
+function skinColors(look, t) {
+  if (look.skin !== 'rainbow') return [look.color, look.dark];
+  const h = (t * 120 + look.hueOff) % 360;
+  return [`hsl(${h}, 85%, 62%)`, `hsl(${h}, 70%, 42%)`];
+}
+
+// Draws a square body with its skin at the origin, facing +x. `g` is any 2D context,
+// so the menu can draw previews with the same code.
+function drawBody(g, look, s, t) {
+  const [color, dark] = skinColors(look, t);
+  const skin = look.skin;
+  const circ = (x, y, r, c) => { g.fillStyle = c; g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill(); };
+
+  if (skin === 'robot') { // antenna sticking out the back
+    g.strokeStyle = dark;
+    g.lineWidth = s * 0.08;
+    g.beginPath();
+    g.moveTo(-s * 0.45, 0);
+    g.lineTo(-s * 0.75, 0);
+    g.stroke();
+    circ(-s * 0.78, 0, s * 0.1, Math.sin(t * 8) > 0 ? '#ff5d73' : '#ffb84d');
+  }
+  if (skin === 'cat') { // ears
+    for (const side of [-1, 1]) {
+      g.fillStyle = color;
+      g.beginPath();
+      g.moveTo(s * 0.02, side * s * 0.45);
+      g.lineTo(s * 0.38, side * s * 0.45);
+      g.lineTo(s * 0.2, side * s * 0.78);
+      g.fill();
+      g.fillStyle = '#ffb3c7';
+      g.beginPath();
+      g.moveTo(s * 0.1, side * s * 0.48);
+      g.lineTo(s * 0.3, side * s * 0.48);
+      g.lineTo(s * 0.2, side * s * 0.66);
+      g.fill();
+    }
+  }
+  if (skin === 'ninja') { // headband tails fluttering behind
+    g.strokeStyle = '#26304a';
+    g.lineWidth = s * 0.08;
+    g.lineCap = 'round';
+    for (const side of [-1, 1]) {
+      g.beginPath();
+      g.moveTo(-s * 0.45, side * s * 0.1);
+      g.quadraticCurveTo(-s * 0.7, side * (s * 0.2 + Math.sin(t * 10 + side) * s * 0.1), -s * 0.9, side * s * 0.25);
+      g.stroke();
+    }
+  }
+
+  g.fillStyle = dark;
+  g.fillRect(-s / 2, -s / 2 + s * 0.18, s, s);
+  g.fillStyle = color;
+  g.fillRect(-s / 2, -s / 2, s, s);
+
+  // Body pattern, clipped to the square
+  g.save();
+  g.beginPath();
+  g.rect(-s / 2, -s / 2, s, s);
+  g.clip();
+  if (skin === 'stripes') {
+    g.strokeStyle = 'rgba(255, 255, 255, 0.35)';
+    g.lineWidth = s * 0.12;
+    for (let k = -3; k <= 3; k++) {
+      g.beginPath();
+      g.moveTo(k * s * 0.3 - s / 2, -s / 2);
+      g.lineTo(k * s * 0.3 + s / 2, s / 2);
+      g.stroke();
+    }
+  } else if (skin === 'dots') {
+    for (const dx of [-0.3, 0, 0.3]) for (const dy of [-0.3, 0, 0.3]) circ(dx * s - s * 0.05, dy * s, s * 0.07, 'rgba(255, 255, 255, 0.45)');
+  } else if (skin === 'confetti') {
+    [[-0.3, -0.3], [0.05, -0.12], [-0.2, 0.25], [0.3, 0.32], [-0.35, 0.02], [0.1, 0.38]].forEach(([dx, dy], i) => {
+      g.fillStyle = COLORS[(i * 3 + 1) % COLORS.length];
+      g.fillRect(dx * s - s * 0.06, dy * s - s * 0.06, s * 0.12, s * 0.12);
+    });
+  } else if (skin === 'robot') {
+    g.fillStyle = 'rgba(0, 0, 0, 0.18)';
+    g.fillRect(-s / 2, -s * 0.04, s * 0.45, s * 0.08);
+    for (const [dx, dy] of [[-0.38, -0.38], [-0.38, 0.38]]) circ(dx * s, dy * s, s * 0.05, 'rgba(0, 0, 0, 0.3)');
+  }
+  g.fillStyle = 'rgba(255, 255, 255, 0.25)';
+  g.fillRect(-s / 2, -s / 2, s * 0.22, s);
+  g.restore();
+
+  // Face
+  const closed = look.blink < 0;
+  if (skin === 'ninja') {
+    g.fillStyle = '#26304a';
+    g.fillRect(s * 0.02, -s / 2, s * 0.34, s);
+  }
+  if (skin === 'shades') {
+    g.fillStyle = '#1b2033';
+    g.fillRect(s * 0.1, -s * 0.36, s * 0.24, s * 0.72);
+    g.fillStyle = 'rgba(255, 255, 255, 0.5)';
+    g.fillRect(s * 0.14, -s * 0.3, s * 0.05, s * 0.12);
+    g.fillRect(s * 0.14, s * 0.1, s * 0.05, s * 0.12);
+  } else if (skin === 'robot') {
+    for (const side of [-1, 1]) {
+      g.fillStyle = closed ? '#26304a' : '#7df9ff';
+      g.fillRect(s * 0.12, side * s * 0.2 - s * 0.08, s * 0.16, s * 0.16);
+    }
+  } else {
+    for (const side of [-1, 1]) {
+      g.fillStyle = '#fff';
+      g.beginPath();
+      if (closed) g.ellipse(s * 0.18, side * s * 0.2, s * 0.04, s * 0.14, 0, 0, TAU);
+      else g.arc(s * 0.18, side * s * 0.2, s * 0.14, 0, TAU);
+      g.fill();
+      if (!closed) {
+        g.fillStyle = '#26304a';
+        g.beginPath();
+        if (skin === 'cat') g.ellipse(s * 0.23, side * s * 0.2, s * 0.03, s * 0.09, 0, 0, TAU);
+        else g.arc(s * 0.24, side * s * 0.2, s * 0.07, 0, TAU);
+        g.fill();
+      }
+    }
+  }
+  if (skin === 'cat') { // whiskers
+    g.strokeStyle = 'rgba(38, 48, 74, 0.6)';
+    g.lineWidth = Math.max(1, s * 0.03);
+    for (const side of [-1, 1]) {
+      for (const k of [-1, 1]) {
+        g.beginPath();
+        g.moveTo(s * 0.42, side * s * 0.05);
+        g.lineTo(s * 0.62, side * (s * 0.12 + k * s * 0.06));
+        g.stroke();
+      }
+    }
+  }
+}
+
+function drawPowerupIcon(kind, x, y, r) {
+  const def = POWERUPS[kind];
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, TAU);
+  ctx.fill();
+  ctx.lineWidth = r * 0.18;
+  ctx.strokeStyle = def.color;
+  ctx.stroke();
+  ctx.fillStyle = def.color;
+  ctx.strokeStyle = def.color;
+  const u = r * 0.55;
+  ctx.beginPath();
+  if (kind === 'speed') {
+    ctx.moveTo(x + u * 0.2, y - u);
+    ctx.lineTo(x - u * 0.6, y + u * 0.15);
+    ctx.lineTo(x - u * 0.05, y + u * 0.15);
+    ctx.lineTo(x - u * 0.25, y + u);
+    ctx.lineTo(x + u * 0.6, y - u * 0.2);
+    ctx.lineTo(x + u * 0.05, y - u * 0.2);
+    ctx.closePath();
+    ctx.fill();
+  } else if (kind === 'shield') {
+    ctx.moveTo(x, y - u);
+    ctx.lineTo(x + u * 0.8, y - u * 0.6);
+    ctx.quadraticCurveTo(x + u * 0.7, y + u * 0.6, x, y + u);
+    ctx.quadraticCurveTo(x - u * 0.7, y + u * 0.6, x - u * 0.8, y - u * 0.6);
+    ctx.closePath();
+    ctx.fill();
+  } else {
+    ctx.lineWidth = r * 0.14;
+    ctx.lineCap = 'round';
+    for (let k = 0; k < 3; k++) {
+      const a = (k / 3) * Math.PI + Math.PI / 2;
+      ctx.moveTo(x - Math.cos(a) * u, y - Math.sin(a) * u);
+      ctx.lineTo(x + Math.cos(a) * u, y + Math.sin(a) * u);
+    }
+    ctx.stroke();
+  }
+}
+
 function drawHead(p, x0, y0, leaderId) {
   const hx = p.x * CELL - x0, hy = p.y * CELL - y0;
   if (hx < -60 || hy < -60 || hx > W + 60 || hy > H + 60) return;
@@ -793,32 +1115,45 @@ function drawHead(p, x0, y0, leaderId) {
   ctx.ellipse(hx, hy + s * 0.55, s * 0.6, s * 0.2, 0, 0, TAU);
   ctx.fill();
 
+  // Speed boost: motion lines behind
+  if (p.fx.speed > 0) {
+    ctx.strokeStyle = alpha(POWERUPS.speed.color, 0.7);
+    ctx.lineWidth = Math.max(2, CELL * 0.15);
+    ctx.lineCap = 'round';
+    for (const side of [-0.35, 0, 0.35]) {
+      const bx = hx - Math.cos(p.angle) * s * 0.8 - Math.sin(p.angle) * side * s;
+      const by = hy + bob - Math.sin(p.angle) * s * 0.8 + Math.cos(p.angle) * side * s;
+      const len = s * (0.5 + 0.3 * Math.sin(time * 30 + side * 9));
+      ctx.beginPath();
+      ctx.moveTo(bx, by);
+      ctx.lineTo(bx - Math.cos(p.angle) * len, by - Math.sin(p.angle) * len);
+      ctx.stroke();
+    }
+  }
+
   ctx.save();
   ctx.translate(hx, hy + bob);
   ctx.rotate(p.angle);
   ctx.scale(1 + p.squash * 0.15, 1 - p.squash * 0.15);
-  ctx.fillStyle = p.dark;
-  ctx.fillRect(-s / 2, -s / 2 + CELL * 0.25, s, s);
-  ctx.fillStyle = p.color;
-  ctx.fillRect(-s / 2, -s / 2, s, s);
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
-  ctx.fillRect(-s / 2, -s / 2, s, s * 0.22);
-
-  const closed = p.blink < 0;
-  for (const side of [-1, 1]) {
-    ctx.fillStyle = '#fff';
-    ctx.beginPath();
-    if (closed) ctx.ellipse(s * 0.18, side * s * 0.2, s * 0.04, s * 0.14, 0, 0, TAU);
-    else ctx.arc(s * 0.18, side * s * 0.2, s * 0.14, 0, TAU);
-    ctx.fill();
-    if (!closed) {
-      ctx.fillStyle = '#26304a';
-      ctx.beginPath();
-      ctx.arc(s * 0.24, side * s * 0.2, s * 0.07, 0, TAU);
-      ctx.fill();
-    }
+  drawBody(ctx, p, s, time);
+  // Frozen: icy tint
+  if (freezer && freezer !== p) {
+    ctx.fillStyle = 'rgba(160, 225, 255, 0.55)';
+    ctx.fillRect(-s / 2, -s / 2, s, s);
   }
   ctx.restore();
+
+  // Shield: a glowing bubble
+  if (p.fx.shield > 0) {
+    const fade = p.fx.shield < 1.5 ? 0.5 + 0.5 * Math.sin(time * 20) : 1;
+    ctx.strokeStyle = alpha(POWERUPS.shield.color, 0.8 * fade);
+    ctx.fillStyle = alpha(POWERUPS.shield.color, 0.12 * fade);
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(hx, hy + bob, s * 0.95 + Math.sin(time * 6) * 2, 0, TAU);
+    ctx.fill();
+    ctx.stroke();
+  }
 
   ctx.textAlign = 'center';
   ctx.font = `bold ${Math.round(CELL * 0.8)}px system-ui, sans-serif`;
@@ -860,6 +1195,8 @@ function draw(dt) {
   // Land: a darker copy nudged down gives a chunky 3D edge, then the top colour
   drawRuns(owner, c0, c1, r0, r1, x0, y0, p => p.dark, CELL * 0.3);
   drawRuns(owner, c0, c1, r0, r1, x0, y0, p => p.color, 0);
+  const pattern = landPattern(me.skin, x0, y0);
+  if (pattern) drawRuns(owner, c0, c1, r0, r1, x0, y0, p => (p === me ? pattern : null), 0);
 
   // Land of knocked-out players shrinks away
   for (const f of fades) {
@@ -874,7 +1211,24 @@ function draw(dt) {
 
   // Trails (yours pulses red when an enemy is close to it)
   const dangerColor = `rgba(255, 60, 80, ${0.35 + danger * 0.4 * (0.5 + 0.5 * Math.sin(time * 18))})`;
-  drawRuns(trail, c0, c1, r0, r1, x0, y0, p => (p === me && danger > 0 ? dangerColor : p.trailColor), 0);
+  drawRuns(trail, c0, c1, r0, r1, x0, y0, p => {
+    if (p === me && danger > 0) return dangerColor;
+    if (p.fx.shield > 0) return alpha(p.color, 0.8);
+    if (p.skin === 'rainbow') return `hsla(${(time * 120 + p.hueOff) % 360}, 85%, 62%, 0.5)`;
+    return p.trailColor;
+  }, 0);
+
+  // Power-ups bob and pop in
+  for (const pu of powerups) {
+    const px = pu.x * CELL - x0, py = pu.y * CELL - y0 + Math.sin(time * 4 + pu.x) * CELL * 0.15;
+    if (px < -40 || py < -40 || px > W + 40 || py > H + 40) continue;
+    const r = CELL * 0.85 * Math.min(1, pu.age * 4);
+    ctx.fillStyle = alpha(POWERUPS[pu.kind].color, 0.25);
+    ctx.beginPath();
+    ctx.arc(px, py, r * (1.5 + 0.15 * Math.sin(time * 6)), 0, TAU);
+    ctx.fill();
+    drawPowerupIcon(pu.kind, px, py, r);
+  }
 
   // Freshly claimed land flashes white
   for (const f of flashes) {
@@ -917,6 +1271,15 @@ function draw(dt) {
     ctx.fillText(f.text, f.x * CELL - x0, f.y * CELL - y0);
   }
   ctx.globalAlpha = 1;
+
+  // Frozen by someone else: frosty screen edge
+  if (freezer && freezer !== me && me.alive) {
+    const grad = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.max(W, H) * 0.75);
+    grad.addColorStop(0, 'rgba(160, 225, 255, 0)');
+    grad.addColorStop(1, 'rgba(160, 225, 255, 0.55)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+  }
 
   // Danger warning: red glow around the screen edge
   if (danger > 0.3) {
@@ -964,6 +1327,32 @@ function draw(dt) {
   }
 }
 
+// Your skin's pattern also shows on your land. Patterns are anchored to the map so they
+// scroll with it.
+const patternCache = {};
+function landPattern(skin, x0, y0) {
+  if (!['stripes', 'dots', 'confetti'].includes(skin)) return null;
+  if (!patternCache[skin]) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 24;
+    const g = c.getContext('2d');
+    if (skin === 'stripes') {
+      g.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+      g.lineWidth = 5;
+      for (const o of [-24, 0, 24]) { g.beginPath(); g.moveTo(o, 0); g.lineTo(o + 24, 24); g.stroke(); }
+    } else if (skin === 'dots') {
+      g.fillStyle = 'rgba(255, 255, 255, 0.28)';
+      g.beginPath(); g.arc(6, 6, 3, 0, TAU); g.arc(18, 18, 3, 0, TAU); g.fill();
+    } else {
+      [[4, 4, 0], [16, 8, 2], [8, 17, 4], [19, 19, 6]].forEach(([x, y, ci]) => { g.fillStyle = alpha(COLORS[ci], 0.55); g.fillRect(x, y, 4, 4); });
+    }
+    patternCache[skin] = ctx.createPattern(c, 'repeat');
+  }
+  const pat = patternCache[skin];
+  pat.setTransform(new DOMMatrix().translateSelf(-x0, -y0));
+  return pat;
+}
+
 // Menu backdrop: floating coloured blocks
 const menuBlocks = Array.from({ length: 26 }, (_, i) => ({
   x: Math.random(), y: Math.random(), s: rand(20, 60), c: COLORS[i % COLORS.length], v: rand(0.02, 0.06), r: rand(0, TAU),
@@ -989,6 +1378,11 @@ function updateHud() {
   $('kills').textContent = `${me.kills} knockouts`;
   $('goal-fill').style.width = `${Math.min(100, (pct(me) / WIN_PCT) * 100)}%`;
   $('goal-fill').style.background = me.color;
+  const fx = Object.keys(POWERUPS).filter(k => me.alive && me.fx[k] > 0)
+    .map(k => `<span class="fx" style="--c:${POWERUPS[k].color}">${POWERUPS[k].name} ${Math.ceil(me.fx[k])}s</span>`);
+  if (freezer && freezer !== me && me.alive) fx.push('<span class="fx" style="--c:#3fc7f5">Frozen!</span>');
+  const fxHtml = fx.join('');
+  if ($('effects').innerHTML !== fxHtml) $('effects').innerHTML = fxHtml;
   const ranked = players.filter(p => p && p.alive).sort((a, b) => counts[b.id] - counts[a.id]);
   const top = ranked.slice(0, 5);
   if (me.alive && !top.includes(me)) top.push(me);

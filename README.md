@@ -10,6 +10,8 @@ A territory game inspired by Paper.io.
 - Leave your land to draw a trail, then loop back to claim everything you enclosed.
 - Cut another player's trail to knock them out. If anyone touches *your* trail, or you cross it yourself, you're out.
 - Claim 50% of the map to win, against 7 bots that each have their own personality (greedy, cautious, aggressive).
+- Grab power-ups: **Speed** (1.6× faster), **Shield** (nobody can cut or bump you) and **Freeze** (everyone else moves at half speed). Bots use them too.
+- Unlock 8 skins by playing (Stripes, Dots, Shades, Cat, Confetti, Robot, Ninja, Rainbow). Some patterns show on your land as well. Bots wear skins too.
 - Pick your own name and color. There's a live leaderboard, a crown on the leader, a kill feed and a minimap.
 - Your trail flashes red with a warning sound when an enemy gets close to it.
 - Animations: claimed land flashes, lost land dissolves, confetti bursts, and squares that squash, bob and blink. The camera zooms out as you grow.
@@ -33,4 +35,10 @@ python3 -m http.server 8000
 # then visit http://localhost:8000
 ```
 
-To publish it for free, turn on **GitHub Pages** for this repository (Settings → Pages → deploy from a branch).
+## Publish online (free)
+
+This repo has a GitHub Actions workflow (`.github/workflows/pages.yml`) that publishes the games with GitHub Pages.
+
+1. On GitHub, open **Settings → Pages**.
+2. Under **Build and deployment → Source**, choose **GitHub Actions**.
+3. Push to this branch (or run the workflow from the **Actions** tab). The game link appears in the workflow run and on the Pages settings page.
