@@ -118,6 +118,7 @@ function finishRun(won, score) {
 // ---------- Menu navigation ----------
 function openScreen(id) {
   if (id === 'locker') buildLocker();
+  if (id === 'settings') buildSettings();
   if (id === 'trophies') buildTrophies();
   if (id === 'stats') buildStats();
   showScreen(id);
@@ -247,6 +248,59 @@ function buildStats() {
   ];
   const modes = ['classic', 'timed', 'marathon', 'daily'].map(m => [m === 'daily' ? "Today's Daily" : `${MODES[m].name} best`, `${bestFor(m).toFixed(1)}%`]);
   $('stats-grid').innerHTML = [...tiles, ...modes].map(([k, v]) => `<div class="tile"><b>${v}</b><span>${k}</span></div>`).join('');
+}
+
+// ---------- Settings ----------
+function buildSettings() {
+  const rows = [
+    { label: 'Sound effects', value: !Sfx.muted, options: [[true, 'On'], [false, 'Off']], set: v => { if (v === Sfx.muted) toggleMute(); } },
+    { label: 'Music', value: Music.enabled, options: [[true, 'On'], [false, 'Off']], set: v => { if (v !== Music.enabled) toggleMusic(); } },
+    { label: 'Vibration', value: settings.vibrate, options: [[true, 'On'], [false, 'Off']], set: v => { settings.vibrate = v; buzz(30); } },
+    { label: 'Screen shake', value: settings.shake, options: [[true, 'On'], [false, 'Off']], set: v => { settings.shake = v; } },
+    { label: 'Touch controls', value: settings.controls, options: [['joystick', 'Joystick'], ['turn', 'Tap to turn']], set: v => { settings.controls = v; } },
+    { label: 'Joystick size', value: settings.stickSize, options: [['normal', 'Normal'], ['large', 'Large']], set: v => { settings.stickSize = v; } },
+  ];
+  const box = $('settings-list');
+  box.innerHTML = '';
+  for (const row of rows) {
+    const li = document.createElement('li');
+    li.innerHTML = `<span>${row.label}</span>`;
+    const seg = document.createElement('div');
+    seg.className = 'seg';
+    for (const [val, text] of row.options) {
+      const b = document.createElement('button');
+      b.className = 'seg-btn' + (val === row.value ? ' picked' : '');
+      b.textContent = text;
+      b.addEventListener('click', () => { row.set(val); saveSettings(); buildSettings(); });
+      seg.appendChild(b);
+    }
+    li.appendChild(seg);
+    box.appendChild(li);
+  }
+  $('controls-help').textContent = settings.controls === 'turn'
+    ? 'Tap to turn: hold the left or right half of the screen to turn that way. Great for one thumb.'
+    : 'Joystick: put your finger down anywhere and drag the way you want to go.';
+}
+
+// ---------- Install as an app ----------
+let installPrompt = null;
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  installPrompt = e;
+  $('install-btn').classList.remove('hidden');
+});
+$('install-btn').addEventListener('click', async () => {
+  if (!installPrompt) return;
+  installPrompt.prompt();
+  await installPrompt.userChoice.catch(() => null);
+  installPrompt = null;
+  $('install-btn').classList.add('hidden');
+});
+window.addEventListener('appinstalled', () => $('install-btn').classList.add('hidden'));
+
+// Offline support: the service worker keeps a copy of the game (only works over http/https)
+if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+  navigator.serviceWorker.register('sw.js').catch(() => { /* offline play just won't be available */ });
 }
 
 // ---------- Start up ----------

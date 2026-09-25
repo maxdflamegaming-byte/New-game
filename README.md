@@ -9,13 +9,25 @@ Sound effects are generated in code (`shared/sfx.js`), so there are no audio fil
 A territory game inspired by Paper.io.
 - Leave your land to draw a trail, then loop back to claim everything you enclosed.
 - Cut another player's trail to knock them out. If anyone touches *your* trail, or you cross it yourself, you're out.
-- Claim 50% of the map to win, against 7 bots that each have their own personality (greedy, cautious, aggressive).
-- Grab power-ups: **Speed** (1.6× faster), **Shield** (nobody can cut or bump you) and **Freeze** (everyone else moves at half speed). Bots use them too.
-- Unlock 8 skins by playing (Stripes, Dots, Shades, Cat, Confetti, Robot, Ninja, Rainbow). Some patterns show on your land as well. Bots wear skins too.
-- Pick your own name and color. There's a live leaderboard, a crown on the leader, a kill feed and a minimap.
-- Your trail flashes red with a warning sound when an enemy gets close to it.
-- Animations: claimed land flashes, lost land dissolves, confetti bursts, and squares that squash, bob and blink. The camera zooms out as you grow.
-- **Controls:** mouse, WASD / arrow keys, or drag on a touch screen. **P** or the pause button pauses, **M** mutes.
+- A 3-2-1 countdown starts each game, and everyone gets a 3-second shield after spawning.
+- 7 bots with their own personalities. They path home around their own trails, and the bigger you get, the harder they come for yours.
+- A red **!** (or an arrow at the screen edge) warns you when an enemy is near your trail.
+- **Modes:**
+
+  | Mode | Goal |
+  |---|---|
+  | Classic | Claim 50% of the map |
+  | Timed | Be the biggest when the 3:00 clock runs out |
+  | Daily | Same starting map for everyone today (claim 50%) |
+  | Marathon | A 120×120 map (claim 60%) |
+
+- **Maps:** Square, Round arena and Pillars (walls you slide along).
+- **Power-ups:** Speed (1.6× faster), Shield (nobody can cut or bump you) and Freeze (everyone else at half speed). Bots use them too.
+- **Coins and the Locker:** earn coins every game (2 per % claimed, 5 per knockout, 50 for a win, 25 per trophy). Unlock 8 skins by playing or buy them, and buy trail effects (Sparkles, Bubbles, Hearts, Fire, Stars, Rainbow).
+- **14 trophies** and a **stats** page (wins, best claim, knockouts, time played and best score per mode).
+- A how-to-play guide on your first game, background music made in code, a kill feed, a leaderboard with a crown and a minimap.
+- **On phones:** install it to your home screen and play offline. It vibrates on knockouts and hits, and has bigger buttons plus a choice of controls: drag joystick (normal or large) or one-thumb **tap to turn** (hold the left or right half of the screen).
+- **Controls:** mouse, WASD / arrow keys, or touch. **P** or the pause button pauses, **M** mutes sound, **N** toggles music.
 
 ### ✨ Glow Survivors (`survivors/`)
 A small "survivors-like" game.

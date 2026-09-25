@@ -4,6 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
   <title>Color Claim</title>
+  <meta name="description" content="Draw loops to claim land, cut rival trails and take over the map.">
+  <meta name="theme-color" content="#4f8cff">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Color Claim">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon-192.png">
+  <link rel="apple-touch-icon" href="icon-180.png">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -49,7 +56,9 @@
       <button class="nav-btn" data-open="locker">Locker</button>
       <button class="nav-btn" data-open="trophies">Trophies</button>
       <button class="nav-btn" data-open="stats">Stats</button>
+      <button class="nav-btn" data-open="settings">Settings</button>
       <button id="howto-open" class="nav-btn">How to play</button>
+      <button id="install-btn" class="nav-btn install hidden">Install app</button>
     </nav>
     <p class="small keys">Steer: mouse, WASD / arrows, or drag on touch screens &middot; P pause &middot; M sound &middot; N music</p>
   </div>
@@ -70,6 +79,14 @@
     <h2>Trophies</h2>
     <p id="trophy-count" class="small"></p>
     <ul id="trophy-list"></ul>
+    <button class="secondary" data-back>Back</button>
+  </div>
+
+  <div id="settings" class="screen">
+    <h2>Settings</h2>
+    <ul id="settings-list"></ul>
+    <p id="controls-help" class="small"></p>
+    <p class="small">On iPhone or iPad: tap <b>Share</b>, then <b>Add to Home Screen</b> to install the game.</p>
     <button class="secondary" data-back>Back</button>
   </div>
 

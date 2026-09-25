@@ -173,6 +173,18 @@ try { ownedSkins = JSON.parse(load('color-claim-owned-skins', '[]')); } catch { 
 // A skin is yours if you reached its milestone or bought it in the Locker
 const isUnlocked = sk => !sk.need || stats[sk.need.stat] >= sk.need.n || ownedSkins.includes(sk.id);
 let myFx = load('color-claim-fx', 'none');
+
+// Settings (changed on the Settings screen)
+const settings = { vibrate: true, shake: true, controls: 'joystick', stickSize: 'normal' };
+try { Object.assign(settings, JSON.parse(load('color-claim-settings', '{}'))); } catch { /* bad saved data */ }
+const saveSettings = () => save('color-claim-settings', JSON.stringify(settings));
+
+// Short vibrations on phones that support it
+function buzz(pattern) {
+  if (settings.vibrate && navigator.vibrate) {
+    try { navigator.vibrate(pattern); } catch { /* not allowed */ }
+  }
+}
 let run = { powerups: 0, bigLoop: 0, freezeKO: false, trophies: [] }; // this game's numbers, for achievements
 let fxParts = [], fxTimer = 0, achTimer = 1;
 let mySkin = load('color-claim-skin', 'classic');
@@ -286,6 +298,7 @@ function kill(victim, killer, how = 'cut') {
   if (victim === me) {
     shake = 1;
     Sfx.play('death');
+    buzz(300);
     const reason = killer === me ? 'You crossed your own trail!'
       : how === 'swallow' ? `${killer.name} swallowed all your land!`
       : how === 'bump' ? `You bumped into ${killer.name} outside your land!`
@@ -294,6 +307,7 @@ function kill(victim, killer, how = 'cut') {
   } else if (killer === me) {
     toast(`You knocked out ${victim.name}!`);
     Sfx.play('cut');
+    buzz([30, 40, 30]);
     shake = 0.4;
   }
 }
@@ -341,6 +355,7 @@ function capture(p) {
   if (p === me && gained.length) {
     const gainPct = (gained.length / playCells) * 100;
     run.bigLoop = Math.max(run.bigLoop, gainPct);
+    if (gainPct >= 1) buzz(20);
     if (gainPct >= 0.1) floats.push({ x: p.x, y: p.y - 3, text: `+${gainPct.toFixed(1)}%`, life: 1.2, big: gainPct > 3 });
     burst(p.x, p.y, p.color, Math.min(40, 8 + gained.length / 10), 8);
     Sfx.play('capture');
@@ -421,7 +436,7 @@ function spawnPowerup() {
 function grabPowerup(p, pu) {
   const def = POWERUPS[pu.kind];
   p.fx[pu.kind] = def.time;
-  if (p === me) run.powerups++;
+  if (p === me) { run.powerups++; buzz(15); }
   burst(pu.x, pu.y, def.color, 16, 8);
   if (p === me) {
     toast(pu.kind === 'speed' ? 'Speed boost!' : pu.kind === 'shield' ? 'Shield! Nobody can cut your trail' : 'Freeze! Everyone else slows down');
@@ -673,6 +688,9 @@ function steerBot(p, dt) {
 const keys = new Set();
 const stick = { active: false, id: null, ox: 0, oy: 0, x: 0, y: 0 };
 const mouse = { active: false, x: 0, y: 0 };
+const isTouchDevice = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+const turnTouches = new Map(); // pointerId -> -1 (left half) or +1 (right half), for tap-to-turn
+const stickRadius = () => (settings.stickSize === 'large' ? 80 : 50);
 
 window.addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
@@ -699,11 +717,16 @@ window.addEventListener('blur', () => {
 canvas.addEventListener('pointerdown', e => {
   Sfx.unlock();
   if (state !== 'play' || e.pointerType === 'mouse') return;
+  if (settings.controls === 'turn') {
+    turnTouches.set(e.pointerId, e.clientX < W / 2 ? -1 : 1);
+    capturePointer(e.pointerId);
+    return;
+  }
   stick.active = true;
   stick.id = e.pointerId;
   stick.ox = stick.x = e.clientX;
   stick.oy = stick.y = e.clientY;
-  canvas.setPointerCapture(e.pointerId);
+  capturePointer(e.pointerId);
 });
 canvas.addEventListener('pointermove', e => {
   if (e.pointerType === 'mouse') {
@@ -715,7 +738,14 @@ canvas.addEventListener('pointermove', e => {
     stick.y = e.clientY;
   }
 });
-const endStick = e => { if (e.pointerId === stick.id) stick.active = false; };
+function capturePointer(id) {
+  try { canvas.setPointerCapture(id); } catch { /* pointer already gone */ }
+}
+const endStick = e => {
+  // Letting go of tap-to-turn means "go straight now"
+  if (turnTouches.delete(e.pointerId) && !turnTouches.size && me) me.desired = me.angle;
+  if (e.pointerId === stick.id) stick.active = false;
+};
 canvas.addEventListener('pointerup', endStick);
 canvas.addEventListener('pointercancel', endStick);
 
@@ -725,6 +755,13 @@ function steerHuman() {
   if (keys.has('d') || keys.has('arrowright')) x += 1;
   if (keys.has('w') || keys.has('arrowup')) y -= 1;
   if (keys.has('s') || keys.has('arrowdown')) y += 1;
+  if (turnTouches.size) {
+    // Tap-to-turn: hold the left or right half of the screen to turn that way
+    let side = 0;
+    for (const v of turnTouches.values()) side += v;
+    me.desired = me.angle + Math.sign(side) * 1.2;
+    return;
+  }
   if (stick.active) {
     const dx = stick.x - stick.ox, dy = stick.y - stick.oy;
     if (Math.hypot(dx, dy) > 10) { x = dx; y = dy; }
@@ -828,6 +865,7 @@ function startGame() {
   goFlash = 0;
   threats = [];
   stick.active = false;
+  turnTouches.clear();
   $('name-input').blur();
   state = 'play';
   showScreen(null);
@@ -965,7 +1003,7 @@ function update(dt) {
     const before = Math.ceil(countdown);
     countdown -= dt;
     if (me.alive) { steerHuman(); me.angle = me.desired; }
-    if (countdown <= 0) { goFlash = 0.8; Sfx.play('go'); }
+    if (countdown <= 0) { goFlash = 0.8; Sfx.play('go'); buzz(40); }
     else if (Math.ceil(countdown) !== before) Sfx.play('beep');
     updateCamera(dt);
     return;
@@ -1424,7 +1462,7 @@ function draw(dt) {
   }
 
   CELL = BASE_CELL * cam.zoom;
-  const sh = shake * CELL * 0.6;
+  const sh = settings.shake ? shake * CELL * 0.6 : 0;
   const x0 = cam.x * CELL - W / 2 + rand(-sh, sh), y0 = cam.y * CELL - H / 2 + rand(-sh, sh);
 
   // Map floor: a raised board with a soft checker pattern
@@ -1633,17 +1671,39 @@ function draw(dt) {
 
   // Touch joystick
   if (stick.active && state === 'play') {
+    const R = stickRadius();
     ctx.strokeStyle = 'rgba(38, 48, 74, 0.3)';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.arc(stick.ox, stick.oy, 50, 0, TAU);
+    ctx.arc(stick.ox, stick.oy, R, 0, TAU);
     ctx.stroke();
     const dx = stick.x - stick.ox, dy = stick.y - stick.oy, d = Math.hypot(dx, dy);
-    const m = d > 50 ? 50 / d : 1;
+    const m = d > R ? R / d : 1;
     ctx.fillStyle = 'rgba(38, 48, 74, 0.3)';
     ctx.beginPath();
-    ctx.arc(stick.ox + dx * m, stick.oy + dy * m, 20, 0, TAU);
+    ctx.arc(stick.ox + dx * m, stick.oy + dy * m, R * 0.4, 0, TAU);
     ctx.fill();
+  }
+
+  // Tap-to-turn hints in the bottom corners
+  if (settings.controls === 'turn' && state === 'play' && isTouchDevice) {
+    const held = [...turnTouches.values()];
+    const hintY = H - Math.min(130, W * 0.28) - 70; // just above the minimap
+    for (const side of [-1, 1]) {
+      const cx = side < 0 ? W * 0.25 : W * 0.75, cy = hintY;
+      ctx.fillStyle = held.includes(side) ? 'rgba(38, 48, 74, 0.35)' : 'rgba(38, 48, 74, 0.15)';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 34, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 5;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(cx - side * 6, cy - 12);
+      ctx.lineTo(cx + side * 8, cy);
+      ctx.lineTo(cx - side * 6, cy + 12);
+      ctx.stroke();
+    }
   }
 
   // Minimap
