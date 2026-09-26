@@ -66,13 +66,15 @@ const ACHIEVEMENTS = [
   { id: 'daily', name: 'Daily Dose', desc: 'Finish a Daily game', test: (r, s) => (s.dailies || 0) >= 1 },
   { id: 'marathon', name: 'Long Haul', desc: 'Win a Marathon game', test: (r, s) => (s.marathonWins || 0) >= 1 },
   { id: 'power10', name: 'Powered Up', desc: 'Grab 10 power-ups', test: (r, s) => (s.powerups || 0) >= 10, progress: s => [s.powerups || 0, 10] },
+  { id: 'giant', name: 'Giant Slayer', desc: 'Knock out the Giant', test: r => r.giantKO },
+  { id: 'team', name: 'Team Player', desc: 'Win a Teams game', test: (r, s) => (s.teamWins || 0) >= 1 },
   { id: 'collector', name: 'Collector', desc: 'Own 5 skins', test: () => SKINS.filter(isUnlocked).length >= 5, progress: () => [SKINS.filter(isUnlocked).length, 5] },
   { id: 'regular', name: 'Regular', desc: 'Play 25 games', test: (r, s) => s.games >= 25, progress: s => [s.games, 25] },
 ];
 let achieved = loadJSON('color-claim-achievements', {});
 
 function runSnapshot() {
-  return { peak: peakPct, kills: me ? me.kills : 0, time: playTime, bigLoop: run.bigLoop, freezeKO: run.freezeKO };
+  return { peak: peakPct, kills: me ? me.kills : 0, time: playTime, bigLoop: run.bigLoop, freezeKO: run.freezeKO, giantKO: run.giantKO };
 }
 
 function checkAchievements(r) {
@@ -107,11 +109,13 @@ function finishRun(won, score) {
   if (gameModeId === 'daily') stats.dailies = (stats.dailies || 0) + 1;
   if (gameModeId === 'timed' && won) stats.timedWins = (stats.timedWins || 0) + 1;
   if (gameModeId === 'marathon' && won) stats.marathonWins = (stats.marathonWins || 0) + 1;
+  if (gameModeId === 'team' && won) stats.teamWins = (stats.teamWins || 0) + 1;
+  if (run.giantKO) stats.giants = (stats.giants || 0) + 1;
 
-  const earned = Math.round(score * 2) + me.kills * 5 + (won ? 50 : 0);
+  const earned = (Math.round(score * 2) + me.kills * 5 + (won ? 50 : 0)) * (eventOn('double') ? 2 : 1);
   addCoins(earned);
   const fresh = [...run.trophies, ...checkAchievements(runSnapshot())];
-  const xpGain = Math.round(score * 10 + me.kills * 30 + (won ? 150 : 0) + playTime / 2);
+  const xpGain = Math.round((score * 10 + me.kills * 30 + (won ? 150 : 0) + playTime / 2) * (eventOn('xp') ? 1.5 : 1));
   const { levelsUp, levelCoins } = addXp(xpGain);
   const missionsDone = updateMissions({
     ...runSnapshot(), powerups: run.powerups, coinsPicked: run.coinsPicked, mode: gameModeId, map: gameMapId, won,
@@ -164,6 +168,7 @@ const MISSION_POOL = [
   { id: 'round', text: 'Play a game on the Round map', goal: 1, reward: 25, add: r => (r.map === 'round' ? 1 : 0) },
   { id: 'pillars', text: 'Play a game on the Pillars map', goal: 1, reward: 25, add: r => (r.map === 'pillars' ? 1 : 0) },
   { id: 'win', text: 'Win a game', goal: 1, reward: 60, add: r => (r.won ? 1 : 0) },
+  { id: 'teams', text: 'Play a Teams game', goal: 1, reward: 30, add: r => (r.mode === 'team' ? 1 : 0) },
 ];
 
 function todaysMissions() {
@@ -212,6 +217,12 @@ function buildMissions() {
       <span class="bar"><span style="width:${(n / m.goal) * 100}%"></span></span><span class="prog">${n} / ${m.goal}</span></span>
       <span class="reward">+${m.reward} <span class="coin"></span></span></li>`;
   }).join('');
+}
+
+// ---------- Weekly event banner ----------
+function renderEvent() {
+  const { event, daysLeft } = weekInfo();
+  $('event-banner').innerHTML = `<b>This week: ${event.name}</b><span>${event.desc} · ends in ${daysLeft} day${daysLeft === 1 ? '' : 's'}</span>`;
 }
 
 // ---------- Menu navigation ----------
@@ -345,8 +356,9 @@ function buildStats() {
     ['Time played', mins < 60 ? `${mins} min` : `${(mins / 60).toFixed(1)} h`],
     ['Coins earned', s.coinsEarned || 0],
     ['Trophies', `${ACHIEVEMENTS.filter(a => achieved[a.id]).length} / ${ACHIEVEMENTS.length}`],
+    ['Giants beaten', s.giants || 0],
   ];
-  const modes = ['classic', 'timed', 'marathon', 'daily'].map(m => [m === 'daily' ? "Today's Daily" : `${MODES[m].name} best`, `${bestFor(m).toFixed(1)}%`]);
+  const modes = ['classic', 'timed', 'marathon', 'team', 'daily'].map(m => [m === 'daily' ? "Today's Daily" : `${MODES[m].name} best`, `${bestFor(m).toFixed(1)}%`]);
   $('stats-grid').innerHTML = [...tiles, ...modes].map(([k, v]) => `<div class="tile"><b>${v}</b><span>${k}</span></div>`).join('');
 }
 
@@ -356,6 +368,7 @@ function buildSettings() {
     { label: 'Sound effects', value: !Sfx.muted, options: [[true, 'On'], [false, 'Off']], set: v => { if (v === Sfx.muted) toggleMute(); } },
     { label: 'Music', value: Music.enabled, options: [[true, 'On'], [false, 'Off']], set: v => { if (v !== Music.enabled) toggleMusic(); } },
     { label: 'Vibration', value: settings.vibrate, options: [[true, 'On'], [false, 'Off']], set: v => { settings.vibrate = v; buzz(30); } },
+    { label: 'Colorblind patterns', value: settings.patterns, options: [[true, 'On'], [false, 'Off']], set: v => { settings.patterns = v; } },
     { label: 'Screen shake', value: settings.shake, options: [[true, 'On'], [false, 'Off']], set: v => { settings.shake = v; } },
     { label: 'Touch controls', value: settings.controls, options: [['joystick', 'Joystick'], ['turn', 'Tap to turn']], set: v => { settings.controls = v; } },
     { label: 'Joystick size', value: settings.stickSize, options: [['normal', 'Normal'], ['large', 'Large']], set: v => { settings.stickSize = v; } },
@@ -410,5 +423,6 @@ buildPickers();
 renderCoins();
 renderLevel();
 renderMissionBadge();
+renderEvent();
 showScreen('menu');
 requestAnimationFrame(frame);

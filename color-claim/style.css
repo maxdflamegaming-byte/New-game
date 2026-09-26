@@ -301,6 +301,25 @@ canvas { display: block; touch-action: none; }
 #mission-list .prog { font-size: 11px; opacity: 0.7; }
 #mission-list .reward { flex: none; font-weight: 900; color: #c98a00; }
 
+.event-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 16px;
+  border-radius: 12px;
+  color: #fff;
+  background: linear-gradient(90deg, #b06bff, #ff5d9e);
+  box-shadow: 0 3px 0 #7d4fd6;
+  font-size: 13px;
+}
+.event-banner b { font-size: 15px; }
+#team-score { font-size: 13px; font-weight: 800; margin: 2px 0; }
+#team-score .us { color: #1f5fd6; }
+#team-score .them { color: #d6304a; }
+#team-score span { opacity: 0.5; }
+#board li.ally { color: #1f5fd6; }
+#board li.boss { color: #d6304a; }
+
 .pickers { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .seg { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; padding: 4px; background: rgba(255, 255, 255, 0.7); border-radius: 12px; }
 .seg-btn {

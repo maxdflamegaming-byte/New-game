@@ -20,14 +20,18 @@ A territory game inspired by Paper.io.
   | Timed | Be the biggest when the 3:00 clock runs out |
   | Daily | Same starting map for everyone today (claim 50%) |
   | Marathon | A 120×120 map (claim 60%) |
+  | Teams | You + 3 bots vs 4 bots; teammates can't cut, bump or steal from each other. First team to 50% wins |
 
 - **Maps:** Square, Round arena and Pillars (walls you slide along).
 - **Power-ups:** Speed (1.6× faster), Shield (nobody can cut or bump you), Freeze (everyone else at half speed), Ghost (cross your own trail safely) and Paint Bomb (instantly claim a circle of land). Bots use them too.
 - **Gold coins** appear on the map. Grab them before the bots do.
+- **The Giant:** once you reach 20% (90 s into a Timed game), a big, fast boss bot arrives and hunts your trail. Knock it out for 100 coins.
+- **Weekly events** rotate every Monday: Double Coins, Power-up Frenzy, Gold Rush, Speed Week and XP Boost.
+- **Colorblind patterns** (in Settings) give every player's land and trail its own pattern.
 - **Daily missions:** 3 new missions every day with coin rewards.
 - **Player level:** every game earns XP, and each level-up pays a coin bonus.
 - **Coins and the Locker:** earn coins every game (2 per % claimed, 5 per knockout, 50 for a win, 25 per trophy). Unlock 8 skins by playing or buy them, and buy trail effects (Sparkles, Bubbles, Hearts, Fire, Stars, Rainbow).
-- **14 trophies** and a **stats** page (wins, best claim, knockouts, time played and best score per mode).
+- **16 trophies** and a **stats** page (wins, best claim, knockouts, time played and best score per mode).
 - A how-to-play guide on your first game, background music made in code, a kill feed, a leaderboard with a crown and a minimap.
 - **On phones:** install it to your home screen and play offline. It vibrates on knockouts and hits, and has bigger buttons plus a choice of controls: drag joystick (normal or large) or one-thumb **tap to turn** (hold the left or right half of the screen).
 - **Controls:** mouse, WASD / arrow keys, or touch. **P** or the pause button pauses, **M** mutes sound, **N** toggles music.

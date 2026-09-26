@@ -96,6 +96,7 @@ const MODES = {
   timed: { name: 'Timed', desc: 'Biggest player after 3:00 wins', size: 80, win: 0, time: 180, powerups: 5 },
   daily: { name: 'Daily', desc: 'Same starting map for everyone today · claim 50%', size: 80, win: 50, powerups: 4, daily: true },
   marathon: { name: 'Marathon', desc: 'A huge map · claim 60% to win', size: 120, win: 60, powerups: 7 },
+  team: { name: 'Teams', desc: 'You + 3 bots vs 4 bots · first team to 50% wins', size: 80, win: 50, powerups: 5, teams: true },
 };
 
 const MAPS = {
@@ -121,6 +122,27 @@ function buildMap(id) {
   playCells = 0;
   for (let i = 0; i < N * N; i++) if (!wall[i]) playCells++;
 }
+
+// Weekly events: one runs each week (Monday to Sunday), picked from the week number
+const EVENTS = [
+  { id: 'double', name: 'Double Coins Week', desc: 'Coins from games and the map are doubled' },
+  { id: 'frenzy', name: 'Power-up Frenzy', desc: 'Twice as many power-ups, and they appear faster' },
+  { id: 'goldrush', name: 'Gold Rush', desc: 'The map is full of gold coins' },
+  { id: 'speed', name: 'Speed Week', desc: 'Everyone moves 20% faster' },
+  { id: 'xp', name: 'XP Boost', desc: '+50% XP from every game' },
+];
+function weekInfo() {
+  const d = new Date();
+  const monday = new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7));
+  const week = Math.floor((monday - new Date(2024, 0, 1)) / (7 * 86400000)); // 1 Jan 2024 was a Monday
+  const daysLeft = 7 - ((d.getDay() + 6) % 7);
+  return { event: EVENTS[((week % EVENTS.length) + EVENTS.length) % EVENTS.length], daysLeft };
+}
+const eventOn = id => weekInfo().event.id === id;
+
+// In Teams mode, teammates can't cut, bump or steal from each other
+const allies = (a, b) => a === b || (!!gameMode.teams && a.team === b.team);
+const teamPct = team => players.reduce((sum, p) => sum + (p && p.team === team ? pct(p) : 0), 0);
 
 const isWallAt = (x, y) => wall[Math.floor(y) * N + Math.floor(x)] !== 0;
 
@@ -177,7 +199,7 @@ const isUnlocked = sk => !sk.need || stats[sk.need.stat] >= sk.need.n || ownedSk
 let myFx = load('color-claim-fx', 'none');
 
 // Settings (changed on the Settings screen)
-const settings = { vibrate: true, shake: true, controls: 'joystick', stickSize: 'normal' };
+const settings = { vibrate: true, shake: true, controls: 'joystick', stickSize: 'normal', patterns: false };
 try { Object.assign(settings, JSON.parse(load('color-claim-settings', '{}'))); } catch { /* bad saved data */ }
 const saveSettings = () => save('color-claim-settings', JSON.stringify(settings));
 
@@ -187,7 +209,7 @@ function buzz(pattern) {
     try { navigator.vibrate(pattern); } catch { /* not allowed */ }
   }
 }
-let run = { powerups: 0, bigLoop: 0, freezeKO: false, trophies: [], coinsPicked: 0 }; // this game's numbers
+let run = { powerups: 0, bigLoop: 0, freezeKO: false, trophies: [], coinsPicked: 0, giantKO: false }; // this game's numbers
 let fxParts = [], fxTimer = 0, achTimer = 1;
 let mySkin = load('color-claim-skin', 'classic');
 if (!SKINS.some(sk => sk.id === mySkin && isUnlocked(sk))) mySkin = 'classic';
@@ -289,7 +311,7 @@ function kill(victim, killer, how = 'cut') {
   for (let i = 0; i < N * N; i++) if (owner[i] === victim.id) { setOwner(i, 0); lost.push(i); }
   fades.push({ cells: lost, color: victim.color, life: 0.7 });
   burst(victim.x, victim.y, victim.color, 40, 12);
-  victim.respawn = 3;
+  victim.respawn = victim.isBoss ? Infinity : 3; // the Giant doesn't come back
 
   if (killer && killer !== victim) killer.kills++;
   if (killer === me && victim !== me && me.fx.freeze > 0) run.freezeKO = true;
@@ -307,6 +329,14 @@ function kill(victim, killer, how = 'cut') {
       : how === 'bump' ? `You bumped into ${killer.name} outside your land!`
       : `${killer.name} cut your trail!`;
     later(900, () => endGame(false, reason));
+  } else if (killer === me && victim.isBoss) {
+    run.giantKO = true;
+    addCoins(100);
+    toast('You beat the Giant! +100 coins');
+    Sfx.play('win');
+    buzz([60, 40, 60, 40, 120]);
+    shake = 1;
+    for (let k = 0; k < 4; k++) burst(victim.x, victim.y, COLORS[k * 2], 25, 14);
   } else if (killer === me) {
     toast(`You knocked out ${victim.name}!`);
     Sfx.play('cut');
@@ -345,7 +375,7 @@ function capture(p) {
     if (y < N - 1) push(i + N);
   }
   for (let i = 0; i < N * N; i++) {
-    if (!seen[i] && owner[i] !== p.id && !wall[i]) {
+    if (!seen[i] && owner[i] !== p.id && !wall[i] && !(owner[i] && allies(players[owner[i]], p))) {
       setOwner(i, p.id);
       gained.push(i);
     }
@@ -370,6 +400,8 @@ function capture(p) {
 // ---------- Movement ----------
 function speedOf(p) {
   let v = SPEED;
+  if (p.isBoss) v *= 1.12;
+  if (eventOn('speed')) v *= 1.2;
   if (p.fx.speed > 0) v *= 1.6;
   if (freezer && freezer !== p) v *= 0.5;
   return v;
@@ -386,6 +418,7 @@ function visit(p, x, y) {
       kill(p, p);
       return;
     }
+    if (allies(p, other)) return; // a teammate's trail is safe (and stays theirs)
     kill(other, p);
   }
   if (owner[i] === p.id) {
@@ -472,6 +505,7 @@ function paintBomb(p) {
       if (dx * dx + dy * dy > 20 || x < 0 || y < 0 || x >= N || y >= N) continue;
       const i = y * N + x;
       if (wall[i] || owner[i] === p.id || trail[i] === p.id) continue; // your own trail is claimed when you get home
+      if (owner[i] && allies(players[owner[i]], p)) continue; // never paint over a teammate
       setOwner(i, p.id);
       cells.push(i);
     }
@@ -490,9 +524,10 @@ function paintBomb(p) {
 const COIN_VALUE = 2;
 function updateMapCoins(dt) {
   coinTimer -= dt;
-  const max = N > 100 ? 10 : 6;
+  const rush = eventOn('goldrush');
+  const max = (N > 100 ? 10 : 6) * (rush ? 3 : 1);
   if (coinTimer <= 0) {
-    coinTimer = rand(3, 6);
+    coinTimer = rush ? rand(0.8, 1.6) : rand(3, 6);
     if (mapCoins.length < max) {
       for (let t = 0; t < 20; t++) {
         const x = randInt(2, N - 3), y = randInt(2, N - 3);
@@ -509,9 +544,10 @@ function updateMapCoins(dt) {
       if (!p || !p.alive || c.taken || Math.hypot(p.x - c.x, p.y - c.y) > 1.1) continue;
       c.taken = true;
       if (p === me) {
-        run.coinsPicked += COIN_VALUE;
-        addCoins(COIN_VALUE);
-        floats.push({ x: c.x, y: c.y - 1, text: `+${COIN_VALUE}`, life: 0.8, gold: true });
+        const value = COIN_VALUE * (eventOn('double') ? 2 : 1);
+        run.coinsPicked += value;
+        addCoins(value);
+        floats.push({ x: c.x, y: c.y - 1, text: `+${value}`, life: 0.8, gold: true });
         Sfx.play('coin');
       }
     }
@@ -522,8 +558,9 @@ function updateMapCoins(dt) {
 function updatePowerups(dt) {
   powerTimer -= dt;
   if (powerTimer <= 0) {
-    powerTimer = rand(6, 10);
-    if (powerups.length < gameMode.powerups) spawnPowerup();
+    const frenzy = eventOn('frenzy');
+    powerTimer = frenzy ? rand(3, 5) : rand(6, 10);
+    if (powerups.length < gameMode.powerups * (frenzy ? 2 : 1)) spawnPowerup();
   }
   for (const pu of powerups) {
     pu.age += dt;
@@ -543,13 +580,36 @@ function updatePowerups(dt) {
   }
 }
 
+// The Giant: a big, fast boss bot that arrives once you're doing well, and hunts your trail
+let giant = null;
+function giantDue() {
+  if (giant || !me.alive) return false;
+  if (gameMode.time) return playTime >= 90;
+  return pct(me) >= (N > 100 ? 15 : 20);
+}
+function spawnGiant() {
+  giant = makePlayer(players.length, 'Giant', '#3b3f58', true, 'giant');
+  giant.isBoss = true;
+  giant.greed = 50;
+  giant.aggro = 0.6;
+  giant.loopScale = 1.6;
+  giant.team = gameMode.teams ? 1 : giant.id;
+  players.push(giant);
+  if (!spawn(giant)) { players.pop(); giant = null; return; }
+  giant.fx.shield = 4;
+  addFeed('⚠️ The Giant has arrived!');
+  toast('The Giant is coming for your trail!');
+  Sfx.play('warn');
+  shake = 0.6;
+}
+
 // Two squares touching: whoever is safe on their own land wins. If both are outside,
 // the one with the longer trail loses; equal trails knock both out.
 function checkBumps() {
   for (let a = 1; a < players.length; a++) {
     for (let b = a + 1; b < players.length; b++) {
       const p = players[a], q = players[b];
-      if (!p.alive || !q.alive || dist(p, q) > 0.9) continue;
+      if (!p.alive || !q.alive || allies(p, q) || dist(p, q) > (p.isBoss || q.isBoss ? 1.5 : 0.9)) continue;
       const pSafe = owner[p.cy * N + p.cx] === p.id, qSafe = owner[q.cy * N + q.cx] === q.id;
       if (pSafe && qSafe) continue;
       if (pSafe) kill(q, p, 'bump');
@@ -665,7 +725,7 @@ function think(p) {
 
   // Head home if an enemy gets close while our trail is exposed, or if we got greedy
   if (outside && p.mode !== 'home') {
-    const threat = p.mode !== 'hunt' && players.some(o => o && o !== p && o.alive && dist(o, p) < 5);
+    const threat = p.mode !== 'hunt' && !p.isBoss && players.some(o => o && !allies(o, p) && o.alive && dist(o, p) < 5);
     if (threat || p.trail.length > p.greed) {
       goHome(p);
       return;
@@ -674,10 +734,16 @@ function think(p) {
 
   // Hunt: go for the closest part of a nearby enemy trail. The bigger you get,
   // the further bots look for your trail and the more often they come for it.
+  // The Giant only has eyes for you
+  if (p.isBoss && p.mode !== 'home' && me.alive && me.trail.length >= 3 && me.fx.shield <= 0 && dist(me, p) < 30) {
+    p.wp = [closestTrailPoint(p, me)];
+    p.mode = 'hunt';
+    return;
+  }
   if (p.mode !== 'home' && p.mode !== 'hunt' && p.trail.length < 25) {
     const growth = me && me.alive ? clamp(pct(me) / 30, 0, 1) : 0;
     for (const o of players) {
-      if (!o || o === p || !o.alive || o.trail.length < 4 || o.fx.shield > 0) continue;
+      if (!o || allies(o, p) || !o.alive || o.trail.length < 4 || o.fx.shield > 0) continue;
       const bold = o === me ? growth : 0;
       if (dist(o, p) < 14 + bold * 12 && Math.random() < p.aggro + bold * 0.4) {
         p.wp = [closestTrailPoint(p, o)];
@@ -917,6 +983,9 @@ function startGame() {
   const botColors = COLORS.filter((_, i) => i !== myColor);
   const names = BOT_NAMES.slice().sort(() => random() - 0.5);
   names.forEach((name, i) => players.push(makePlayer(i + 2, name, botColors[i], true, SKINS[randInt(0, SKINS.length - 1)].id)));
+  // Teams: you and the first 3 bots against the other 4. Otherwise everyone is on their own.
+  for (const p of players) if (p) p.team = gameMode.teams ? (p.id <= 4 ? 0 : 1) : p.id;
+  giant = null;
   powerups = [];
   powerTimer = 3;
   mapCoins = [];
@@ -926,7 +995,7 @@ function startGame() {
   for (const p of players) if (p && p.isBot) spawn(p);
   random = Math.random;
   playTime = 0;
-  run = { powerups: 0, bigLoop: 0, freezeKO: false, trophies: [], coinsPicked: 0 };
+  run = { powerups: 0, bigLoop: 0, freezeKO: false, trophies: [], coinsPicked: 0, giantKO: false };
   fxParts = [];
   achTimer = 1;
   cam.x = me.x;
@@ -945,6 +1014,8 @@ function startGame() {
   showScreen(null);
   Sfx.play('beep');
   Music.start();
+  const ev = weekInfo().event;
+  later(3400, () => toast(`${ev.name}: ${ev.desc}`));
 }
 
 function togglePause() {
@@ -1004,11 +1075,11 @@ function endGame(won, reason) {
   showScreen('over');
 }
 
-function win() {
+function win(reason = `You claimed ${gameMode.win}% of the map!`) {
   state = 'won';
   Sfx.play('win');
   for (let i = 0; i < 6; i++) burst(me.x + rand(-8, 8), me.y + rand(-6, 6), COLORS[i], 30, 14);
-  later(1600, () => endGame(true, `You claimed ${gameMode.win}% of the map!`));
+  later(1600, () => endGame(true, reason));
 }
 
 // Timed mode: when the clock runs out, the biggest player wins
@@ -1128,13 +1199,14 @@ function update(dt) {
   checkBumps();
   updatePowerups(dt);
   updateMapCoins(dt);
+  if (state === 'play' && giantDue()) spawnGiant();
 
   // Danger: is an enemy close to your exposed trail? Close ones also get marked.
   danger = 0;
   threats = [];
   if (me.alive && me.trail.length && me.fx.shield <= 0) {
     for (const o of players) {
-      if (!o || o === me || !o.alive) continue;
+      if (!o || allies(o, me) || !o.alive) continue;
       let closest = Infinity;
       for (let k = 0; k < me.trail.length; k += 2) {
         const i = me.trail[k], tx = (i % N) + 0.5, ty = Math.floor(i / N) + 0.5;
@@ -1173,7 +1245,10 @@ function update(dt) {
 
   if (me.alive && state === 'play') {
     peakPct = Math.max(peakPct, pct(me));
-    if (gameMode.win && pct(me) >= gameMode.win) win();
+    if (gameMode.teams) {
+      if (teamPct(0) >= gameMode.win) win(`Your team claimed ${gameMode.win}% of the map!`);
+      else if (teamPct(1) >= gameMode.win) { state = 'won'; later(600, () => endGame(false, `The other team claimed ${gameMode.win}% first.`)); }
+    } else if (gameMode.win && pct(me) >= gameMode.win) win();
   }
 
   updateCamera(dt);
@@ -1286,6 +1361,16 @@ function drawBody(g, look, s, t) {
       g.fill();
     }
   }
+  if (skin === 'giant') { // horns
+    g.fillStyle = '#e8e2d0';
+    for (const side of [-1, 1]) {
+      g.beginPath();
+      g.moveTo(s * 0.05, side * s * 0.42);
+      g.lineTo(s * 0.35, side * s * 0.42);
+      g.lineTo(s * 0.1, side * s * 0.8);
+      g.fill();
+    }
+  }
   if (skin === 'ninja') { // headband tails fluttering behind
     g.strokeStyle = '#26304a';
     g.lineWidth = s * 0.08;
@@ -1365,6 +1450,17 @@ function drawBody(g, look, s, t) {
         g.fill();
       }
     }
+  }
+  if (skin === 'giant') { // angry brows and red eyes
+    g.strokeStyle = '#1a1c2a';
+    g.lineWidth = s * 0.07;
+    for (const side of [-1, 1]) {
+      g.beginPath();
+      g.moveTo(s * 0.05, side * s * 0.36);
+      g.lineTo(s * 0.32, side * s * 0.1);
+      g.stroke();
+    }
+    for (const side of [-1, 1]) circ(s * 0.24, side * s * 0.2, s * 0.06, '#ff3c50');
   }
   if (skin === 'cat') { // whiskers
     g.strokeStyle = 'rgba(38, 48, 74, 0.6)';
@@ -1496,7 +1592,7 @@ function drawPowerupIcon(kind, x, y, r) {
 function drawHead(p, x0, y0, leaderId) {
   const hx = p.x * CELL - x0, hy = p.y * CELL - y0;
   if (hx < -60 || hy < -60 || hx > W + 60 || hy > H + 60) return;
-  const s = CELL * 1.4;
+  const s = CELL * (p.isBoss ? 2.4 : 1.4);
   const bob = Math.sin(time * 12 + p.id) * CELL * 0.06;
 
   // Soft shadow on the ground
@@ -1552,8 +1648,8 @@ function drawHead(p, x0, y0, leaderId) {
   ctx.lineWidth = 3;
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
   ctx.strokeText(p.name, hx, hy - s * 0.85 + bob);
-  ctx.fillStyle = 'rgba(38, 48, 74, 0.9)';
-  ctx.fillText(p.name, hx, hy - s * 0.85 + bob);
+  ctx.fillStyle = p.isBoss ? '#d6304a' : gameMode.teams && p !== me && allies(p, me) ? '#1f5fd6' : 'rgba(38, 48, 74, 0.9)';
+  ctx.fillText(gameMode.teams && p !== me && allies(p, me) ? `★ ${p.name}` : p.name, hx, hy - s * 0.85 + bob);
   if (p.id === leaderId) drawCrown(hx, hy - s * 1.75 + bob + Math.sin(time * 4) * 2, CELL * 0.9);
 }
 
@@ -1608,6 +1704,10 @@ function draw(dt) {
   // Land: a darker copy nudged down gives a chunky 3D edge, then the top colour
   drawRuns(owner, c0, c1, r0, r1, x0, y0, p => p.dark, CELL * 0.3);
   drawRuns(owner, c0, c1, r0, r1, x0, y0, p => p.color, 0);
+  if (settings.patterns) {
+    // Colorblind mode: every player's land and trail also gets its own pattern
+    drawRuns(owner, c0, c1, r0, r1, x0, y0, p => playerPattern(p, x0, y0), 0);
+  }
   const pattern = landPattern(me.skin, x0, y0);
   if (pattern) drawRuns(owner, c0, c1, r0, r1, x0, y0, p => (p === me ? pattern : null), 0);
 
@@ -1630,6 +1730,8 @@ function draw(dt) {
     if (p.skin === 'rainbow') return `hsla(${(time * 120 + p.hueOff) % 360}, 85%, 62%, 0.5)`;
     return p.trailColor;
   }, 0);
+
+  if (settings.patterns) drawRuns(trail, c0, c1, r0, r1, x0, y0, p => playerPattern(p, x0, y0), 0);
 
   // A shimmer runs along every trail toward the head
   const inner = CELL * 0.5;
@@ -1881,6 +1983,32 @@ function landPattern(skin, x0, y0) {
   return pat;
 }
 
+// Colorblind patterns: 8 distinct dark overlays, one per player slot
+const playerPatterns = [];
+function playerPattern(p, x0, y0) {
+  const k = (p.id - 1) % 8;
+  if (!playerPatterns[k]) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 16;
+    const g = c.getContext('2d');
+    g.strokeStyle = g.fillStyle = 'rgba(20, 24, 40, 0.32)';
+    g.lineWidth = 2;
+    const line = (a, b, cc, d) => { g.beginPath(); g.moveTo(a, b); g.lineTo(cc, d); g.stroke(); };
+    if (k === 0) { line(0, 16, 16, 0); line(-8, 8, 8, -8); line(8, 24, 24, 8); }        // diagonal /
+    else if (k === 1) { line(0, 0, 16, 16); line(-8, 8, 8, 24); line(8, -8, 24, 8); }   // diagonal \
+    else if (k === 2) { g.beginPath(); g.arc(8, 8, 2.5, 0, TAU); g.fill(); }             // dots
+    else if (k === 3) { line(0, 8, 16, 8); line(8, 0, 8, 16); }                          // grid
+    else if (k === 4) { line(0, 4, 16, 4); line(0, 12, 16, 12); }                        // horizontal
+    else if (k === 5) { line(4, 0, 4, 16); line(12, 0, 12, 16); }                        // vertical
+    else if (k === 6) { g.fillRect(0, 0, 8, 8); g.fillRect(8, 8, 8, 8); }                // checks
+    else { line(3, 3, 13, 13); line(13, 3, 3, 13); }                                     // crosses
+    playerPatterns[k] = ctx.createPattern(c, 'repeat');
+  }
+  const pat = playerPatterns[k];
+  pat.setTransform(new DOMMatrix().translateSelf(-x0, -y0));
+  return pat;
+}
+
 // Menu backdrop: floating coloured blocks
 const menuBlocks = Array.from({ length: 26 }, (_, i) => ({
   x: Math.random(), y: Math.random(), s: rand(20, 60), c: COLORS[i % COLORS.length], v: rand(0.02, 0.06), r: rand(0, TAU),
@@ -1920,12 +2048,15 @@ function updateHud() {
   if (freezer && freezer !== me && me.alive) fx.push('<span class="fx" style="--c:#3fc7f5">Frozen!</span>');
   const fxHtml = fx.join('');
   if ($('effects').innerHTML !== fxHtml) $('effects').innerHTML = fxHtml;
+  $('team-score').classList.toggle('hidden', !gameMode.teams);
+  if (gameMode.teams) $('team-score').innerHTML = `<b class="us">Your team ${teamPct(0).toFixed(1)}%</b> <span>vs</span> <b class="them">${teamPct(1).toFixed(1)}%</b>`;
   const ranked = players.filter(p => p && p.alive).sort((a, b) => counts[b.id] - counts[a.id]);
   const top = ranked.slice(0, 5);
   if (me.alive && !top.includes(me)) top.push(me);
-  $('board').innerHTML = top.map(p =>
-    `<li class="${p === me ? 'me' : ''}"><span><span class="dot" style="background:${p.color}"></span>${ranked.indexOf(p) + 1}. ${escapeHtml(p.name)}</span><span>${pct(p).toFixed(1)}%</span></li>`
-  ).join('');
+  $('board').innerHTML = top.map(p => {
+    const cls = [p === me && 'me', gameMode.teams && allies(p, me) && 'ally', p.isBoss && 'boss'].filter(Boolean).join(' ');
+    return `<li class="${cls}"><span><span class="dot" style="background:${p.color}"></span>${ranked.indexOf(p) + 1}. ${escapeHtml(p.name)}</span><span>${pct(p).toFixed(1)}%</span></li>`;
+  }).join('');
 }
 
 // ---------- Main loop ----------
