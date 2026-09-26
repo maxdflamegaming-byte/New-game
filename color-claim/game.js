@@ -96,6 +96,7 @@ const MODES = {
   timed: { name: 'Timed', desc: 'Biggest player after 3:00 wins', size: 80, win: 0, time: 180, powerups: 5 },
   daily: { name: 'Daily', desc: 'Same starting map for everyone today · claim 50%', size: 80, win: 50, powerups: 4, daily: true },
   marathon: { name: 'Marathon', desc: 'A huge map · claim 60% to win', size: 120, win: 60, powerups: 7 },
+  tutorial: { name: 'Tutorial', desc: 'Learn the game step by step', size: 48, win: 0, powerups: 0, tutorial: true, hidden: true },
   cup: { name: 'Cup', desc: '3 two-minute rounds on different maps · most points wins the cup', size: 80, win: 0, time: 120, powerups: 5, cup: true },
   duo: { name: '2 Players', desc: 'Same keyboard: Player 1 uses WASD, Player 2 the arrow keys · first to 40% (or last one standing) wins', size: 80, win: 40, powerups: 5, duo: true },
   team: { name: 'Teams', desc: 'You + 3 bots vs 4 bots · first team to 50% wins', size: 80, win: 50, powerups: 5, teams: true },
@@ -189,6 +190,28 @@ function buildMap(id) {
   }
   playCells = 0;
   for (let i = 0; i < N * N; i++) if (!wall[i]) playCells++;
+}
+
+// Bot personalities, shown under each bot's name
+const PERSONALITIES = {
+  hunter: { name: 'Hunter', aggro: 0.8, greed: 26, loop: 0.9, flee: 4, grab: 0.3 },
+  turtle: { name: 'Turtle', aggro: 0.06, greed: 18, loop: 0.7, flee: 8, grab: 0.3 },
+  explorer: { name: 'Explorer', aggro: 0.15, greed: 60, loop: 1.6, flee: 5, grab: 0.3 },
+  collector: { name: 'Collector', aggro: 0.25, greed: 35, loop: 1.0, flee: 5, grab: 0.9 },
+  wildcard: { name: 'Wildcard' }, // keeps its random settings
+};
+const PERSONA_MIX = ['hunter', 'turtle', 'explorer', 'collector', 'wildcard', 'hunter', 'explorer'];
+
+function givePersonality(p, id) {
+  const def = PERSONALITIES[id];
+  p.persona = id;
+  if (def.aggro !== undefined) {
+    p.aggro = def.aggro;
+    p.greed = def.greed;
+    p.loopScale = def.loop;
+  }
+  p.fleeDist = def.flee || 5;
+  p.grabChance = def.grab || 0.5;
 }
 
 // Bot difficulty (picked on the menu). Harder bots also pay more coins.
@@ -304,6 +327,7 @@ let mapCoins = [], coinTimer = 3; // gold coins lying on the map
 let particles = [], flashes = [], fades = [], floats = [], feed = [];
 let peakPct = 0, minimapTimer = 0, time = 0, shake = 0, danger = 0, wasInDanger = false;
 let countdown = 0, goFlash = 0, threats = [];
+let replayFrames = [], replayTimer = 0, replayT = 0; // the last 10 seconds, 10 snapshots a second
 let gameCounter = 0; // bumps every game, so delayed callbacks from an old game do nothing
 function later(ms, fn) {
   const id = gameCounter;
@@ -414,6 +438,11 @@ function kill(victim, killer, how = 'cut') {
     const winner = victim === me ? p2 : me;
     const by = killer && killer !== victim ? ` by ${killer.name}` : '';
     later(900, () => endDuo(winner, `${victim.name} was knocked out${by}.`));
+  } else if (victim === me && gameMode.tutorial) {
+    // Tutorial: no game over, just a tip and a fresh start
+    toast(killer === me ? "Oops! Don't cross your own trail." : 'Watch out: your trail was cut!');
+    Sfx.play('hurt');
+    later(900, () => { spawn(me, N / 2, N / 2); cam.x = me.x; cam.y = me.y; });
   } else if (victim === me) {
     shake = 1;
     Sfx.play('death');
@@ -619,6 +648,7 @@ function paintBomb(p) {
 const COIN_VALUE = 2;
 function updateMapCoins(dt) {
   coinTimer -= dt;
+  if (gameMode.tutorial) return;
   const rush = eventOn('goldrush');
   const max = (N > 100 ? 10 : 6) * (rush ? 3 : 1);
   if (coinTimer <= 0) {
@@ -678,7 +708,7 @@ function updatePowerups(dt) {
 // The Giant: a big, fast boss bot that arrives once you're doing well, and hunts your trail
 let giant = null;
 function giantDue() {
-  if (giant || !me.alive || gameMode.duo || gameMode.cup) return false;
+  if (giant || !me.alive || gameMode.duo || gameMode.cup || gameMode.tutorial) return false;
   if (gameMode.time) return playTime >= 90;
   return pct(me) >= (N > 100 ? 15 : 20);
 }
@@ -701,6 +731,7 @@ function spawnGiant() {
 // Two squares touching: whoever is safe on their own land wins. If both are outside,
 // the one with the longer trail loses; equal trails knock both out.
 function checkBumps() {
+  if (gameMode.tutorial) return; // no bumping in the tutorial
   for (let a = 1; a < players.length; a++) {
     for (let b = a + 1; b < players.length; b++) {
       const p = players[a], q = players[b];
@@ -844,7 +875,7 @@ function think(p) {
 
   // Head home if an enemy gets close while our trail is exposed, or if we got greedy
   if (outside && p.mode !== 'home') {
-    const threat = p.mode !== 'hunt' && !p.isBoss && players.some(o => o && !allies(o, p) && o.alive && dist(o, p) < 5);
+    const threat = p.mode !== 'hunt' && !p.isBoss && players.some(o => o && !allies(o, p) && o.alive && dist(o, p) < (p.fleeDist || 5));
     if (threat || p.trail.length > (gameMapId === 'islands' ? Math.min(p.greed, 22) : p.greed)) {
       goHome(p);
       return;
@@ -872,10 +903,11 @@ function think(p) {
     }
   }
 
-  // At home: sometimes go and grab a nearby power-up
+  // At home: sometimes go and grab a nearby power-up (Collectors also go for coins)
   if (!outside && p.mode !== 'grab') {
-    const pu = powerups.find(q => Math.hypot(q.x - p.x, q.y - p.y) < 12);
-    if (pu && Math.random() < 0.5) {
+    const pu = powerups.find(q => Math.hypot(q.x - p.x, q.y - p.y) < 12)
+      || (p.persona === 'collector' && mapCoins.find(c => Math.hypot(c.x - p.x, c.y - p.y) < 15));
+    if (pu && Math.random() < (p.grabChance || 0.5)) {
       p.wp = [{ x: pu.x, y: pu.y }];
       p.mode = 'grab';
       return;
@@ -1074,6 +1106,7 @@ function buildPickers() {
     const box = $(boxId);
     box.innerHTML = '';
     for (const [id, item] of Object.entries(items)) {
+      if (item.hidden) continue;
       const b = document.createElement('button');
       b.className = 'seg-btn' + (id === current ? ' picked' : '');
       b.textContent = item.name;
@@ -1106,7 +1139,7 @@ function startGame() {
   gameCounter++;
   // Every game's starting layout comes from a seed, so it can be shared as a challenge.
   // Daily uses the date as its seed; a challenge uses its friend's seed.
-  const cfg = challenge || { mode: myMode, map: myMap, diff: myDiff };
+  const cfg = tutorialOn ? { mode: 'tutorial', map: 'square', diff: 'normal' } : challenge || { mode: myMode, map: myMap, diff: myDiff };
   gameModeId = cfg.mode;
   gameMode = MODES[cfg.mode];
   gameDiffId = cfg.diff;
@@ -1142,8 +1175,11 @@ function startGame() {
     players.push(p2);
   }
   const botColors = COLORS.filter((_, i) => !taken.includes(i));
-  const names = BOT_NAMES.slice().sort(() => random() - 0.5).slice(0, botColors.length);
+  const names = BOT_NAMES.slice().sort(() => random() - 0.5).slice(0, gameMode.tutorial ? 0 : botColors.length);
   names.forEach((name, i) => players.push(makePlayer(players.length, name, botColors[i], true, SKINS[randInt(0, SKINS.length - 1)].id)));
+  // Personalities: a mix of hunters, turtles, explorers, collectors and wildcards
+  const mix = PERSONA_MIX.slice().sort(() => random() - 0.5);
+  players.filter(p => p && p.isBot).forEach((p, i) => givePersonality(p, mix[i % mix.length]));
   // Teams: you and the first 3 bots against the other 4. Otherwise everyone is on their own.
   for (const p of players) if (p) p.team = gameMode.teams ? (p.id <= 4 ? 0 : 1) : p.id;
   giant = null;
@@ -1163,6 +1199,8 @@ function startGame() {
   random = Math.random;
   playTime = 0;
   run = { powerups: 0, bigLoop: 0, freezeKO: false, trophies: [], coinsPicked: 0, giantKO: false };
+  replayFrames = [];
+  replayTimer = 0;
   fxParts = [];
   achTimer = 1;
   cam.x = me.x;
@@ -1263,6 +1301,7 @@ function endGame(won, reason) {
     showCup(earned);
     return;
   }
+  $('replay-btn').classList.toggle('hidden', replayFrames.length < 5);
   showScreen('over');
 }
 
@@ -1291,7 +1330,96 @@ function endDuo(winner, reason) {
   $('over-best').textContent = "2-player games are just for fun: they don't give coins, XP or trophies.";
   for (const id of ['over-coins', 'over-xp']) $(id).innerHTML = '';
   for (const id of ['over-missions', 'over-season', 'over-unlock', 'over-ach']) $(id).classList.add('hidden');
+  $('replay-btn').classList.toggle('hidden', replayFrames.length < 5);
   showScreen('over');
+}
+
+// ---------- Tutorial ----------
+let tutorialOn = false;
+let tut = { step: 0, dummy: null };
+const TUT_STEPS = [
+  { text: 'Move out of your land. A trail follows you!', done: () => me.trail.length >= 6 },
+  { text: 'Now head back into your land to claim everything inside the loop.', done: () => run.bigLoop > 0 },
+  { text: 'Grab the power-up. Follow the green arrow!', enter: () => tutPowerup(), done: () => run.powerups >= 1 },
+  { text: "A practice bot is drawing a trail. Touch its trail to knock it out!", enter: () => tutDummy(), done: () => me.kills >= 1 },
+  { text: 'Last step: claim 15% of the map.', done: () => pct(me) >= 15 },
+];
+
+function tutPowerup() {
+  for (let d = 7; d < 20; d++) {
+    const x = clamp(Math.round(me.x + Math.cos(me.angle) * d), 3, N - 4), y = clamp(Math.round(me.y + Math.sin(me.angle) * d), 3, N - 4);
+    if (owner[y * N + x] !== me.id) { powerups = [{ x: x + 0.5, y: y + 0.5, kind: 'speed', age: 0 }]; return; }
+  }
+  powerups = [{ x: 8.5, y: 8.5, kind: 'speed', age: 0 }];
+}
+
+function tutDummy() {
+  const d = makePlayer(players.length, 'Practice bot', COLORS[(myColor + 3) % COLORS.length], true, 'classic');
+  givePersonality(d, 'explorer');
+  d.aggro = 0;         // never hunts you
+  d.fleeDist = 0;      // doesn't run away either
+  d.team = d.id;
+  players.push(d);
+  spawn(d, me.cx > N / 2 ? 10 : N - 11, me.cy > N / 2 ? 10 : N - 11);
+  d.fx.shield = 0;
+  tut.dummy = d;
+}
+
+function tutTarget() {
+  if (tut.step === 2 && powerups[0]) return powerups[0];
+  if (tut.step === 3 && tut.dummy && tut.dummy.alive) return tut.dummy.trail.length ? closestTrailPoint(me, tut.dummy) : tut.dummy;
+  return null;
+}
+
+function updateTutorial() {
+  // The practice bot comes back if it crashes before you catch it
+  if (tut.step === 3 && tut.dummy && !tut.dummy.alive && me.kills < 1) { tut.dummy.alive = false; spawn(tut.dummy); tut.dummy.fx.shield = 0; }
+  const step = TUT_STEPS[tut.step];
+  if (step && step.done()) {
+    tut.step++;
+    Sfx.play('capture');
+    buzz(20);
+    const next = TUT_STEPS[tut.step];
+    if (next && next.enter) next.enter();
+    if (!next) finishTutorial();
+  }
+  renderTutorial();
+}
+
+function renderTutorial() {
+  const step = TUT_STEPS[tut.step];
+  $('tutorial-panel').classList.toggle('hidden', !gameMode.tutorial);
+  $('tutorial-step').textContent = step ? `Step ${tut.step + 1} of ${TUT_STEPS.length}` : 'Done!';
+  $('tutorial-text').textContent = step ? step.text : 'Tutorial complete! You know everything you need. Have fun!';
+}
+
+function finishTutorial() {
+  const first = load('color-claim-tutorial-done', '') !== '1';
+  save('color-claim-tutorial-done', '1');
+  if (first) addCoins(50);
+  toast(first ? 'Tutorial complete! +50 coins' : 'Tutorial complete!');
+  Sfx.play('win');
+  for (let i = 0; i < 6; i++) burst(me.x + rand(-6, 6), me.y + rand(-5, 5), COLORS[i], 25, 12);
+  state = 'won';
+  later(2200, leaveTutorial);
+}
+
+function leaveTutorial() {
+  tutorialOn = false;
+  gameCounter++;
+  $('tutorial-panel').classList.add('hidden');
+  Music.stop();
+  state = 'menu';
+  me = null;
+  showScreen('menu');
+}
+
+function startTutorial() {
+  tutorialOn = true;
+  tut = { step: 0, dummy: null };
+  startGame();
+  countdown = 0;
+  renderTutorial();
 }
 
 // ---------- Cup ----------
@@ -1330,7 +1458,7 @@ function timeUp() {
 
 function showScreen(id) {
   for (const el of document.querySelectorAll('.screen')) el.classList.toggle('show', el.id === id);
-  $('hud').classList.toggle('hidden', state === 'menu' || state === 'over');
+  $('hud').classList.toggle('hidden', state === 'menu' || state === 'over' || state === 'replay');
   updateMenuBest();
 }
 
@@ -1404,7 +1532,8 @@ function update(dt) {
     playTime += dt;
     if (gameMode.time && playTime >= gameMode.time && me.alive) timeUp();
     achTimer -= dt;
-    if (achTimer <= 0 && me.alive && !gameMode.duo) { achTimer = 1; liveAchievementCheck(); }
+    if (achTimer <= 0 && me.alive && !gameMode.duo && !gameMode.tutorial) { achTimer = 1; liveAchievementCheck(); }
+    if (gameMode.tutorial) updateTutorial(dt);
   }
 
   // Your trail effect (from the Locker) puffs out behind you while you're outside your land
@@ -1937,6 +2066,21 @@ function drawHead(p, x0, y0, leaderId) {
   ctx.fillStyle = p.isBoss ? '#d6304a' : gameMode.teams && p !== me && allies(p, me) ? '#1f5fd6' : 'rgba(38, 48, 74, 0.9)';
   ctx.fillText(gameMode.teams && p !== me && allies(p, me) ? `★ ${p.name}` : p.name, hx, hy - s * 0.85 + bob);
   if (p.id === leaderId) drawCrown(hx, hy - s * 1.75 + bob + Math.sin(time * 4) * 2, CELL * 0.9);
+
+  // Under the square: a bot's personality, or the badge you're wearing
+  const tag = p.isBot && !p.isBoss && p.persona ? PERSONALITIES[p.persona].name : p === me ? badgeName() : '';
+  if (tag) {
+    ctx.font = `bold ${Math.round(CELL * 0.6)}px system-ui, sans-serif`;
+    const tw = ctx.measureText(tag).width + CELL * 0.8, ty = hy + s * 0.95 + bob;
+    ctx.fillStyle = p === me ? '#ffc93c' : 'rgba(255, 255, 255, 0.8)';
+    ctx.beginPath();
+    ctx.roundRect(hx - tw / 2, ty - CELL * 0.5, tw, CELL, CELL * 0.5);
+    ctx.fill();
+    ctx.fillStyle = p === me ? '#5a3f00' : 'rgba(38, 48, 74, 0.8)';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(tag, hx, ty + 1);
+    ctx.textBaseline = 'alphabetic';
+  }
 }
 
 function draw(dt) {
@@ -2201,6 +2345,33 @@ function drawWorld(focus, c) {
     }
   }
 
+  // Tutorial: a bouncing green arrow points at what to do next
+  const goal = gameMode.tutorial && tutTarget();
+  if (goal) {
+    const sx = goal.x * CELL - x0, sy = goal.y * CELL - y0, bounce = Math.sin(time * 8) * 6;
+    ctx.fillStyle = '#1f9d6b';
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.save();
+    if (sx > 30 && sy > 30 && sx < W - 30 && sy < H - 30) {
+      ctx.translate(sx, sy - CELL * 1.6 + bounce);
+      ctx.rotate(Math.PI / 2);
+    } else {
+      const a = Math.atan2(sy - H / 2, sx - W / 2);
+      const t = Math.min((W / 2 - 40) / Math.abs(Math.cos(a) || 1e-6), (H / 2 - 40) / Math.abs(Math.sin(a) || 1e-6));
+      ctx.translate(W / 2 + Math.cos(a) * t, H / 2 + Math.sin(a) * t);
+      ctx.rotate(a);
+    }
+    ctx.beginPath();
+    ctx.moveTo(14, 0);
+    ctx.lineTo(-10, -13);
+    ctx.lineTo(-10, 13);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
   // 3-2-1-GO!
   if (countdown > 0 || goFlash > 0) {
     const text = countdown > 0 ? String(Math.ceil(countdown)) : 'GO!';
@@ -2382,8 +2553,67 @@ function updateHud() {
   if (me.alive && !top.includes(me)) top.push(me);
   $('board').innerHTML = top.map(p => {
     const cls = [p === me && 'me', gameMode.teams && allies(p, me) && 'ally', p.isBoss && 'boss'].filter(Boolean).join(' ');
-    return `<li class="${cls}"><span><span class="dot" style="background:${p.color}"></span>${ranked.indexOf(p) + 1}. ${escapeHtml(p.name)}</span><span>${pct(p).toFixed(1)}%</span></li>`;
+    const tag = p === me && badgeName() ? ` <small class="badge-tag">${badgeName()}</small>` : '';
+    return `<li class="${cls}"><span><span class="dot" style="background:${p.color}"></span>${ranked.indexOf(p) + 1}. ${escapeHtml(p.name)}${tag}</span><span>${pct(p).toFixed(1)}%</span></li>`;
   }).join('');
+}
+
+// ---------- Replay ----------
+// A snapshot of the board and every player 10 times a second, keeping the last 10 seconds
+function recordFrame() {
+  replayFrames.push({
+    owner: owner.slice(), trail: trail.slice(),
+    ps: players.map(p => p && { x: p.x, y: p.y, angle: p.angle, alive: p.alive, shield: p.fx.shield > 0, ghost: p.fx.ghost > 0 }),
+    cam: { x: cam.x, y: cam.y, zoom: cam.zoom },
+  });
+  if (replayFrames.length > 100) replayFrames.shift();
+}
+
+function startReplay() {
+  if (replayFrames.length < 5) return;
+  replayT = 0;
+  state = 'replay';
+  showScreen(null);
+  $('replay-bar').classList.remove('hidden');
+}
+
+function stopReplay() {
+  $('replay-bar').classList.add('hidden');
+  state = 'over';
+  showScreen('over');
+}
+
+function playReplay(dt) {
+  const len = (replayFrames.length - 1) / 10;
+  replayT += dt;
+  if (replayT >= len) { stopReplay(); return; }
+  const k = replayT * 10, i = Math.floor(k), t = k - i;
+  const f = replayFrames[i], g = replayFrames[i + 1] || f;
+  const lerp = (a, b) => a + (b - a) * t;
+  // Swap the recorded board in, draw it, then put the real state back
+  const saved = { owner, trail, freezer, threats, danger, countdown, goFlash, particles, flashes, fades, floats, fxParts, shake };
+  const savedPlayers = players.map(p => p && { x: p.x, y: p.y, angle: p.angle, alive: p.alive, trail: p.trail, fx: p.fx });
+  owner = f.owner;
+  trail = f.trail;
+  freezer = null; threats = []; danger = 0; countdown = 0; goFlash = 0; shake = 0;
+  particles = []; flashes = []; fades = []; floats = []; fxParts = [];
+  players.forEach((p, n) => {
+    const a = f.ps[n], b = g.ps[n] || a;
+    if (!p) return;
+    if (!a) { p.alive = false; return; }
+    let da = b.angle - a.angle;
+    da = Math.atan2(Math.sin(da), Math.cos(da));
+    p.x = lerp(a.x, b.x); p.y = lerp(a.y, b.y); p.angle = a.angle + da * t; p.alive = a.alive;
+    p.trail = [];
+    p.fx = { speed: 0, shield: a.shield ? 1 : 0, freeze: 0, ghost: a.ghost ? 1 : 0 };
+  });
+  const c = { x: lerp(f.cam.x, g.cam.x), y: lerp(f.cam.y, g.cam.y), zoom: lerp(f.cam.zoom, g.cam.zoom) };
+  ctx.fillStyle = '#cfd6e4';
+  ctx.fillRect(0, 0, W, H);
+  drawWorld(me, c);
+  ({ owner, trail, freezer, threats, danger, countdown, goFlash, particles, flashes, fades, floats, fxParts, shake } = saved);
+  players.forEach((p, n) => { if (p) Object.assign(p, savedPlayers[n]); });
+  $('replay-fill').style.width = `${(replayT / len) * 100}%`;
 }
 
 // ---------- Main loop ----------
@@ -2392,7 +2622,12 @@ let hudTimer = 0;
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-  if (state === 'play' || state === 'won') update(dt);
+  if (state === 'play' || state === 'won') {
+    update(dt);
+    replayTimer -= dt;
+    if (replayTimer <= 0) { replayTimer = 0.1; recordFrame(); }
+  }
+  if (state === 'replay') { playReplay(dt); requestAnimationFrame(frame); return; }
   // Behind the pause / game over screens the last frame stays frozen
   if (state !== 'over' && state !== 'paused') draw(dt);
   hudTimer -= dt;
@@ -2457,6 +2692,9 @@ function showHowto(thenPlay) {
   $('howto-btn').textContent = thenPlay ? "Let's go!" : 'Got it';
   showScreen('howto');
 }
+$('tutorial-btn').addEventListener('click', () => { save('color-claim-howto-seen', '1'); startTutorial(); });
+$('tutorial-skip').addEventListener('click', () => { if (gameMode.tutorial) leaveTutorial(); });
+
 $('howto-btn').addEventListener('click', () => {
   save('color-claim-howto-seen', '1');
   if (howtoThenPlay) startGame();
@@ -2472,6 +2710,8 @@ function playFromMenu() {
 
 $('play-btn').addEventListener('click', () => { if (state === 'menu') playFromMenu(); });
 $('again-btn').addEventListener('click', () => { if (state === 'over') startGame(); });
+$('replay-btn').addEventListener('click', () => { if (state === 'over') startReplay(); });
+$('replay-skip').addEventListener('click', () => { if (state === 'replay') stopReplay(); });
 $('menu-btn').addEventListener('click', () => {
   if (state !== 'over') return;
   challenge = null;

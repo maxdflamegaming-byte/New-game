@@ -10,7 +10,7 @@ A territory game inspired by Paper.io.
 - Leave your land to draw a trail, then loop back to claim everything you enclosed.
 - Cut another player's trail to knock them out. If anyone touches *your* trail, or you cross it yourself, you're out.
 - A 3-2-1 countdown starts each game, and everyone gets a 3-second shield after spawning.
-- 7 bots with their own personalities. They path home around their own trails, and the bigger you get, the harder they come for yours.
+- 7 bots, each with a personality shown under its name: **Hunters** chase trails, **Turtles** make small safe loops and run early, **Explorers** make big risky loops, **Collectors** go for power-ups and coins, and **Wildcards** are unpredictable. They path home around their own trails, and the bigger you get, the harder they come for yours.
 - A red **!** (or an arrow at the screen edge) warns you when an enemy is near your trail.
 - **Modes:**
 
@@ -36,7 +36,9 @@ A territory game inspired by Paper.io.
 - **Daily missions:** 3 new missions every day with coin rewards.
 - **Player level:** every game earns XP, and each level-up pays a coin bonus.
 - **Coins and the Locker:** earn coins every game (2 per % claimed, 5 per knockout, 50 for a win, 25 per trophy). Unlock 8 skins by playing or buy them, and buy trail effects (Sparkles, Bubbles, Hearts, Fire, Stars, Rainbow).
-- **18 trophies** and a **stats** page (wins, best claim, knockouts, time played and best score per mode).
+- **18 trophies** (wear one as a **badge** next to your name) and a **stats** page (wins, best claim, knockouts, time played and best score per mode).
+- **Tutorial:** a 5-step guided level (leave land, loop home, grab a power-up, cut a practice bot, claim 15%) that pays 50 coins the first time. It's offered on the how-to-play screen.
+- **Instant replay:** after a game, watch the last 10 seconds again.
 - A how-to-play guide on your first game, background music made in code, a kill feed, a leaderboard with a crown and a minimap.
 - **On phones:** install it to your home screen and play offline. It vibrates on knockouts and hits, and has bigger buttons plus a choice of controls: drag joystick (normal or large) or one-thumb **tap to turn** (hold the left or right half of the screen).
 - **Controls:** mouse, WASD / arrow keys, or touch. **P** or the pause button pauses, **M** mutes sound, **N** toggles music.

@@ -38,6 +38,18 @@
 
   <div id="toast"></div>
 
+  <div id="tutorial-panel" class="tutorial-panel hidden">
+    <small id="tutorial-step">Step 1 of 5</small>
+    <b id="tutorial-text"></b>
+    <button id="tutorial-skip" class="link-btn">Skip tutorial</button>
+  </div>
+
+  <div id="replay-bar" class="replay-bar hidden">
+    <b>Replay · last 10 seconds</b>
+    <span class="xpbar wide"><span id="replay-fill"></span></span>
+    <button id="replay-skip" class="nav-btn">Skip</button>
+  </div>
+
   <div id="menu" class="screen show">
     <div class="wallet"><span class="coin"></span> <span class="coin-count">0</span></div>
     <div id="level-badge" class="level-badge"><b id="menu-level">Lv 1</b><span class="xpbar"><span id="menu-xp"></span></span></div>
@@ -166,7 +178,10 @@
       <div class="step"><canvas data-step="2" width="160" height="110"></canvas><b>3. Cut their trails</b><span>Touch another player's trail to knock them out.</span></div>
       <div class="step"><canvas data-step="3" width="160" height="110"></canvas><b>4. Protect yours</b><span>If anyone touches your trail, or you cross it, you're out. Watch for red <b>!</b> warnings.</span></div>
     </div>
-    <button id="howto-btn">Let's go!</button>
+    <div class="row">
+      <button id="howto-btn">Let's go!</button>
+      <button id="tutorial-btn" class="secondary">Try the tutorial</button>
+    </div>
   </div>
 
   <div id="paused" class="screen">
@@ -195,6 +210,7 @@
     </div>
     <div class="row">
       <button id="again-btn">Play again</button>
+      <button id="replay-btn" class="secondary">Watch replay</button>
       <button id="menu-btn" class="secondary">Menu</button>
     </div>
   </div>

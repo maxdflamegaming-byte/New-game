@@ -590,10 +590,18 @@ function liveCheckCollector() {
   }
 }
 
+// ---------- Badges ----------
+// Wear any trophy you've earned as a badge under your name
+let myBadge = load('color-claim-badge', '');
+function badgeName() {
+  const a = myBadge && achieved[myBadge] && ACHIEVEMENTS.find(x => x.id === myBadge);
+  return a ? a.name : '';
+}
+
 // ---------- Trophies ----------
 function buildTrophies() {
   const got = ACHIEVEMENTS.filter(a => achieved[a.id]).length;
-  $('trophy-count').textContent = `${got} / ${ACHIEVEMENTS.length} unlocked · ${ACH_REWARD} coins each`;
+  $('trophy-count').textContent = `${got} / ${ACHIEVEMENTS.length} unlocked · ${ACH_REWARD} coins each · wear one as a badge under your name`;
   $('trophy-list').innerHTML = ACHIEVEMENTS.map(a => {
     const done = !!achieved[a.id];
     let extra = '';
@@ -601,8 +609,14 @@ function buildTrophies() {
       const [n, max] = a.progress(stats);
       extra = `<span class="bar"><span style="width:${Math.min(100, (n / max) * 100)}%"></span></span><span class="prog">${Math.min(n, max)} / ${max}</span>`;
     }
-    return `<li class="${done ? 'done' : ''}">${Icons.trophy}<span class="t"><b>${a.name}</b><span>${a.desc}</span>${extra}</span></li>`;
+    const wear = done ? `<button class="wear-btn${myBadge === a.id ? ' on' : ''}" data-badge="${a.id}">${myBadge === a.id ? 'Wearing' : 'Wear'}</button>` : '';
+    return `<li class="${done ? 'done' : ''}">${Icons.trophy}<span class="t"><b>${a.name}</b><span>${a.desc}</span>${extra}</span>${wear}</li>`;
   }).join('');
+  document.querySelectorAll('.wear-btn').forEach(b => b.addEventListener('click', () => {
+    myBadge = myBadge === b.dataset.badge ? '' : b.dataset.badge;
+    save('color-claim-badge', myBadge);
+    buildTrophies();
+  }));
 }
 
 // ---------- Stats ----------
