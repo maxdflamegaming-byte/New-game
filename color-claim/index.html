@@ -41,6 +41,28 @@
 
   <div id="boss-bar" class="boss-bar hidden"></div>
 
+  <div id="photo-bar" class="photo-bar hidden">
+    <div class="seg" id="photo-filters" aria-label="Filter"></div>
+    <div class="photo-stickers" id="photo-stickers" aria-label="Stickers"></div>
+    <small id="photo-hint"></small>
+    <div class="photo-row">
+      <label class="photo-zoom">Zoom <input id="photo-zoom" type="range" min="0.4" max="2" step="0.05"></label>
+      <button id="photo-frame" class="nav-btn">Frame: on</button>
+      <button id="photo-clear" class="nav-btn">Clear stickers</button>
+    </div>
+    <div class="photo-row">
+      <button id="photo-snap">Take photo</button>
+      <button id="photo-done" class="secondary">Done</button>
+    </div>
+  </div>
+  <div id="photo-result" class="photo-result hidden">
+    <img id="photo-img" alt="Your photo">
+    <div class="photo-row">
+      <a id="photo-save" class="nav-btn" download="color-claim-photo.png">Save photo</a>
+      <button id="photo-close" class="nav-btn">Close</button>
+    </div>
+  </div>
+
   <div id="toast"></div>
 
   <div id="tutorial-panel" class="tutorial-panel hidden">
@@ -82,6 +104,7 @@
       <button class="nav-btn" data-open="challenge">Challenge</button>
       <button class="nav-btn" data-open="season">Season</button>
       <button class="nav-btn" data-open="locker">Locker</button>
+      <button class="nav-btn" data-open="upgrades">Upgrades</button>
       <button class="nav-btn" data-open="trophies">Trophies</button>
       <button class="nav-btn" data-open="stats">Stats</button>
       <button class="nav-btn" data-open="editor">Map editor</button>
@@ -153,6 +176,14 @@
   <div id="clan" class="screen">
     <h2>Clan</h2>
     <div id="clan-body" class="clan-body"></div>
+    <button class="secondary" data-back>Back</button>
+  </div>
+
+  <div id="upgrades" class="screen">
+    <div class="wallet"><span class="coin"></span> <span class="coin-count">0</span></div>
+    <h2>Power-up upgrades</h2>
+    <p class="small">Each level makes a power-up last 20% longer (the Paint Bomb gets bigger instead). Upgrades work in every mode except 2 Players.</p>
+    <ul id="upgrade-list" class="upgrade-list"></ul>
     <button class="secondary" data-back>Back</button>
   </div>
 
@@ -232,6 +263,7 @@
   <div id="paused" class="screen">
     <h2>Paused</h2>
     <button id="resume-btn">Resume</button>
+    <button id="photo-btn" class="secondary">Photo mode</button>
   </div>
 
   <div id="over" class="screen">

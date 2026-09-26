@@ -644,3 +644,49 @@ body.contrast .small, body.contrast #mode-desc, body.contrast .keys, body.contra
 body.contrast .seg-btn.picked { background: #000; color: #fff; }
 body.contrast .nav-btn, body.contrast button.secondary { box-shadow: 0 0 0 2px #000; }
 body.contrast #toast { color: #000; text-shadow: 0 0 4px #fff, 0 0 8px #fff; }
+
+/* ---------- Phase N: upgrades, photo mode, puzzle ---------- */
+.upgrade-list { list-style: none; display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 480px; padding: 0; text-align: left; }
+.upgrade-list li { display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: #fff; border-radius: 12px; box-shadow: 0 3px 0 #c7cfe0; }
+.upgrade-list canvas { width: 44px; height: 44px; flex: none; }
+.upgrade-list .t { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.upgrade-list .pips { display: flex; gap: 4px; }
+.upgrade-list .pips i { width: 22px; height: 6px; border-radius: 3px; background: #e3e8f2; }
+.upgrade-list .pips i.on { background: #ffb84d; }
+.upgrade-list small { color: #6b7690; }
+.upgrade-list .item-btn { flex: none; }
+.photo-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  width: min(560px, calc(100% - 32px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 16px;
+  box-shadow: 0 4px 0 #c7cfe0;
+}
+.photo-stickers { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.photo-stickers .emote-btn.picked { box-shadow: 0 0 0 3px #4f8cff; }
+.photo-row { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; align-items: center; }
+.photo-zoom { display: flex; align-items: center; gap: 6px; font-weight: 800; font-size: 14px; }
+.photo-result {
+  position: fixed;
+  inset: 16px 16px auto;
+  margin: auto;
+  width: min(520px, calc(100% - 32px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 6px 24px rgba(38, 48, 74, 0.3);
+}
+.photo-result img { width: 100%; border-radius: 8px; }
+#over-best .stars, .stars { font-size: 26px; color: #f5b400; letter-spacing: 2px; }

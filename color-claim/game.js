@@ -103,6 +103,7 @@ const MODES = {
   cup: { name: 'Cup', desc: '3 two-minute rounds on different maps · most points wins the cup', size: 80, win: 0, time: 120, powerups: 5, cup: true },
   duo: { name: '2 Players', desc: 'Same keyboard: Player 1 uses WASD, Player 2 the arrow keys · first to 40% (or last one standing) wins', size: 80, win: 40, powerups: 5, duo: true },
   team: { name: 'Teams', desc: 'You + 3 bots vs 4 bots · first team to 50% wins', size: 80, win: 50, powerups: 5, teams: true },
+  puzzle: { name: 'Puzzle', desc: 'A new little puzzle every day', size: 40, win: 0, time: 30, powerups: 0, puzzle: true },
   boss: { name: 'Boss Battle', desc: "Just you and the King · cut his trail to hit him · knock off all his hearts to win", size: 64, win: 0, powerups: 4, boss: true },
 };
 
@@ -116,7 +117,9 @@ const MAPS = {
   storm: { name: 'Storm' },
   belts: { name: 'Conveyor' },
   portals: { name: 'Portals' },
+  puzzle: { name: 'Puzzle box', hidden: true },
 };
+const PLAY_MAPS = () => Object.keys(MAPS).filter(k => !MAPS[k].hidden);
 
 // Custom maps are saved as a bit string of wall cells (80 x 80), base64 encoded
 const CUSTOM_SIZE = 80;
@@ -185,6 +188,13 @@ function buildMap(id) {
         const land = isles.some(([ix, iy, r]) => Math.hypot(x - ix, y - iy) <= r) || bridges.some(([a, b]) => nearSeg(x, y, a, b) <= 2.2);
         if (land) wall[y * N + x] = 0;
       }
+    }
+  } else if (id === 'puzzle') {
+    // A small box with a few blocks (the layout comes from the day's seed)
+    for (let n = 0; n < 6; n++) {
+      const bx = 3 + Math.floor(random() * (N - 9)), by = 3 + Math.floor(random() * (N - 9));
+      if (Math.hypot(bx + 1.5 - N / 2, by + 1.5 - N / 2) < 9) continue;
+      for (let y = by; y < by + 3; y++) for (let x = bx; x < bx + 3; x++) wall[y * N + x] = 1;
     }
   } else if (id === 'pillars') {
     const s = Math.round(N * 0.07);
@@ -463,6 +473,16 @@ const POWERUPS = {
 };
 const SPAWN_SHIELD = 3; // seconds of protection after (re)spawning
 
+// Power-up upgrades (bought on the Upgrades screen): each level makes yours last 20% longer,
+// or makes your Paint Bomb bigger. They don't apply in 2-player games.
+let upgrades = {};
+try { upgrades = JSON.parse(load('color-claim-upgrades', '{}')) || {}; } catch { upgrades = {}; }
+const UPGRADE_PRICES = [100, 200, 350];
+const upLevel = kind => Math.min(3, upgrades[kind] || 0);
+const upgraded = p => p === me && !gameMode.duo;
+const powerTime = (p, kind) => POWERUPS[kind].time * (upgraded(p) ? 1 + 0.2 * upLevel(kind) : 1);
+const paintRadius = p => Math.sqrt(20 + (upgraded(p) ? upLevel('paint') * 9 : 0));
+
 let players = [];     // players[id], id starts at 1
 let me = null;
 let p2 = null; // Player 2 in 2-player mode
@@ -485,9 +505,45 @@ const bestKey = modeId => (modeId === 'classic' ? 'color-claim-best'
   : modeId === 'weekly' ? `color-claim-weekly-${weekInfo().week}`
   : `color-claim-best-${modeId}`);
 const bestFor = modeId => Number(load(bestKey(modeId), 0)) || 0;
-const dailyMap = () => Object.keys(MAPS)[hashStr(todayKey()) % Object.keys(MAPS).length];
-const weeklyMap = () => Object.keys(MAPS)[hashStr('color-claim-week-' + weekInfo().week) % Object.keys(MAPS).length];
-const fixedMap = modeId => (MODES[modeId].daily ? dailyMap() : MODES[modeId].weekly ? weeklyMap() : null);
+const dailyMap = () => PLAY_MAPS()[hashStr(todayKey()) % PLAY_MAPS().length];
+const weeklyMap = () => PLAY_MAPS()[hashStr('color-claim-week-' + weekInfo().week) % PLAY_MAPS().length];
+const fixedMap = modeId => (MODES[modeId].daily ? dailyMap() : MODES[modeId].weekly ? weeklyMap() : MODES[modeId].puzzle ? 'puzzle' : null);
+
+// Today's puzzle: the same for everyone, picked from the date
+function dailyPuzzle(key = todayKey()) {
+  const rng = mulberry32(hashStr('color-claim-puzzle-' + key));
+  const kind = ['claim', 'ko', 'loop'][Math.floor(rng() * 3)];
+  if (kind === 'claim') { const goal = 22 + Math.floor(rng() * 9); return { kind, goal, time: 30, bots: 2, text: `Claim ${goal}% in 30 seconds` }; }
+  if (kind === 'ko') { const goal = rng() < 0.5 ? 2 : 3; return { kind, goal, time: 40, bots: 4, text: `Knock out ${goal} bots in 40 seconds` }; }
+  const goal = 7 + Math.floor(rng() * 5);
+  return { kind, goal, time: 30, bots: 2, text: `Claim ${goal}% with a single loop in 30 seconds` };
+}
+let puzzle = null, puzzleStars = 0;
+const puzzleProgress = () => (puzzle.kind === 'claim' ? pct(me) : puzzle.kind === 'ko' ? me.kills : run.bigLoop);
+const starText = n => '★'.repeat(n) + '☆'.repeat(3 - n);
+
+function puzzleSolved() {
+  const left = 1 - playTime / puzzle.time;
+  puzzleStars = left >= 0.5 ? 3 : left >= 0.25 ? 2 : 1;
+  state = 'won';
+  Sfx.play('win');
+  for (let i = 0; i < 6; i++) burst(me.x + rand(-6, 6), me.y + rand(-5, 5), COLORS[i], 25, 12);
+  toast(`Solved! ${starText(puzzleStars)}`);
+  later(1400, () => endGame(true, `Puzzle solved in ${playTime.toFixed(1)} seconds!`));
+}
+
+// After a puzzle: best stars today, and coins for any new stars
+function puzzleResult(won) {
+  const key = `color-claim-puzzle-${todayKey()}`, before = Number(load(key, 0)) || 0, stars = won ? puzzleStars : 0;
+  if (stars > before) {
+    save(key, stars);
+    const pay = (before ? 0 : 30) + (stars - before) * 20;
+    addCoins(pay);
+    if (!before) stats.puzzles = (stats.puzzles || 0) + 1;
+    return { stars, best: stars, pay };
+  }
+  return { stars, best: before, pay: 0 };
+}
 let myColor = clamp(Number(load('color-claim-color', 0)) || 0, 0, COLORS.length - 1);
 let myName = load('color-claim-name', '');
 let stats = { games: 0, kills: 0, wins: 0, bestPct: 0 };
@@ -500,9 +556,69 @@ const isUnlocked = sk => !sk.need || stats[sk.need.stat] >= sk.need.n || ownedSk
 let myFx = load('color-claim-fx', 'none');
 
 // Settings (changed on the Settings screen)
-const settings = { vibrate: true, shake: true, controls: 'joystick', stickSize: 'normal', patterns: false, emotes: true, track: 'sunny', bigText: false, contrast: false, speed: 'normal' };
+const settings = { vibrate: true, shake: true, controls: 'joystick', stickSize: 'normal', patterns: false, emotes: true, track: 'sunny', bigText: false, contrast: false, speed: 'normal', theme: 'season' };
 try { Object.assign(settings, JSON.parse(load('color-claim-settings', '{}'))); } catch { /* bad saved data */ }
 const saveSettings = () => save('color-claim-settings', JSON.stringify(settings));
+// Map looks. Each season of the year has its own (Settings can pick one instead).
+const THEMES = {
+  classic: { name: 'Classic', bg: '#cfd6e4', edge: '#aab4c8', floor: '#f5f7fc', check: '#edf0f8', pillar: '#6b7690', pillarDark: '#4a5369', fx: null },
+  snow: { name: 'Snow', bg: '#bcd3e6', edge: '#8fb0cc', floor: '#fbfdff', check: '#eef5fb', pillar: '#a9c4dc', pillarDark: '#7d9cb8', fx: 'snow' },
+  garden: { name: 'Garden', bg: '#bfe0b0', edge: '#8fbf7c', floor: '#f6fbf1', check: '#e9f5e0', pillar: '#7fae6a', pillarDark: '#5b8a48', fx: 'petals' },
+  desert: { name: 'Desert', bg: '#e8cf9e', edge: '#cfae72', floor: '#fdf6e8', check: '#f6ead2', pillar: '#c99a5b', pillarDark: '#a47640', fx: 'sand' },
+  space: { name: 'Space', bg: '#1d2342', edge: '#3a4270', floor: '#eef0fb', check: '#e2e6f7', pillar: '#6b6fa8', pillarDark: '#474b80', fx: 'stars' },
+};
+// January to December
+const SEASON_THEMES = ['snow', 'snow', 'garden', 'garden', 'garden', 'desert', 'desert', 'desert', 'space', 'space', 'space', 'snow'];
+const seasonTheme = () => SEASON_THEMES[new Date().getMonth()];
+const themeId = () => (THEMES[settings.theme] ? settings.theme : seasonTheme());
+const theme = () => THEMES[themeId()];
+const noise1 = i => { const v = Math.sin(i * 12.9898) * 43758.5453; return v - Math.floor(v); };
+
+// Falling snow, petals or blowing sand over the map (screen space); stars behind the board
+function drawWeather() {
+  const fx = theme().fx;
+  if (!fx || fx === 'stars') return;
+  const n = fx === 'sand' ? 40 : fx === 'snow' ? 70 : 30;
+  for (let i = 0; i < n; i++) {
+    const a = noise1(i + 1), b = noise1(i + 101), c = noise1(i + 201);
+    if (fx === 'snow') {
+      const x = (((a * W + Math.sin(time * 0.8 + i) * 25 + time * 12) % W) + W) % W, y = (b * H + time * (25 + c * 35)) % H;
+      ctx.fillStyle = `rgba(255, 255, 255, ${0.55 + c * 0.35})`;
+      ctx.beginPath();
+      ctx.arc(x, y, 1.5 + c * 2.2, 0, TAU);
+      ctx.fill();
+    } else if (fx === 'petals') {
+      const x = (a * W + time * (18 + c * 10)) % W, y = (b * H + time * (20 + c * 15)) % H;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(time * (1 + c) + i);
+      ctx.fillStyle = `rgba(255, ${140 + Math.round(c * 60)}, ${190 + Math.round(c * 30)}, 0.7)`;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 4 + c * 3, 2 + c, 0, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+    } else {
+      const x = (a * W + time * (160 + c * 120)) % (W + 60) - 30, y = b * H + Math.sin(time * 2 + i) * 6;
+      ctx.strokeStyle = `rgba(201, 154, 91, ${0.18 + c * 0.2})`;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x - 18 - c * 20, y);
+      ctx.stroke();
+    }
+  }
+}
+
+function drawStars(x0, y0) {
+  if (theme().fx !== 'stars') return;
+  for (let i = 0; i < 90; i++) {
+    const a = noise1(i + 7), b = noise1(i + 77), c = noise1(i + 777);
+    const x = (((a * W * 1.5 - x0 * 0.15) % W) + W) % W, y = (((b * H * 1.5 - y0 * 0.15) % H) + H) % H;
+    ctx.fillStyle = `rgba(255, 255, 255, ${0.35 + 0.5 * Math.abs(Math.sin(time * (1 + c * 2) + i))})`;
+    ctx.fillRect(x, y, 1 + c * 2, 1 + c * 2);
+  }
+}
+
 // Accessibility: bigger text, high contrast, and a slower game
 const TXT = () => (settings.bigText ? 1.3 : 1);
 const gameSpeed = () => (settings.speed === 'slow' ? 0.75 : 1);
@@ -848,7 +964,7 @@ const POWERUP_TOASTS = {
 
 function grabPowerup(p, pu) {
   const def = POWERUPS[pu.kind];
-  if (def.time) p.fx[pu.kind] = def.time;
+  if (def.time) p.fx[pu.kind] = powerTime(p, pu.kind);
   if (p === me) { run.powerups++; buzz(15); }
   burst(pu.x, pu.y, def.color, 16, 8);
   if (pu.kind === 'paint') paintBomb(p);
@@ -863,11 +979,11 @@ function grabPowerup(p, pu) {
 
 // Paint Bomb: instantly claims a circle of land around you, even other players' land
 function paintBomb(p) {
-  const cells = [];
-  for (let dy = -5; dy <= 5; dy++) {
-    for (let dx = -5; dx <= 5; dx++) {
+  const cells = [], R = paintRadius(p), Ri = Math.ceil(R);
+  for (let dy = -Ri; dy <= Ri; dy++) {
+    for (let dx = -Ri; dx <= Ri; dx++) {
       const x = p.cx + dx, y = p.cy + dy;
-      if (dx * dx + dy * dy > 20 || x < 0 || y < 0 || x >= N || y >= N) continue;
+      if (dx * dx + dy * dy > R * R || x < 0 || y < 0 || x >= N || y >= N) continue;
       const i = y * N + x;
       if (wall[i] || owner[i] === p.id || trail[i] === p.id) continue; // your own trail is claimed when you get home
       if (owner[i] && allies(players[owner[i]], p)) continue; // never paint over a teammate
@@ -1434,6 +1550,7 @@ window.addEventListener('keydown', e => {
   Sfx.unlock();
   if (k.startsWith('arrow') || 'wasd'.includes(k)) mouse.active = false;
   if ((k === 'p' || k === 'escape') && (state === 'play' || state === 'paused')) togglePause();
+  else if (k === 'escape' && state === 'photo') closePhoto();
   if (k === 'm') toggleMute();
   if (k === 'n') toggleMusic();
   if (k >= '1' && k <= '6' && state === 'play') playerEmote(EMOTES[Number(k) - 1].id);
@@ -1452,6 +1569,10 @@ window.addEventListener('blur', () => {
 
 canvas.addEventListener('pointerdown', e => {
   Sfx.unlock();
+  if (state === 'photo') {
+    if (photo.sticker) photo.stickers.push({ id: photo.sticker, x: e.clientX, y: e.clientY });
+    return;
+  }
   if (state !== 'play' || e.pointerType === 'mouse') return;
   if (settings.controls === 'turn') {
     turnTouches.set(e.pointerId, e.clientX < W / 2 ? -1 : 1);
@@ -1582,7 +1703,8 @@ function buildPickers() {
   if (!allMaps[myMap]) myMap = 'square';
   seg('maps', allMaps, daily ? fixedMap(myMode) : myMap, id => { myMap = id; save('color-claim-map', id); buildPickers(); }, daily || MODES[myMode].cup);
   const ranked = RANKED_MODES.includes(myMode) && (daily || !myMap.startsWith('custom'));
-  $('mode-desc').textContent = MODES[myMode].desc + (MODES[myMode].boss ? ` · ${BOSSES[myBoss].name}: ${BOSSES[myBoss].desc}` : '') + (ranked ? ' · Ranked' : '') + (daily ? ` · ${MODES[myMode].weekly ? "This week's" : "Today's"} map: ${MAPS[fixedMap(myMode)].name}` : '')
+  $('mode-desc').textContent = MODES[myMode].desc + (MODES[myMode].boss ? ` · ${BOSSES[myBoss].name}: ${BOSSES[myBoss].desc}` : '') + (ranked ? ' · Ranked' : '') + (MODES[myMode].puzzle ? ` · Today: ${dailyPuzzle().text} · best ${starText(Number(load(`color-claim-puzzle-${todayKey()}`, 0)) || 0)}`
+      : daily ? ` · ${MODES[myMode].weekly ? "This week's" : "Today's"} map: ${MAPS[fixedMap(myMode)].name}` : '')
     + (myDiff !== 'normal' ? ` · ${DIFFICULTY[myDiff].name} bots pay ×${DIFFICULTY[myDiff].coins} coins` : '')
     + (!daily && myMap.startsWith('custom') && MODES[myMode].size !== CUSTOM_SIZE ? ' · Custom maps are always normal size' : '');
   updateMenuBest();
@@ -1602,6 +1724,12 @@ function startGame() {
   const cfg = tutorialOn ? { mode: 'tutorial', map: 'square', diff: 'normal' } : challenge || { mode: myMode, map: myMap, diff: myDiff };
   gameModeId = cfg.mode;
   gameMode = MODES[cfg.mode];
+  puzzle = null;
+  puzzleStars = 0;
+  if (gameMode.puzzle) {
+    puzzle = dailyPuzzle();
+    gameMode = { ...gameMode, time: puzzle.time, desc: puzzle.text };
+  }
   gameDiffId = cfg.diff;
   gameDiff = DIFFICULTY[cfg.diff];
   if (gameMode.cup && (!cup || cup.round > 3)) cup = newCup();
@@ -1609,6 +1737,7 @@ function startGame() {
   gameSeed = challenge ? challenge.seed
     : gameMode.daily ? hashStr('color-claim-' + todayKey())
     : gameMode.weekly ? hashStr('color-claim-week-' + weekInfo().week)
+    : gameMode.puzzle ? hashStr('color-claim-puzzle-' + todayKey())
     : gameMode.cup ? cup.seed
     : (Math.random() * 4294967296) >>> 0;
   random = mulberry32(gameSeed);
@@ -1637,11 +1766,13 @@ function startGame() {
     players.push(p2);
   }
   const botColors = COLORS.filter((_, i) => !taken.includes(i));
-  const names = BOT_NAMES.slice().sort(() => random() - 0.5).slice(0, gameMode.tutorial || gameMode.boss ? 0 : botColors.length);
+  const names = BOT_NAMES.slice().sort(() => random() - 0.5).slice(0, gameMode.tutorial || gameMode.boss ? 0 : puzzle ? puzzle.bots : botColors.length);
   names.forEach((name, i) => players.push(makePlayer(players.length, name, botColors[i], true, SKINS[randInt(0, SKINS.length - 1)].id)));
   // Personalities: a mix of hunters, turtles, explorers, collectors and wildcards
   const mix = PERSONA_MIX.slice().sort(() => random() - 0.5);
   players.filter(p => p && p.isBot).forEach((p, i) => givePersonality(p, mix[i % mix.length]));
+  // Puzzle bots: calm turtles, or (in knockout puzzles) explorers that never hunt you
+  if (puzzle) for (const p of players) if (p && p.isBot) { givePersonality(p, puzzle.kind === 'ko' ? 'explorer' : 'turtle'); p.aggro = 0; }
   // Pets (Math.random, so the seeded layout stays the same)
   me.pet = myPet;
   for (const p of players) if (p && p.isBot && Math.random() < 0.3) p.pet = BOT_PETS[Math.floor(Math.random() * BOT_PETS.length)];
@@ -1701,7 +1832,8 @@ function startGame() {
   const ev = weekInfo().event;
   if (gameMode.boss) {
     later(3400, () => { toast(`Cut the ${king.name}'s trail ${king.maxHp} times to win!`); Sfx.play('roar'); });
-  } else later(3400, () => toast(`${ev.name}: ${ev.desc}`));
+  } else if (puzzle) later(3200, () => toast(`🧩 ${puzzle.text}`));
+  else later(3400, () => toast(`${ev.name}: ${ev.desc}`));
 }
 
 function togglePause() {
@@ -1771,6 +1903,11 @@ function endGame(won, reason) {
   const label = gameModeId === 'daily' ? "Today's best" : gameModeId === 'weekly' ? "This week's best" : `${gameMode.name} best`;
   if (gameMode.weekly && isBest && ghostRec) saveGhost(score);
   $('over-best').textContent = isBest ? `New ${label.toLowerCase()}!${gameMode.weekly ? ' Your ghost will race you next time.' : ''}` : `${label}: ${prevBest.toFixed(1)}%`;
+  if (puzzle) {
+    const pr = puzzleResult(won);
+    $('over-best').innerHTML = `<span class="stars">${starText(pr.stars)}</span> ${puzzle.text}<br>Best today: ${starText(pr.best)}${pr.pay ? ` · <b>+${pr.pay} coins</b>` : ''}`;
+    if (won) $('over-title').textContent = '🧩 Puzzle solved!';
+  }
 
   // Playing a friend's challenge: did you beat their score?
   $('challenge-result').classList.toggle('hidden', !challenge);
@@ -1783,7 +1920,7 @@ function endGame(won, reason) {
     if (beat) challengeBeaten();
   }
   // Offer a challenge code for this game (not for 2 players, the Cup or custom maps)
-  const shareable = !gameMode.duo && !gameMode.cup && !gameMode.boss && !gameMapId.startsWith('custom');
+  const shareable = !gameMode.duo && !gameMode.cup && !gameMode.boss && !gameMode.puzzle && !gameMapId.startsWith('custom');
   $('challenge-share').classList.toggle('hidden', !shareable);
   $('challenge-code').classList.add('hidden');
   lastChallenge = shareable ? { seed: gameSeed, mode: gameMode.daily ? 'classic' : gameMode.weekly ? 'timed' : gameModeId, map: gameMapId, diff: gameDiffId, score } : null;
@@ -2368,6 +2505,12 @@ function scoreCupRound() {
 
 // Timed mode: when the clock runs out, the biggest player wins
 function timeUp() {
+  if (gameMode.puzzle) {
+    state = 'won';
+    Sfx.play('hurt');
+    later(600, () => endGame(false, "Time's up! Try the puzzle again."));
+    return;
+  }
   const ranked = players.filter(p => p && p.alive).sort((a, b) => counts[b.id] - counts[a.id]);
   const rank = ranked.indexOf(me) + 1;
   if (rank === 1) {
@@ -2380,8 +2523,8 @@ function timeUp() {
 
 function showScreen(id) {
   for (const el of document.querySelectorAll('.screen')) el.classList.toggle('show', el.id === id);
-  $('hud').classList.toggle('hidden', state === 'menu' || state === 'over' || state === 'replay');
-  if (state === 'menu' || state === 'over' || state === 'replay') $('boss-bar').classList.add('hidden');
+  $('hud').classList.toggle('hidden', state === 'menu' || state === 'over' || state === 'replay' || state === 'photo');
+  if (state === 'menu' || state === 'over' || state === 'replay' || state === 'photo') $('boss-bar').classList.add('hidden');
   updateMenuBest();
 }
 
@@ -2458,6 +2601,7 @@ function update(dt) {
     achTimer -= dt;
     if (achTimer <= 0 && me.alive && !gameMode.duo && !gameMode.tutorial) { achTimer = 1; liveAchievementCheck(); }
     if (gameMode.tutorial) updateTutorial(dt);
+    if (puzzle && me.alive && puzzleProgress() >= puzzle.goal) puzzleSolved();
   }
 
   // Your trail effect (from the Locker) puffs out behind you while you're outside your land
@@ -3035,7 +3179,7 @@ function drawHead(p, x0, y0, leaderId) {
 }
 
 function draw(dt) {
-  ctx.fillStyle = '#cfd6e4';
+  ctx.fillStyle = me ? theme().bg : '#cfd6e4';
   ctx.fillRect(0, 0, W, H);
 
   if (!me) {
@@ -3088,15 +3232,17 @@ function drawWorld(focus, c) {
   const x0 = c.x * CELL - W / 2 + rand(-sh, sh), y0 = c.y * CELL - H / 2 + rand(-sh, sh);
 
   // Map floor: a raised board with a soft checker pattern
+  const T = theme();
+  drawStars(x0, y0);
   if (gameMapId !== 'round' && gameMapId !== 'islands') {
-    ctx.fillStyle = '#aab4c8';
+    ctx.fillStyle = T.edge;
     ctx.fillRect(-x0 - 4, -y0 - 4 + CELL * 0.5, N * CELL + 8, N * CELL + 8);
   }
-  ctx.fillStyle = '#f5f7fc';
+  ctx.fillStyle = T.floor;
   ctx.fillRect(-x0, -y0, N * CELL, N * CELL);
   const c0 = clamp(Math.floor(x0 / CELL), 0, N - 1), c1 = clamp(Math.floor((x0 + W) / CELL), 0, N - 1);
   const r0 = clamp(Math.floor(y0 / CELL), 0, N - 1), r1 = clamp(Math.floor((y0 + H) / CELL), 0, N - 1);
-  ctx.fillStyle = settings.contrast ? '#f5f7fc' : '#edf0f8';
+  ctx.fillStyle = settings.contrast ? T.floor : T.check;
   for (let r = r0; r <= r1; r++) {
     for (let c = c0 + ((r + c0) % 2); c <= c1; c += 2) {
       ctx.fillRect(Math.floor(c * CELL - x0), Math.floor(r * CELL - y0), Math.ceil(CELL), Math.ceil(CELL));
@@ -3104,7 +3250,7 @@ function drawWorld(focus, c) {
   }
 
   // Outside the round arena, and pillars (drawn as raised blocks)
-  const wallColor = [null, null, '#cfd6e4'];
+  const wallColor = [null, null, T.bg];
   const drawWalls = (kind, color, yOff) => {
     ctx.fillStyle = color;
     for (let r = r0; r <= r1; r++) {
@@ -3120,8 +3266,8 @@ function drawWorld(focus, c) {
   };
   drawWalls(2, wallColor[2], 0);
   if (gameMapId === 'belts') drawBelts(c0, c1, r0, r1, x0, y0, false);
-  drawWalls(1, '#4a5369', CELL * 0.35);
-  drawWalls(1, '#6b7690', 0);
+  drawWalls(1, T.pillarDark, CELL * 0.35);
+  drawWalls(1, T.pillar, 0);
   if (storm) drawWalls(3, '#6b4fa0', 0);
 
   // Land: a darker copy nudged down gives a chunky 3D edge, then the top colour
@@ -3390,8 +3536,10 @@ function drawWorld(focus, c) {
     }
   }
 
+  drawWeather();
+
   // Minimap
-  if (drawingGif) return;
+  if (drawingGif || state === 'photo') return;
   const ms = Math.min(130, W * 0.28), mx = 16, my = H - ms - 16;
   ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
   ctx.fillRect(mx - 4, my - 4, ms + 8, ms + 8);
@@ -3655,7 +3803,7 @@ function updateHud() {
   }
   $('goal-fill').style.background = me.color;
   $('storm-info').classList.toggle('hidden', !storm);
-  const bossShown = !!king && state !== 'over' && state !== 'replay';
+  const bossShown = !!king && state !== 'over' && state !== 'replay' && state !== 'photo';
   $('boss-bar').classList.toggle('hidden', !bossShown);
   document.body.classList.toggle('boss-on', bossShown);
   if (king) {
@@ -3676,8 +3824,11 @@ function updateHud() {
   if (freezer && freezer !== me && me.alive) fx.push('<span class="fx" style="--c:#3fc7f5">Frozen!</span>');
   const fxHtml = fx.join('');
   if ($('effects').innerHTML !== fxHtml) $('effects').innerHTML = fxHtml;
-  $('team-score').classList.toggle('hidden', !gameMode.teams && !gameMode.duo && !challenge && !gameMode.cup && !gameMode.weekly);
-  if (gameMode.weekly && !challenge) {
+  $('team-score').classList.toggle('hidden', !gameMode.teams && !gameMode.duo && !challenge && !gameMode.cup && !gameMode.weekly && !puzzle);
+  if (puzzle) {
+    const n = puzzleProgress();
+    $('team-score').innerHTML = `<b class="us">🧩 ${puzzle.text}</b> <span>· ${puzzle.kind === 'ko' ? n : n.toFixed(1) + '%'} / ${puzzle.goal}${puzzle.kind === 'ko' ? '' : '%'}</span>`;
+  } else if (gameMode.weekly && !challenge) {
     const g = ghostNow();
     $('team-score').innerHTML = !ghostRun ? '<b class="us">No ghost yet</b> <span>· set this week\'s best!</span>'
       : g ? `<b class="us">Ghost ${g.pct.toFixed(1)}%</b> <span>· ${pct(me) >= g.pct ? 'you\'re ahead!' : 'catch up!'}</span>`
@@ -3733,7 +3884,7 @@ function playReplay(dt) {
   replayT += dt;
   if (replayT >= len) { stopReplay(); return; }
   withReplayFrame(replayT * 10, c => {
-    ctx.fillStyle = '#cfd6e4';
+    ctx.fillStyle = theme().bg;
     ctx.fillRect(0, 0, W, H);
     drawWorld(me, c);
   });
@@ -3794,7 +3945,7 @@ function renderGifFrame(g, k) {
   drawingGif = true;
   try {
     withReplayFrame(k, c => {
-      g.fillStyle = '#cfd6e4';
+      g.fillStyle = theme().bg;
       g.fillRect(0, 0, GIF_SIZE, GIF_SIZE);
       drawWorld(me, { x: c.x, y: c.y, zoom: (c.zoom * GIF_SIZE) / Math.min(screenW, screenH) / 0.8 });
     });
@@ -3893,6 +4044,134 @@ $('gif-share').addEventListener('click', () => {
   navigator.share({ files: [file], title: 'Color Claim replay' }).catch(() => { /* cancelled */ });
 });
 
+// ---------- Photo mode ----------
+// From the pause screen: freeze the game, zoom, add a filter and stickers, then save a picture.
+const PHOTO_FILTERS = {
+  none: { name: 'None', css: '', px: null },
+  warm: { name: 'Warm', css: 'sepia(0.25) saturate(1.25)', px: (r, g, b) => [r * 1.08 + 12, g * 1.02 + 4, b * 0.88] },
+  cool: { name: 'Cool', css: 'saturate(1.1) hue-rotate(12deg) brightness(1.03)', px: (r, g, b) => [r * 0.9, g * 1.0 + 4, b * 1.1 + 12] },
+  mono: { name: 'Mono', css: 'grayscale(1)', px: (r, g, b) => { const l = r * 0.3 + g * 0.59 + b * 0.11; return [l, l, l]; } },
+  retro: { name: 'Retro', css: 'sepia(0.8)', px: (r, g, b) => [r * 0.39 + g * 0.77 + b * 0.19, r * 0.35 + g * 0.69 + b * 0.17, r * 0.27 + g * 0.53 + b * 0.13] },
+  pop: { name: 'Pop', css: 'saturate(1.8) contrast(1.1)', px: (r, g, b) => { const l = r * 0.3 + g * 0.59 + b * 0.11; return [l + (r - l) * 1.8, l + (g - l) * 1.8, l + (b - l) * 1.8]; } },
+};
+const PHOTO_STICKERS = ['hi', 'lol', 'cool', 'love', 'gg'];
+const photo = { filter: 'none', sticker: null, stickers: [], frame: true, blob: null, url: null };
+
+function openPhoto() {
+  if (state !== 'paused') return;
+  state = 'photo';
+  showScreen(null);
+  photo.stickers = [];
+  photo.sticker = null;
+  $('photo-bar').classList.remove('hidden');
+  $('photo-result').classList.add('hidden');
+  $('photo-zoom').value = cam.zoom;
+  buildPhotoBar();
+}
+
+function closePhoto() {
+  if (state !== 'photo') return;
+  canvas.style.filter = '';
+  $('photo-bar').classList.add('hidden');
+  $('photo-result').classList.add('hidden');
+  state = 'paused';
+  showScreen('paused');
+}
+
+function buildPhotoBar() {
+  $('photo-filters').innerHTML = Object.entries(PHOTO_FILTERS).map(([id, f]) => `<button class="seg-btn${id === photo.filter ? ' picked' : ''}" data-filter="${id}">${f.name}</button>`).join('');
+  $('photo-filters').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { photo.filter = b.dataset.filter; buildPhotoBar(); }));
+  const stickers = $('photo-stickers');
+  stickers.innerHTML = '';
+  for (const id of PHOTO_STICKERS) {
+    const b = document.createElement('button');
+    b.className = 'emote-btn' + (photo.sticker === id ? ' picked' : '');
+    b.dataset.sticker = id;
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = 64;
+    drawEmote(cv.getContext('2d'), id, 32, 32, 24);
+    b.appendChild(cv);
+    b.addEventListener('click', () => { photo.sticker = photo.sticker === id ? null : id; buildPhotoBar(); });
+    stickers.appendChild(b);
+  }
+  $('photo-frame').textContent = photo.frame ? 'Frame: on' : 'Frame: off';
+  $('photo-hint').textContent = photo.sticker ? 'Tap the picture to stick it on' : 'Pick a sticker, then tap the picture';
+  canvas.style.filter = PHOTO_FILTERS[photo.filter].css;
+}
+
+function drawStickers() {
+  for (const st of photo.stickers) {
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.beginPath();
+    ctx.arc(st.x, st.y, 30, 0, TAU);
+    ctx.fill();
+    drawEmote(ctx, st.id, st.x, st.y, 24);
+  }
+}
+
+// Build the picture: the canvas, the filter, and a white frame with a caption
+function snapPhoto() {
+  const pad = photo.frame ? 36 : 0, foot = photo.frame ? 70 : 0;
+  const out = document.createElement('canvas');
+  out.width = canvas.width + pad * 2;
+  out.height = canvas.height + pad + foot + (photo.frame ? 0 : 0);
+  const g = out.getContext('2d');
+  g.fillStyle = '#fff';
+  g.fillRect(0, 0, out.width, out.height);
+  g.drawImage(canvas, pad, pad);
+  const f = PHOTO_FILTERS[photo.filter].px;
+  if (f) {
+    const img = g.getImageData(pad, pad, canvas.width, canvas.height), d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const [r, gg, b] = f(d[i], d[i + 1], d[i + 2]);
+      d[i] = r;
+      d[i + 1] = gg;
+      d[i + 2] = b;
+    }
+    g.putImageData(img, pad, pad);
+  }
+  if (photo.frame) {
+    g.fillStyle = '#26304a';
+    g.font = '900 30px system-ui, sans-serif';
+    g.textBaseline = 'middle';
+    g.fillText('Color Claim', pad, out.height - foot / 2);
+    g.textAlign = 'right';
+    g.font = 'bold 22px system-ui, sans-serif';
+    g.fillStyle = '#6b7690';
+    g.fillText(`${me.name} · ${pct(me).toFixed(1)}% · ${new Date().toLocaleDateString()}`, out.width - pad, out.height - foot / 2);
+  }
+  return out;
+}
+
+function takePhoto() {
+  if (state !== 'photo') return;
+  const out = snapPhoto();
+  Sfx.play('coin');
+  out.toBlob(blob => {
+    if (!blob) return;
+    if (photo.url) URL.revokeObjectURL(photo.url);
+    photo.blob = blob;
+    photo.url = URL.createObjectURL(blob);
+    $('photo-img').src = photo.url;
+    $('photo-save').href = photo.url;
+    $('photo-result').classList.remove('hidden');
+    stats.photos = (stats.photos || 0) + 1;
+  }, 'image/png');
+}
+
+$('photo-btn').addEventListener('click', openPhoto);
+$('photo-done').addEventListener('click', closePhoto);
+$('photo-snap').addEventListener('click', takePhoto);
+$('photo-clear').addEventListener('click', () => { photo.stickers = []; });
+$('photo-frame').addEventListener('click', () => { photo.frame = !photo.frame; buildPhotoBar(); });
+$('photo-zoom').addEventListener('input', e => { cam.zoom = Number(e.target.value); });
+$('photo-close').addEventListener('click', () => $('photo-result').classList.add('hidden'));
+$('photo-save').addEventListener('click', e => {
+  if (!viewerDownloads || !photo.blob) return; // normal browsers use the link itself
+  e.preventDefault();
+  viewerDownloads.save({ filename: 'color-claim-photo.png', data: photo.blob }).catch(() => { /* declined or not available */ });
+});
+
 // ---------- Main loop ----------
 let last = performance.now();
 let hudTimer = 0;
@@ -3905,6 +4184,12 @@ function frame(now) {
     if (replayTimer <= 0) { replayTimer = 0.1; recordFrame(); }
   }
   if (state === 'replay') { playReplay(dt); requestAnimationFrame(frame); return; }
+  if (state === 'photo') {
+    draw(0);
+    drawStickers();
+    requestAnimationFrame(frame);
+    return;
+  }
   // Behind the pause / game over screens the last frame stays frozen
   if (state !== 'over' && state !== 'paused') draw(dt);
   hudTimer -= dt;

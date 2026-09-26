@@ -88,6 +88,8 @@ const ACHIEVEMENTS = [
   { id: 'bosshunter', name: 'Boss Hunter', desc: 'Beat the King, the Queen and the Wizard', test: (r, s) => ['king', 'queen', 'wizard'].every(b => ((s.bossBeaten || {})[b] || 0) > 0), progress: s => [['king', 'queen', 'wizard'].filter(b => ((s.bossBeaten || {})[b] || 0) > 0).length, 3], page: 2 },
   { id: 'warwinner', name: 'War Winner', desc: 'Win a weekly clan war', test: (r, s) => (s.clanWars || 0) >= 1, page: 2 },
   { id: 'questmaster', name: 'Questmaster', desc: 'Finish a whole weekly quest chain', test: (r, s) => (s.questChains || 0) >= 1, page: 2 },
+  { id: 'puzzlepro', name: 'Puzzle Pro', desc: 'Get 3 stars on a daily puzzle', test: () => puzzleStars === 3, page: 2 },
+  { id: 'maxed', name: 'Maxed Out', desc: 'Fully upgrade a power-up', test: () => Object.keys(POWERUPS).some(k => upLevel(k) >= 3), page: 2 },
 ];
 let achieved = loadJSON('color-claim-achievements', {});
 
@@ -524,6 +526,49 @@ function buildClan() {
   });
 }
 
+// ---------- Power-up upgrades ----------
+function upgradeEffect(kind, lvl) {
+  if (kind === 'paint') return `Radius ${Math.sqrt(20 + lvl * 9).toFixed(1)} cells`;
+  return `Lasts ${(POWERUPS[kind].time * (1 + 0.2 * lvl)).toFixed(1)} s`;
+}
+
+function buildUpgrades() {
+  const box = $('upgrade-list');
+  box.innerHTML = '';
+  for (const [kind, def] of Object.entries(POWERUPS)) {
+    const lvl = upLevel(kind), maxed = lvl >= 3, price = UPGRADE_PRICES[lvl];
+    const li = document.createElement('li');
+    const icon = document.createElement('canvas');
+    icon.width = icon.height = 56;
+    const screenCtx = ctx; // the icon drawer paints on ctx, so point it at the little canvas for a moment
+    ctx = icon.getContext('2d');
+    try { drawPowerupIcon(kind, 28, 28, 20); } finally { ctx = screenCtx; }
+    li.appendChild(icon);
+    li.insertAdjacentHTML('beforeend', `<span class="t"><b>${def.name}</b><span class="pips">${[0, 1, 2].map(i => `<i class="${i < lvl ? 'on' : ''}"></i>`).join('')}</span>
+      <small>${upgradeEffect(kind, lvl)}${maxed ? ' · max level' : ` → ${upgradeEffect(kind, lvl + 1).replace(/^\w+ /, '')}`}</small></span>`);
+    const btn = document.createElement('button');
+    btn.className = 'item-btn';
+    btn.dataset.kind = kind;
+    if (maxed) {
+      btn.textContent = 'Maxed';
+      btn.disabled = true;
+    } else {
+      btn.innerHTML = `Upgrade · ${price} <span class="coin"></span>`;
+      btn.disabled = coins < price;
+      btn.addEventListener('click', () => {
+        if (!spend(price)) return;
+        upgrades[kind] = lvl + 1;
+        save('color-claim-upgrades', JSON.stringify(upgrades));
+        toast(`${def.name} upgraded to level ${lvl + 1}!`);
+        for (const a of checkAchievements({ peak: 0, kills: 0, time: 0, bigLoop: 0, freezeKO: false })) { toast(`🏆 ${a.name}! +${ACH_REWARD} coins`); Sfx.play('trophy'); }
+        buildUpgrades();
+      });
+    }
+    li.appendChild(btn);
+    box.appendChild(li);
+  }
+}
+
 // ---------- Daily missions ----------
 // Three missions a day, the same for everyone (picked from the date). Rewards pay out automatically.
 const MISSION_POOL = [
@@ -652,7 +697,7 @@ function addSeasonXp(n) {
 function buildSeason() {
   const st = freshSeason(), now = seasonNow();
   const into = st.tier >= SEASON_TIERS ? SEASON_TIER_XP : st.xp - st.tier * SEASON_TIER_XP;
-  $('season-head').innerHTML = `<span><b>${now.name}</b> · tier ${st.tier} / ${SEASON_TIERS} · ends in ${now.daysLeft} day${now.daysLeft === 1 ? '' : 's'}</span>
+  $('season-head').innerHTML = `<span><b>${now.name}</b> · ${THEMES[seasonTheme()].name} maps · tier ${st.tier} / ${SEASON_TIERS} · ends in ${now.daysLeft} day${now.daysLeft === 1 ? '' : 's'}</span>
     <span class="xpbar wide"><span style="width:${(into / SEASON_TIER_XP) * 100}%"></span></span>
     <small>${st.tier >= SEASON_TIERS ? 'Season complete!' : `${into} / ${SEASON_TIER_XP} XP to tier ${st.tier + 1}`}</small>`;
   const box = $('season-tiers');
@@ -917,6 +962,7 @@ function openScreen(id) {
   if (id === 'missions') buildMissions();
   if (id === 'season') buildSeason();
   if (id === 'rank') buildRank();
+  if (id === 'upgrades') buildUpgrades();
   if (id === 'clan') { clanForm = null; buildClan(); }
   if (id === 'missions') buildQuests();
   if (id === 'editor') editorLoadSlot(editor.slot);
@@ -1105,6 +1151,7 @@ function buildStats() {
     ['Day streak', streakNow()],
     ['Bosses beaten', Object.values(s.bossBeaten || {}).reduce((a, b) => a + b, 0)],
     ['Clan points', clan ? clan.cp : '–'],
+    ['Puzzles solved', s.puzzles || 0],
     ['Best streak', streak.best || 0],
     ['Most RP', s.bestRp || 0],
   ];
@@ -1127,6 +1174,7 @@ function buildSettings() {
     { label: 'Text size', value: settings.bigText, options: [[false, 'Normal'], [true, 'Large']], set: v => { settings.bigText = v; applyA11y(); } },
     { label: 'High contrast', value: settings.contrast, options: [[false, 'Off'], [true, 'On']], set: v => { settings.contrast = v; applyA11y(); } },
     { label: 'Game speed', value: settings.speed, options: [['normal', 'Normal'], ['slow', 'Slower']], set: v => { settings.speed = v; } },
+    { label: 'Map look', value: settings.theme, options: [['season', `Season (${THEMES[seasonTheme()].name})`], ...Object.entries(THEMES).map(([id, t]) => [id, t.name])], set: v => { settings.theme = v; } },
   ];
   const box = $('settings-list');
   box.innerHTML = '';

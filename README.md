@@ -24,6 +24,7 @@ A territory game inspired by Paper.io.
   | Cup | 3 two-minute rounds on 3 different maps; points for your finishing place each round (10, 7, 5…); most points wins a coin prize |
   | 2 Players | Two people on one keyboard (WASD vs arrow keys) with a split screen. First to 40%, or last one standing, wins |
   | Teams | You + 3 bots vs 4 bots; teammates can't cut, bump or steal from each other. First team to 50% wins |
+  | Puzzle | A new little puzzle every day on a small map with a timer: claim X%, knock out N bots, or claim X% in a single loop. Up to 3 stars for speed, and coins for new stars |
   | Boss Battle | You (with 3 lives) against a boss: cut its trail to knock off its hearts (3 / 5 / 7 by difficulty). At half health it calls 2 guards, and on its last heart it speeds up. Beat the **King** to unlock the **Queen** (drops spiky traps, +1 heart), then the **Wizard** (blinks home and wipes his trail when you get close, +2 hearts) |
 
 - **Bot difficulty:** Easy, Normal or Hard (Hard bots are faster and hunt harder, and pay 1.5× coins).
@@ -43,6 +44,9 @@ A territory game inspired by Paper.io.
 - **Weekly events** rotate every Monday: Double Coins, Power-up Frenzy, Gold Rush, Speed Week and XP Boost.
 - **Colorblind patterns** (in Settings) give every player's land and trail its own pattern.
 - **Accessibility:** large text, a high-contrast look and a slower game speed (75%) in Settings.
+- **Map looks:** each season has its own look (Snow in winter, Garden in spring, Desert in summer, Space in autumn) with falling snow, petals, blowing sand or twinkling stars. Pick any look in Settings.
+- **Power-up upgrades:** spend coins to make your power-ups last up to 60% longer (or your Paint Bomb bigger).
+- **Photo mode:** from the pause screen, zoom, add a filter (Warm, Cool, Mono, Retro, Pop) and stickers, then save a framed picture.
 - **Daily missions:** 3 new missions every day with coin rewards.
 - **Weekly quest chain:** 5 quests a week (2 easy, 2 medium, 1 hard) that unlock one after another and pay 50, 75, 100, 150 and 300 coins.
 - **Clans:** start a clan with a name, a 2-4 letter tag, an emblem and a colour. Your tag shows on your name (and on your teammates in Teams), every game earns clan points that level the clan up, and each week your clan races a rival clan in a clan war worth 250 coins.
@@ -50,7 +54,7 @@ A territory game inspired by Paper.io.
 - **Pets:** a little friend follows your square: Chick, Slime, Bat, Kitty (Silver rank), Dragon (Gold), UFO (Platinum) and Star Sprite (7-day streak). Some bots bring pets too.
 - **Player level:** every game earns XP, and each level-up pays a coin bonus.
 - **Coins and the Locker:** earn coins every game (2 per % claimed, 5 per knockout, 50 for a win, 25 per trophy). Unlock 8 skins by playing or buy them, and buy trail effects (Sparkles, Bubbles, Hearts, Fire, Stars, Rainbow).
-- **31 trophies** on 2 pages (wear one as a **badge** next to your name) and a **stats** page (wins, best claim, knockouts, time played and best score per mode).
+- **33 trophies** on 2 pages (wear one as a **badge** next to your name) and a **stats** page (wins, best claim, knockouts, time played and best score per mode).
 - **Tutorial:** a 5-step guided level (leave land, loop home, grab a power-up, cut a practice bot, claim 15%) that pays 50 coins the first time. It's offered on the how-to-play screen.
 - **Instant replay:** after a game, watch the last 10 seconds again, or turn it into a looping **GIF** to download or share.
 - A how-to-play guide on your first game, background music made in code (Sunny or Night style in Settings, plus a boss theme), a kill feed, a leaderboard with a crown and a minimap.
