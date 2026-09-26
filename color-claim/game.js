@@ -556,7 +556,7 @@ const isUnlocked = sk => !sk.need || stats[sk.need.stat] >= sk.need.n || ownedSk
 let myFx = load('color-claim-fx', 'none');
 
 // Settings (changed on the Settings screen)
-const settings = { vibrate: true, shake: true, controls: 'joystick', stickSize: 'normal', patterns: false, emotes: true, track: 'sunny', bigText: false, contrast: false, speed: 'normal', theme: 'season' };
+const settings = { vibrate: true, shake: true, controls: 'joystick', stickSize: 'normal', patterns: false, emotes: true, track: 'sunny', bigText: false, contrast: false, speed: 'normal', theme: 'season', gfx: 'high' };
 try { Object.assign(settings, JSON.parse(load('color-claim-settings', '{}'))); } catch { /* bad saved data */ }
 const saveSettings = () => save('color-claim-settings', JSON.stringify(settings));
 // Map looks. Each season of the year has its own (Settings can pick one instead).
@@ -622,6 +622,7 @@ function drawStars(x0, y0) {
 // Accessibility: bigger text, high contrast, and a slower game
 const TXT = () => (settings.bigText ? 1.3 : 1);
 const gameSpeed = () => (settings.speed === 'slow' ? 0.75 : 1);
+const hiGfx = () => settings.gfx !== 'low'; // Low graphics skips glows, bevels and lighting
 function applyA11y() {
   document.body.classList.toggle('big-text', !!settings.bigText);
   document.body.classList.toggle('contrast', !!settings.contrast);
@@ -640,7 +641,7 @@ let myPet = load('color-claim-pet', 'chick');
 if (!SKINS.some(sk => sk.id === mySkin && isUnlocked(sk))) mySkin = 'classic';
 let powerups = [], powerTimer = 5, freezer = null;
 let mapCoins = [], coinTimer = 3; // gold coins lying on the map
-let particles = [], flashes = [], fades = [], floats = [], feed = [];
+let particles = [], flashes = [], fades = [], floats = [], feed = [], rings = [];
 let peakPct = 0, minimapTimer = 0, time = 0, shake = 0, danger = 0, wasInDanger = false;
 let countdown = 0, goFlash = 0, threats = [];
 let replayFrames = [], replayTimer = 0, replayT = 0; // the last 10 seconds, 10 snapshots a second
@@ -853,7 +854,8 @@ function capture(p) {
       gained.push(i);
     }
   }
-  flashes.push({ cells: gained, life: 0.45 });
+  flashes.push({ cells: gained, life: 0.8, max: 0.8, ox: p.x, oy: p.y });
+  if (gained.length > 15) rings.push({ x: p.x, y: p.y, color: p.color, life: 0.6, size: Math.min(14, 4 + Math.sqrt(gained.length) * 0.5) });
 
   // Anyone who lost all their land is out
   for (const o of players) if (o && o !== p && o.alive && counts[o.id] === 0) kill(o, p, 'swallow');
@@ -1750,6 +1752,7 @@ function startGame() {
   flashes = [];
   fades = [];
   floats = [];
+  rings = [];
   feed = [];
   renderFeed();
   rgbCache.length = 0;
@@ -2688,6 +2691,8 @@ function update(dt) {
   particles = particles.filter(pt => pt.life > 0);
   for (const f of flashes) f.life -= dt;
   flashes = flashes.filter(f => f.life > 0);
+  for (const r of rings) r.life -= dt;
+  rings = rings.filter(r => r.life > 0);
   for (const f of fades) f.life -= dt;
   fades = fades.filter(f => f.life > 0);
   for (const f of floats) { f.life -= dt; f.y -= dt * 1.5; }
@@ -2738,6 +2743,91 @@ function updateMinimap() {
     d[i * 4 + 3] = wall[i] === 2 ? 0 : id || wall[i] ? 255 : 220;
   }
   miniCtx.putImageData(miniImg, 0, 0);
+}
+
+// One path per trail through the middle of its cells, broken wherever it jumps (portals)
+function drawTrailRopes(x0, y0, c0, c1, r0, r1, styleOf) {
+  const hi = hiGfx();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  for (const p of players) {
+    if (!p || !p.alive || !p.trail.length) continue;
+    const path = new Path2D();
+    let lx = 0, ly = 0, started = false;
+    for (const i of p.trail) {
+      if (trail[i] !== p.id) continue;
+      const x = i % N, y = (i - x) / N, sx = (x + 0.5) * CELL - x0, sy = (y + 0.5) * CELL - y0;
+      if (started && Math.max(Math.abs(x - lx), Math.abs(y - ly)) <= 1) path.lineTo(sx, sy);
+      else path.moveTo(sx, sy);
+      started = true;
+      lx = x;
+      ly = y;
+    }
+    if (!started) continue;
+    if (Math.hypot(p.x - lx - 0.5, p.y - ly - 0.5) < 1.6) path.lineTo(p.x * CELL - x0, p.y * CELL - y0);
+    if (hi) {
+      ctx.strokeStyle = alpha(p.color, 0.18);
+      ctx.lineWidth = CELL * 1.3;
+      ctx.stroke(path);
+    }
+    ctx.strokeStyle = styleOf(p);
+    ctx.lineWidth = CELL * 0.8;
+    ctx.stroke(path);
+    if (hi) {
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.lineWidth = CELL * 0.2;
+      ctx.stroke(path);
+    }
+    // Sparkles run along the rope toward the square
+    for (let k = 0; k < p.trail.length; k += 3) {
+      const i = p.trail[k], x = i % N, y = (i - x) / N;
+      if (x < c0 || x > c1 || y < r0 || y > r1 || trail[i] !== p.id) continue;
+      const a = 0.25 + 0.3 * Math.sin(k * 0.7 - time * 9);
+      if (a <= 0.05) continue;
+      ctx.fillStyle = `rgba(255, 255, 255, ${a})`;
+      ctx.beginPath();
+      ctx.arc((x + 0.5) * CELL - x0, (y + 0.5) * CELL - y0, CELL * 0.14, 0, TAU);
+      ctx.fill();
+    }
+  }
+}
+
+// Raised land: a light rim along the top and left edges of every patch
+function drawLandEdges(c0, c1, r0, r1, x0, y0) {
+  const h = Math.max(1, CELL * 0.16), w = Math.max(1, CELL * 0.12);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+  for (let r = r0; r <= r1; r++) {
+    let c = c0;
+    while (c <= c1) {
+      const i = r * N + c, id = owner[i];
+      if (!id || (r > 0 && owner[i - N] === id)) { c++; continue; }
+      let e = c;
+      while (e + 1 <= c1 && owner[i + e + 1 - c] === id && !(r > 0 && owner[i + e + 1 - c - N] === id)) e++;
+      ctx.fillRect(Math.floor(c * CELL - x0), Math.floor(r * CELL - y0), Math.ceil((e - c + 1) * CELL), h);
+      c = e + 1;
+    }
+  }
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+  for (let r = r0; r <= r1; r++) {
+    for (let c = c0; c <= c1; c++) {
+      const i = r * N + c, id = owner[i];
+      if (id && (c === 0 || owner[i - 1] !== id)) ctx.fillRect(Math.floor(c * CELL - x0), Math.floor(r * CELL - y0), w, Math.ceil(CELL));
+    }
+  }
+}
+
+// A soft dark edge around the screen (cached for each screen size)
+let vignetteCache = null;
+function drawVignette() {
+  const key = `${W}x${H}`;
+  if (!vignetteCache || vignetteCache.key !== key || vignetteCache.ctx !== ctx) {
+    const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.45, W / 2, H / 2, Math.hypot(W, H) * 0.62);
+    g.addColorStop(0, 'rgba(20, 25, 45, 0)');
+    g.addColorStop(1, 'rgba(20, 25, 45, 0.16)');
+    vignetteCache = { key, ctx, g };
+  }
+  ctx.fillStyle = vignetteCache.g;
+  ctx.fillRect(0, 0, W, H);
 }
 
 // Draw horizontal runs of cells that share an owner (much faster than one rect per cell)
@@ -2844,15 +2934,20 @@ function drawBody(g, look, s, t) {
     }
   }
 
+  const rr = s * 0.22; // rounded corners
   g.fillStyle = dark;
-  g.fillRect(-s / 2, -s / 2 + s * 0.18, s, s);
+  g.beginPath();
+  g.roundRect(-s / 2, -s / 2 + s * 0.18, s, s, rr);
+  g.fill();
   g.fillStyle = color;
-  g.fillRect(-s / 2, -s / 2, s, s);
+  g.beginPath();
+  g.roundRect(-s / 2, -s / 2, s, s, rr);
+  g.fill();
 
   // Body pattern, clipped to the square
   g.save();
   g.beginPath();
-  g.rect(-s / 2, -s / 2, s, s);
+  g.roundRect(-s / 2, -s / 2, s, s, rr);
   g.clip();
   if (skin === 'stripes') {
     g.strokeStyle = 'rgba(255, 255, 255, 0.35)';
@@ -2897,16 +2992,23 @@ function drawBody(g, look, s, t) {
     g.fillRect(-s / 2, -s * 0.04, s * 0.45, s * 0.08);
     for (const [dx, dy] of [[-0.38, -0.38], [-0.38, 0.38]]) circ(dx * s, dy * s, s * 0.05, 'rgba(0, 0, 0, 0.3)');
   }
-  g.fillStyle = 'rgba(255, 255, 255, 0.25)';
-  g.fillRect(-s / 2, -s / 2, s * 0.22, s);
+  if (skin === 'ninja') { // headband
+    g.fillStyle = '#26304a';
+    g.fillRect(s * 0.02, -s / 2, s * 0.34, s);
+  }
+  // Soft shine: light across the back, a glossy spot, and a little shade on one side
+  g.fillStyle = 'rgba(255, 255, 255, 0.22)';
+  g.fillRect(-s / 2, -s / 2, s * 0.2, s);
+  g.fillStyle = 'rgba(255, 255, 255, 0.35)';
+  g.beginPath();
+  g.ellipse(-s * 0.18, -s * 0.28, s * 0.2, s * 0.09, -0.5, 0, TAU);
+  g.fill();
+  g.fillStyle = 'rgba(0, 0, 0, 0.08)';
+  g.fillRect(-s / 2, s * 0.32, s, s * 0.2);
   g.restore();
 
   // Face
   const closed = look.blink < 0;
-  if (skin === 'ninja') {
-    g.fillStyle = '#26304a';
-    g.fillRect(s * 0.02, -s / 2, s * 0.34, s);
-  }
   if (skin === 'shades') {
     g.fillStyle = '#1b2033';
     g.fillRect(s * 0.1, -s * 0.36, s * 0.24, s * 0.72);
@@ -3236,6 +3338,14 @@ function drawWorld(focus, c) {
   drawStars(x0, y0);
   if (gameMapId !== 'round' && gameMapId !== 'islands') {
     ctx.fillStyle = T.edge;
+    if (hiGfx() && !drawingGif) {
+      ctx.save();
+      ctx.shadowColor = 'rgba(20, 25, 45, 0.28)';
+      ctx.shadowBlur = CELL * 1.6;
+      ctx.shadowOffsetY = CELL * 0.5;
+      ctx.fillRect(-x0 - 4, -y0 - 4 + CELL * 0.5, N * CELL + 8, N * CELL + 8);
+      ctx.restore();
+    }
     ctx.fillRect(-x0 - 4, -y0 - 4 + CELL * 0.5, N * CELL + 8, N * CELL + 8);
   }
   ctx.fillStyle = T.floor;
@@ -3279,6 +3389,7 @@ function drawWorld(focus, c) {
   }
   const pattern = landPattern(me.skin, x0, y0);
   if (pattern) drawRuns(owner, c0, c1, r0, r1, x0, y0, p => (p === me ? pattern : null), 0);
+  if (hiGfx()) drawLandEdges(c0, c1, r0, r1, x0, y0);
 
   // Land of knocked-out players shrinks away
   for (const f of fades) {
@@ -3291,28 +3402,16 @@ function drawWorld(focus, c) {
   }
   ctx.globalAlpha = 1;
 
-  // Trails (yours pulses red when an enemy is close to it)
-  const dangerColor = `rgba(255, 60, 80, ${0.35 + danger * 0.4 * (0.5 + 0.5 * Math.sin(time * 18))})`;
-  drawRuns(trail, c0, c1, r0, r1, x0, y0, p => {
+  // Trails: a smooth rope from where you left your land to your square
+  // (yours pulses red when an enemy is close to it)
+  const dangerColor = `rgba(255, 60, 80, ${0.45 + danger * 0.4 * (0.5 + 0.5 * Math.sin(time * 18))})`;
+  drawTrailRopes(x0, y0, c0, c1, r0, r1, p => {
     if (p === me && danger > 0) return dangerColor;
-    if (p.fx.shield > 0) return alpha(p.color, 0.8);
-    if (p.skin === 'rainbow') return `hsla(${(time * 120 + p.hueOff) % 360}, 85%, 62%, 0.5)`;
-    return settings.contrast ? alpha(p.color, 0.8) : p.trailColor;
-  }, 0);
-
+    if (p.fx.shield > 0) return alpha(p.color, 0.85);
+    if (p.skin === 'rainbow') return `hsla(${(time * 120 + p.hueOff) % 360}, 85%, 62%, 0.65)`;
+    return alpha(p.color, settings.contrast ? 0.85 : 0.6);
+  });
   if (settings.patterns) drawRuns(trail, c0, c1, r0, r1, x0, y0, p => playerPattern(p, x0, y0), 0);
-
-  // A shimmer runs along every trail toward the head
-  const inner = CELL * 0.5;
-  for (const p of players) {
-    if (!p || !p.alive || !p.trail.length) continue;
-    p.trail.forEach((i, k) => {
-      const x = i % N, y = (i - x) / N;
-      if (x < c0 || x > c1 || y < r0 || y > r1 || trail[i] !== p.id) return;
-      ctx.fillStyle = `rgba(255, 255, 255, ${0.16 + 0.16 * Math.sin(k * 0.7 - time * 9)})`;
-      ctx.fillRect(x * CELL - x0 + (CELL - inner) / 2, y * CELL - y0 + (CELL - inner) / 2, inner, inner);
-    });
-  }
 
   if (gameMapId === 'belts') drawBelts(c0, c1, r0, r1, x0, y0, true);
   drawHazards(x0, y0);
@@ -3333,6 +3432,19 @@ function drawWorld(focus, c) {
     ctx.fill();
     ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
     ctx.fillRect(px - r * w * 0.35, py - r * 0.5, Math.max(1, r * w * 0.25), r * 0.5);
+    // Now and then a coin glints
+    const glint = (time * 0.7 + c.x * 0.37 + c.y * 0.11) % 2;
+    if (hiGfx() && glint < 0.25) {
+      const q = r * 0.9 * Math.sin((glint / 0.25) * Math.PI);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+      ctx.lineWidth = Math.max(1, r * 0.12);
+      ctx.beginPath();
+      ctx.moveTo(px + r * 0.3 - q, py - r * 0.3);
+      ctx.lineTo(px + r * 0.3 + q, py - r * 0.3);
+      ctx.moveTo(px + r * 0.3, py - r * 0.3 - q);
+      ctx.lineTo(px + r * 0.3, py - r * 0.3 + q);
+      ctx.stroke();
+    }
   }
 
   // Power-ups bob and pop in
@@ -3345,14 +3457,45 @@ function drawWorld(focus, c) {
     ctx.arc(px, py, r * (1.5 + 0.15 * Math.sin(time * 6)), 0, TAU);
     ctx.fill();
     drawPowerupIcon(pu.kind, px, py, r);
+    if (hiGfx()) {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+      for (let k = 0; k < 3; k++) {
+        const a = time * 2.5 + (k * TAU) / 3, sx = px + Math.cos(a) * r * 1.45, sy = py + Math.sin(a) * r * 1.45, q = r * 0.16;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy - q * 1.6);
+        ctx.lineTo(sx + q, sy);
+        ctx.lineTo(sx, sy + q * 1.6);
+        ctx.lineTo(sx - q, sy);
+        ctx.fill();
+      }
+    }
   }
 
-  // Freshly claimed land flashes white
+  // Freshly claimed land flashes white; a claimed loop sends a wave out from the square
   for (const f of flashes) {
-    ctx.fillStyle = `rgba(255, 255, 255, ${(f.life / 0.45) * 0.6})`;
+    if (!f.max) {
+      ctx.fillStyle = `rgba(255, 255, 255, ${(f.life / 0.45) * 0.6})`;
+      forCellsInView(f.cells, c0, c1, r0, r1, (x, y) => {
+        ctx.fillRect(Math.floor(x * CELL - x0), Math.floor(y * CELL - y0), Math.ceil(CELL), Math.ceil(CELL));
+      });
+      continue;
+    }
+    const age = f.max - f.life, front = age * 50, fade = f.life / f.max;
     forCellsInView(f.cells, c0, c1, r0, r1, (x, y) => {
+      const d = Math.hypot(x + 0.5 - f.ox, y + 0.5 - f.oy);
+      const a = (Math.max(0, 1 - Math.abs(d - front) / 3) * 0.75 + (d < front ? 0.12 : 0.3)) * fade;
+      if (a < 0.03) return;
+      ctx.fillStyle = `rgba(255, 255, 255, ${a.toFixed(2)})`;
       ctx.fillRect(Math.floor(x * CELL - x0), Math.floor(y * CELL - y0), Math.ceil(CELL), Math.ceil(CELL));
     });
+  }
+  for (const r of rings) {
+    const t = 1 - r.life / 0.6;
+    ctx.strokeStyle = alpha(r.color, r.life / 0.6);
+    ctx.lineWidth = Math.max(1.5, CELL * 0.45 * (1 - t));
+    ctx.beginPath();
+    ctx.arc(r.x * CELL - x0, r.y * CELL - y0, CELL * r.size * (0.3 + t), 0, TAU);
+    ctx.stroke();
   }
 
   // Players (you are drawn last so you're always on top)
@@ -3537,12 +3680,15 @@ function drawWorld(focus, c) {
   }
 
   drawWeather();
+  if (hiGfx() && !drawingGif) drawVignette();
 
   // Minimap
   if (drawingGif || state === 'photo') return;
   const ms = Math.min(130, W * 0.28), mx = 16, my = H - ms - 16;
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
-  ctx.fillRect(mx - 4, my - 4, ms + 8, ms + 8);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.78)';
+  ctx.beginPath();
+  ctx.roundRect(mx - 5, my - 5, ms + 10, ms + 10, 10);
+  ctx.fill();
   ctx.imageSmoothingEnabled = false;
   ctx.drawImage(mini, mx, my, ms, ms);
   ctx.save();
@@ -3858,7 +4004,7 @@ function recordFrame() {
     traps: traps.map(t => ({ ...t })),
     ps: players.map(p => p && {
       x: p.x, y: p.y, angle: p.angle, alive: p.alive, shield: p.fx.shield > 0, ghost: p.fx.ghost > 0, emote: p.emote && { ...p.emote },
-      px: p.petX, py: p.petY, pf: p.petFace,
+      px: p.petX, py: p.petY, pf: p.petFace, pt: p.trail.slice(),
     }),
     cam: { x: cam.x, y: cam.y, zoom: cam.zoom },
   });
@@ -3897,7 +4043,7 @@ function withReplayFrame(k, fn) {
   const i = Math.min(Math.floor(k), replayFrames.length - 1), t = k - i;
   const f = replayFrames[i], g = replayFrames[i + 1] || f;
   const lerp = (a, b) => a + (b - a) * t;
-  const saved = { owner, trail, wall, freezer, threats, danger, countdown, goFlash, particles, flashes, fades, floats, fxParts, shake };
+  const saved = { owner, trail, wall, freezer, threats, danger, countdown, goFlash, particles, flashes, fades, floats, fxParts, shake, rings };
   const savedPlayers = players.map(p => p && { x: p.x, y: p.y, angle: p.angle, alive: p.alive, trail: p.trail, fx: p.fx, emote: p.emote, petX: p.petX, petY: p.petY, petFace: p.petFace });
   const savedSaws = saws.map(sw => [sw.x, sw.y, sw.spin]);
   const savedStorm = storm && { ...storm };
@@ -3909,7 +4055,7 @@ function withReplayFrame(k, fn) {
   if (f.storm) Object.assign(storm, f.storm);
   saws.forEach((sw, n) => { if (f.saws[n]) [sw.x, sw.y, sw.spin] = f.saws[n]; });
   freezer = null; threats = []; danger = 0; countdown = 0; goFlash = 0; shake = 0;
-  particles = []; flashes = []; fades = []; floats = []; fxParts = [];
+  particles = []; flashes = []; fades = []; floats = []; fxParts = []; rings = [];
   players.forEach((p, n) => {
     const a = f.ps[n], b = g.ps[n] || a;
     if (!p) return;
@@ -3917,7 +4063,7 @@ function withReplayFrame(k, fn) {
     let da = b.angle - a.angle;
     da = Math.atan2(Math.sin(da), Math.cos(da));
     p.x = lerp(a.x, b.x); p.y = lerp(a.y, b.y); p.angle = a.angle + da * t; p.alive = a.alive;
-    p.trail = [];
+    p.trail = a.pt || [];
     p.fx = { speed: 0, shield: a.shield ? 1 : 0, freeze: 0, ghost: a.ghost ? 1 : 0 };
     p.emote = a.emote && { id: a.emote.id, t: a.emote.t + t * 0.1 };
     p.petX = lerp(a.px, b.px); p.petY = lerp(a.py, b.py); p.petFace = a.pf;
@@ -3925,7 +4071,7 @@ function withReplayFrame(k, fn) {
   try {
     fn({ x: lerp(f.cam.x, g.cam.x), y: lerp(f.cam.y, g.cam.y), zoom: lerp(f.cam.zoom, g.cam.zoom) });
   } finally {
-    ({ owner, trail, wall, freezer, threats, danger, countdown, goFlash, particles, flashes, fades, floats, fxParts, shake } = saved);
+    ({ owner, trail, wall, freezer, threats, danger, countdown, goFlash, particles, flashes, fades, floats, fxParts, shake, rings } = saved);
     players.forEach((p, n) => { if (p) Object.assign(p, savedPlayers[n]); });
     saws.forEach((sw, n) => { [sw.x, sw.y, sw.spin] = savedSaws[n]; });
     if (savedStorm) Object.assign(storm, savedStorm);

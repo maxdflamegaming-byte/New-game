@@ -46,6 +46,7 @@ A territory game inspired by Paper.io.
 - **Accessibility:** large text, a high-contrast look and a slower game speed (75%) in Settings.
 - **Map looks:** each season has its own look (Snow in winter, Garden in spring, Desert in summer, Space in autumn) with falling snow, petals, blowing sand or twinkling stars. Pick any look in Settings.
 - **Power-up upgrades:** spend coins to make your power-ups last up to 60% longer (or your Paint Bomb bigger).
+- **Graphics:** rounded, glossy squares, smooth glowing rope trails with sparkles, raised land edges, a wave and ring when you claim land, a soft board shadow and vignette, sparkling power-ups and glinting coins. Settings → Graphics: Low turns the extras off for slower phones.
 - **Photo mode:** from the pause screen, zoom, add a filter (Warm, Cool, Mono, Retro, Pop) and stickers, then save a framed picture.
 - **Daily missions:** 3 new missions every day with coin rewards.
 - **Weekly quest chain:** 5 quests a week (2 easy, 2 medium, 1 hard) that unlock one after another and pay 50, 75, 100, 150 and 300 coins.
