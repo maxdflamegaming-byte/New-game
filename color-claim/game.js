@@ -3207,6 +3207,23 @@ async function gifFromReplay() {
   Sfx.play('coin');
 }
 $('gif-btn').addEventListener('click', gifFromReplay);
+// Inside the claude.ai viewer a plain download link can't save files, so ask the viewer instead
+let viewerDownloads = null;
+if (window.claude && typeof window.claude.use === 'function') {
+  window.claude.use('downloads').then(d => { viewerDownloads = d; }).catch(() => { /* not available */ });
+}
+$('gif-save').addEventListener('click', e => {
+  if (!viewerDownloads || !gifBlob) return; // normal browsers use the link itself
+  e.preventDefault();
+  viewerDownloads.save({ filename: 'color-claim-replay.gif', data: gifBlob })
+    .then(() => { $('gif-status').textContent = 'GIF saved!'; })
+    .catch(err => {
+      if (err && err.code === 'declined') return;
+      if (err && err.code === 'rate_limited') { $('gif-status').textContent = 'One moment, then try again.'; return; }
+      $('gif-save').classList.add('hidden');
+      $('gif-status').textContent = 'Saving isn\'t available here. Tap and hold (or right-click) the picture to save it.';
+    });
+});
 $('gif-share').addEventListener('click', () => {
   if (!gifBlob) return;
   const file = new File([gifBlob], 'color-claim-replay.gif', { type: 'image/gif' });
