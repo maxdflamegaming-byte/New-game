@@ -96,6 +96,7 @@ const MODES = {
   timed: { name: 'Timed', desc: 'Biggest player after 3:00 wins', size: 80, win: 0, time: 180, powerups: 5 },
   daily: { name: 'Daily', desc: 'Same starting map for everyone today · claim 50%', size: 80, win: 50, powerups: 4, daily: true },
   marathon: { name: 'Marathon', desc: 'A huge map · claim 60% to win', size: 120, win: 60, powerups: 7 },
+  duo: { name: '2 Players', desc: 'Same keyboard: Player 1 uses WASD, Player 2 the arrow keys · first to 40% (or last one standing) wins', size: 80, win: 40, powerups: 5, duo: true },
   team: { name: 'Teams', desc: 'You + 3 bots vs 4 bots · first team to 50% wins', size: 80, win: 50, powerups: 5, teams: true },
 };
 
@@ -105,8 +106,37 @@ const MAPS = {
   pillars: { name: 'Pillars' },
 };
 
+// Custom maps are saved as a bit string of wall cells (80 x 80), base64 encoded
+const CUSTOM_SIZE = 80;
+function packCells(cells) {
+  let bin = '';
+  for (let i = 0; i < cells.length; i += 8) {
+    let b = 0;
+    for (let k = 0; k < 8; k++) if (cells[i + k]) b |= 1 << k;
+    bin += String.fromCharCode(b);
+  }
+  return btoa(bin);
+}
+function unpackCells(str) {
+  const cells = new Uint8Array(CUSTOM_SIZE * CUSTOM_SIZE);
+  try {
+    const bin = atob(str);
+    for (let i = 0; i < cells.length; i++) cells[i] = (bin.charCodeAt(i >> 3) >> (i & 7)) & 1;
+  } catch { /* bad saved data: empty map */ }
+  return cells;
+}
+function loadCustomMaps() {
+  try { const m = JSON.parse(load('color-claim-maps', '[]')); return Array.isArray(m) ? m : []; } catch { return []; }
+}
+
 function buildMap(id) {
-  if (id === 'round') {
+  if (id.startsWith('custom')) {
+    const map = loadCustomMaps()[Number(id.slice(6))];
+    if (map) {
+      const cells = unpackCells(map.cells);
+      for (let i = 0; i < cells.length; i++) if (cells[i]) wall[i] = 1;
+    }
+  } else if (id === 'round') {
     const c = (N - 1) / 2, r = N / 2 - 1;
     for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (Math.hypot(x - c, y - c) > r) wall[y * N + x] = 2;
   } else if (id === 'pillars') {
@@ -162,6 +192,9 @@ const SKINS = [
   { id: 'robot', name: 'Robot', need: { stat: 'games', n: 10, text: 'Play 10 games' } },
   { id: 'ninja', name: 'Ninja', need: { stat: 'wins', n: 1, text: 'Win a game' } },
   { id: 'rainbow', name: 'Rainbow', need: { stat: 'wins', n: 3, text: 'Win 3 games' } },
+  // Season pass rewards (can't be bought)
+  { id: 'crystal', name: 'Crystal', need: { stat: 'season', n: Infinity, text: 'Season pass reward' } },
+  { id: 'tiger', name: 'Tiger', need: { stat: 'season', n: Infinity, text: 'Season pass reward' } },
 ];
 
 // Power-ups appear on the map; anyone (bots too) can grab them
@@ -176,12 +209,14 @@ const SPAWN_SHIELD = 3; // seconds of protection after (re)spawning
 
 let players = [];     // players[id], id starts at 1
 let me = null;
+let p2 = null; // Player 2 in 2-player mode
+const cam2 = { x: 40, y: 40, zoom: 0.8 };
 let state = 'menu';
 let best = Number(load('color-claim-best', 0)) || 0; // Classic best (older saves use this key)
 let myMode = load('color-claim-mode', 'classic');
 if (!MODES[myMode]) myMode = 'classic';
 let myMap = load('color-claim-map', 'square');
-if (!MAPS[myMap]) myMap = 'square';
+if (!MAPS[myMap] && !(myMap.startsWith('custom') && load('color-claim-maps', '').length)) myMap = 'square';
 let gameMode = MODES.classic, gameModeId = 'classic', gameMapId = 'square', playTime = 0;
 
 const bestKey = modeId => (modeId === 'classic' ? 'color-claim-best' : modeId === 'daily' ? `color-claim-daily-${todayKey()}` : `color-claim-best-${modeId}`);
@@ -320,7 +355,15 @@ function kill(victim, killer, how = 'cut') {
   else if (how === 'bump') addFeed(`💢 ${killer.name} bumped ${victim.name}`);
   else addFeed(`✂️ ${killer.name} cut ${victim.name}`);
 
-  if (victim === me) {
+  if (gameMode.duo && (victim === me || victim === p2)) {
+    // 2 players: the first human knocked out loses
+    shake = 1;
+    Sfx.play('death');
+    buzz(300);
+    const winner = victim === me ? p2 : me;
+    const by = killer && killer !== victim ? ` by ${killer.name}` : '';
+    later(900, () => endDuo(winner, `${victim.name} was knocked out${by}.`));
+  } else if (victim === me) {
     shake = 1;
     Sfx.play('death');
     buzz(300);
@@ -583,7 +626,7 @@ function updatePowerups(dt) {
 // The Giant: a big, fast boss bot that arrives once you're doing well, and hunts your trail
 let giant = null;
 function giantDue() {
-  if (giant || !me.alive) return false;
+  if (giant || !me.alive || gameMode.duo) return false;
   if (gameMode.time) return playTime >= 90;
   return pct(me) >= (N > 100 ? 15 : 20);
 }
@@ -887,7 +930,22 @@ const endStick = e => {
 canvas.addEventListener('pointerup', endStick);
 canvas.addEventListener('pointercancel', endStick);
 
+function steerKeys(p, up, down, left, right) {
+  let x = 0, y = 0;
+  if (keys.has(left)) x -= 1;
+  if (keys.has(right)) x += 1;
+  if (keys.has(up)) y -= 1;
+  if (keys.has(down)) y += 1;
+  if (x || y) p.desired = Math.atan2(y, x);
+}
+
 function steerHuman() {
+  if (gameMode.duo) {
+    // Player 1: WASD (or touch), Player 2: arrow keys
+    steerKeys(me, 'w', 's', 'a', 'd');
+    if (p2 && p2.alive) steerKeys(p2, 'arrowup', 'arrowdown', 'arrowleft', 'arrowright');
+    return;
+  }
   let x = 0, y = 0;
   if (keys.has('a') || keys.has('arrowleft')) x -= 1;
   if (keys.has('d') || keys.has('arrowright')) x += 1;
@@ -948,8 +1006,12 @@ function buildPickers() {
   };
   const daily = MODES[myMode].daily;
   seg('modes', MODES, myMode, id => { myMode = id; save('color-claim-mode', id); buildPickers(); });
-  seg('maps', MAPS, daily ? dailyMap() : myMap, id => { myMap = id; save('color-claim-map', id); buildPickers(); }, daily);
-  $('mode-desc').textContent = MODES[myMode].desc + (daily ? ` · Today's map: ${MAPS[dailyMap()].name}` : '');
+  const allMaps = { ...MAPS };
+  loadCustomMaps().forEach((m, i) => { if (m) allMaps['custom' + i] = { name: m.name }; });
+  if (!allMaps[myMap]) myMap = 'square';
+  seg('maps', allMaps, daily ? dailyMap() : myMap, id => { myMap = id; save('color-claim-map', id); buildPickers(); }, daily);
+  $('mode-desc').textContent = MODES[myMode].desc + (daily ? ` · Today's map: ${MAPS[dailyMap()].name}` : '')
+    + (!daily && myMap.startsWith('custom') && MODES[myMode].size !== CUSTOM_SIZE ? ' · Custom maps are always normal size' : '');
   updateMenuBest();
 }
 
@@ -967,7 +1029,8 @@ function startGame() {
   gameMapId = gameMode.daily ? dailyMap() : myMap;
   // Daily: the same seed all day, so everyone gets the same starting map
   random = gameMode.daily ? mulberry32(hashStr('color-claim-' + todayKey())) : Math.random;
-  allocWorld(gameMode.size);
+  // Custom maps are always 80 x 80
+  allocWorld(gameMapId.startsWith('custom') ? CUSTOM_SIZE : gameMode.size);
   buildMap(gameMapId);
   counts.fill(0);
   particles = [];
@@ -978,11 +1041,20 @@ function startGame() {
   renderFeed();
   rgbCache.length = 0;
   players = [null];
-  me = makePlayer(1, myName || 'You', COLORS[myColor], false, mySkin);
+  const duo = !!gameMode.duo;
+  me = makePlayer(1, duo ? myName || 'Player 1' : myName || 'You', COLORS[myColor], false, mySkin);
   players.push(me);
-  const botColors = COLORS.filter((_, i) => i !== myColor);
-  const names = BOT_NAMES.slice().sort(() => random() - 0.5);
-  names.forEach((name, i) => players.push(makePlayer(i + 2, name, botColors[i], true, SKINS[randInt(0, SKINS.length - 1)].id)));
+  p2 = null;
+  const taken = [myColor];
+  if (duo) {
+    const c2 = (myColor + 4) % COLORS.length;
+    taken.push(c2);
+    p2 = makePlayer(2, 'Player 2', COLORS[c2], false, 'classic');
+    players.push(p2);
+  }
+  const botColors = COLORS.filter((_, i) => !taken.includes(i));
+  const names = BOT_NAMES.slice().sort(() => random() - 0.5).slice(0, botColors.length);
+  names.forEach((name, i) => players.push(makePlayer(players.length, name, botColors[i], true, SKINS[randInt(0, SKINS.length - 1)].id)));
   // Teams: you and the first 3 bots against the other 4. Otherwise everyone is on their own.
   for (const p of players) if (p) p.team = gameMode.teams ? (p.id <= 4 ? 0 : 1) : p.id;
   giant = null;
@@ -991,8 +1063,14 @@ function startGame() {
   mapCoins = [];
   coinTimer = 3;
   freezer = null;
-  spawn(me, N / 2, N / 2);
+  if (duo) {
+    spawn(me, Math.round(N * 0.3), N / 2);
+    spawn(p2, Math.round(N * 0.7), N / 2);
+  } else {
+    spawn(me, N / 2, N / 2);
+  }
   for (const p of players) if (p && p.isBot) spawn(p);
+  if (p2) { cam2.x = p2.x; cam2.y = p2.y; cam2.zoom = 0.8; }
   random = Math.random;
   playTime = 0;
   run = { powerups: 0, bigLoop: 0, freezeKO: false, trophies: [], coinsPicked: 0, giantKO: false };
@@ -1000,7 +1078,7 @@ function startGame() {
   achTimer = 1;
   cam.x = me.x;
   cam.y = me.y;
-  cam.zoom = 1;
+  cam.zoom = duo ? 0.8 : 1;
   peakPct = 0;
   time = 0;
   shake = 0;
@@ -1051,7 +1129,7 @@ function endGame(won, reason) {
 
   // Update lifetime stats and announce any skins that just unlocked
   const before = SKINS.filter(isUnlocked);
-  const { earned, fresh: trophies, xpGain, levelsUp, levelCoins, missionsDone, missionCoins } = finishRun(won, score);
+  const { earned, fresh: trophies, xpGain, levelsUp, levelCoins, missionsDone, missionCoins, seasonRewards } = finishRun(won, score);
   const fresh = SKINS.filter(sk => isUnlocked(sk) && !before.includes(sk));
   $('over-unlock').textContent = fresh.length ? `🎁 New skin unlocked: ${fresh.map(sk => sk.name).join(', ')}! Find it in the Locker.` : '';
   $('over-unlock').classList.toggle('hidden', !fresh.length);
@@ -1063,6 +1141,8 @@ function endGame(won, reason) {
   $('over-xp').innerHTML = `+${xpGain} XP · Level ${lv.lvl}${levelsUp ? ' <b>Level up!</b>' : ''}<span class="xpbar"><span style="width:${(lv.into / lv.need) * 100}%"></span></span>`;
   $('over-missions').innerHTML = missionsDone.map(m => `<li>✓ Mission done: ${m.text} <small>+${m.reward}</small></li>`).join('');
   $('over-missions').classList.toggle('hidden', !missionsDone.length);
+  $('over-season').innerHTML = seasonRewards.map(r => `<li>Season tier ${r.tier}: ${r.text}</li>`).join('');
+  $('over-season').classList.toggle('hidden', !seasonRewards.length);
   renderLevel();
   $('over-ach').innerHTML = trophies.map(a => `<li>${Icons.trophy}${a.name} <small>+${ACH_REWARD}</small></li>`).join('');
   $('over-ach').classList.toggle('hidden', !trophies.length);
@@ -1080,6 +1160,27 @@ function win(reason = `You claimed ${gameMode.win}% of the map!`) {
   Sfx.play('win');
   for (let i = 0; i < 6; i++) burst(me.x + rand(-8, 8), me.y + rand(-6, 6), COLORS[i], 30, 14);
   later(1600, () => endGame(true, reason));
+}
+
+// 2 players: celebrate, then show who won. These games don't give coins or trophies.
+function duoWin(p) {
+  state = 'won';
+  Sfx.play('win');
+  for (let i = 0; i < 6; i++) burst(p.x + rand(-8, 8), p.y + rand(-6, 6), COLORS[i], 30, 14);
+  later(1600, () => endDuo(p, `${p.name} claimed ${gameMode.win}% of the map!`));
+}
+
+function endDuo(winner, reason) {
+  if (state === 'over' || state === 'menu') return;
+  state = 'over';
+  Music.stop();
+  $('over-title').textContent = `🏆 ${winner.name} wins!`;
+  $('over-reason').textContent = reason;
+  $('over-stats').textContent = `${me.name} ${pct(me).toFixed(1)}% · ${p2.name} ${pct(p2).toFixed(1)}%`;
+  $('over-best').textContent = "2-player games are just for fun: they don't give coins, XP or trophies.";
+  for (const id of ['over-coins', 'over-xp']) $(id).innerHTML = '';
+  for (const id of ['over-missions', 'over-season', 'over-unlock', 'over-ach']) $(id).classList.add('hidden');
+  showScreen('over');
 }
 
 // Timed mode: when the clock runs out, the biggest player wins
@@ -1143,8 +1244,13 @@ function updateCamera(dt) {
   const k = Math.min(1, dt * 6);
   cam.x += (me.x - cam.x) * k;
   cam.y += (me.y - cam.y) * k;
-  const targetZoom = 1 - Math.min(0.35, pct(me) / 80);
-  cam.zoom += (targetZoom - cam.zoom) * Math.min(1, dt * 2);
+  const base = gameMode.duo ? 0.8 : 1;
+  cam.zoom += (base - Math.min(0.35, pct(me) / 80) - cam.zoom) * Math.min(1, dt * 2);
+  if (p2) {
+    cam2.x += (p2.x - cam2.x) * k;
+    cam2.y += (p2.y - cam2.y) * k;
+    cam2.zoom += (base - Math.min(0.35, pct(p2) / 80) - cam2.zoom) * Math.min(1, dt * 2);
+  }
 }
 
 function update(dt) {
@@ -1154,6 +1260,7 @@ function update(dt) {
     const before = Math.ceil(countdown);
     countdown -= dt;
     if (me.alive) { steerHuman(); me.angle = me.desired; }
+    if (p2) p2.angle = p2.desired;
     if (countdown <= 0) { goFlash = 0.8; Sfx.play('go'); buzz(40); }
     else if (Math.ceil(countdown) !== before) Sfx.play('beep');
     updateCamera(dt);
@@ -1164,7 +1271,7 @@ function update(dt) {
     playTime += dt;
     if (gameMode.time && playTime >= gameMode.time && me.alive) timeUp();
     achTimer -= dt;
-    if (achTimer <= 0 && me.alive) { achTimer = 1; liveAchievementCheck(); }
+    if (achTimer <= 0 && me.alive && !gameMode.duo) { achTimer = 1; liveAchievementCheck(); }
   }
 
   // Your trail effect (from the Locker) puffs out behind you while you're outside your land
@@ -1245,7 +1352,10 @@ function update(dt) {
 
   if (me.alive && state === 'play') {
     peakPct = Math.max(peakPct, pct(me));
-    if (gameMode.teams) {
+    if (gameMode.duo) {
+      if (pct(me) >= gameMode.win) duoWin(me);
+      else if (p2.alive && pct(p2) >= gameMode.win) duoWin(p2);
+    } else if (gameMode.teams) {
       if (teamPct(0) >= gameMode.win) win(`Your team claimed ${gameMode.win}% of the map!`);
       else if (teamPct(1) >= gameMode.win) { state = 'won'; later(600, () => endGame(false, `The other team claimed ${gameMode.win}% first.`)); }
     } else if (gameMode.win && pct(me) >= gameMode.win) win();
@@ -1409,6 +1519,28 @@ function drawBody(g, look, s, t) {
       g.fillStyle = COLORS[(i * 3 + 1) % COLORS.length];
       g.fillRect(dx * s - s * 0.06, dy * s - s * 0.06, s * 0.12, s * 0.12);
     });
+  } else if (skin === 'crystal') {
+    // Gem facets
+    g.fillStyle = 'rgba(255, 255, 255, 0.45)';
+    g.beginPath(); g.moveTo(-s / 2, -s / 2); g.lineTo(0, 0); g.lineTo(-s / 2, s / 2); g.fill();
+    g.fillStyle = 'rgba(255, 255, 255, 0.2)';
+    g.beginPath(); g.moveTo(-s / 2, -s / 2); g.lineTo(s / 2, -s / 2); g.lineTo(0, 0); g.fill();
+    g.fillStyle = 'rgba(0, 0, 0, 0.12)';
+    g.beginPath(); g.moveTo(s / 2, s / 2); g.lineTo(0, 0); g.lineTo(-s / 2, s / 2); g.fill();
+    g.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    g.fillRect(-s * 0.3, -s * 0.34, s * 0.1, s * 0.1);
+  } else if (skin === 'tiger') {
+    g.fillStyle = 'rgba(20, 20, 30, 0.55)';
+    for (const k of [-0.35, -0.1, 0.15]) {
+      g.beginPath();
+      g.moveTo(k * s, -s / 2);
+      g.lineTo((k + 0.12) * s, -s / 2);
+      g.lineTo((k + 0.02) * s, 0);
+      g.lineTo((k + 0.12) * s, s / 2);
+      g.lineTo(k * s, s / 2);
+      g.lineTo((k - 0.06) * s, 0);
+      g.fill();
+    }
   } else if (skin === 'robot') {
     g.fillStyle = 'rgba(0, 0, 0, 0.18)';
     g.fillRect(-s / 2, -s * 0.04, s * 0.45, s * 0.08);
@@ -1518,6 +1650,27 @@ function drawFxShape(g, f, x, y, size) {
     g.rotate(f.rot);
     g.fillStyle = '#ffc93c';
     star(5, s * 0.45, s * 0.2);
+  } else if (f.kind === 'lightning') {
+    g.strokeStyle = '#ffe14d';
+    g.lineWidth = Math.max(1.5, s * 0.1);
+    g.lineJoin = 'round';
+    g.beginPath();
+    g.moveTo(-s * 0.1, -s * 0.45);
+    g.lineTo(s * 0.12, -s * 0.05);
+    g.lineTo(-s * 0.08, 0.05 * s);
+    g.lineTo(s * 0.1, s * 0.45);
+    g.stroke();
+  } else if (f.kind === 'snow') {
+    g.rotate(f.rot);
+    g.strokeStyle = '#ffffff';
+    g.lineWidth = Math.max(1, s * 0.07);
+    for (let k = 0; k < 3; k++) {
+      g.rotate(Math.PI / 3);
+      g.beginPath();
+      g.moveTo(-s * 0.35, 0);
+      g.lineTo(s * 0.35, 0);
+      g.stroke();
+    }
   } else if (f.kind === 'rainbow') {
     g.rotate(f.rot);
     g.fillStyle = `hsl(${f.hue}, 85%, 60%)`;
@@ -1662,9 +1815,49 @@ function draw(dt) {
     return;
   }
 
-  CELL = BASE_CELL * cam.zoom;
+  minimapTimer -= dt;
+  if (minimapTimer <= 0) { updateMinimap(); minimapTimer = 0.25; }
+
+  if (!gameMode.duo || !p2) {
+    drawWorld(me, cam);
+    return;
+  }
+  // 2 players: split screen (side by side when wide, top and bottom when tall)
+  const wide = W >= H, fullW = W, fullH = H;
+  const views = wide ? [[0, 0, W / 2, H], [W / 2, 0, W / 2, H]] : [[0, 0, W, H / 2], [0, H / 2, W, H / 2]];
+  [[me, cam], [p2, cam2]].forEach(([focus, c], i) => {
+    const [vx, vy, vw, vh] = views[i];
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(vx, vy, vw, vh);
+    ctx.clip();
+    ctx.translate(vx, vy);
+    W = vw;
+    H = vh;
+    drawWorld(focus, c);
+    // Player label and score at the bottom of each view
+    ctx.font = 'bold 15px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    const label = `${focus.name} · ${pct(focus).toFixed(1)}%${focus.alive ? '' : ' · out'}`;
+    const lw = ctx.measureText(label).width + 20;
+    ctx.fillStyle = focus.color;
+    ctx.fillRect(W / 2 - lw / 2, H - 34, lw, 24);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(label, W / 2, H - 17);
+    W = fullW;
+    H = fullH;
+    ctx.restore();
+  });
+  ctx.fillStyle = '#26304a';
+  if (wide) ctx.fillRect(W / 2 - 2, 0, 4, H);
+  else ctx.fillRect(0, H / 2 - 2, W, 4);
+}
+
+// Draws the world as seen by `focus`, through camera `c`, filling the current W x H view
+function drawWorld(focus, c) {
+  CELL = BASE_CELL * c.zoom;
   const sh = settings.shake ? shake * CELL * 0.6 : 0;
-  const x0 = cam.x * CELL - W / 2 + rand(-sh, sh), y0 = cam.y * CELL - H / 2 + rand(-sh, sh);
+  const x0 = c.x * CELL - W / 2 + rand(-sh, sh), y0 = c.y * CELL - H / 2 + rand(-sh, sh);
 
   // Map floor: a raised board with a soft checker pattern
   if (gameMapId !== 'round') {
@@ -1787,8 +1980,8 @@ function draw(dt) {
   let leader = null;
   for (const p of players) if (p && p.alive && (!leader || counts[p.id] > counts[leader.id])) leader = p;
   const leaderId = leader && leader.id;
-  for (const p of players) if (p && p.alive && p !== me) drawHead(p, x0, y0, leaderId);
-  if (me.alive) drawHead(me, x0, y0, leaderId);
+  for (const p of players) if (p && p.alive && p !== focus) drawHead(p, x0, y0, leaderId);
+  if (focus.alive) drawHead(focus, x0, y0, leaderId);
 
   for (const f of fxParts) drawFxShape(ctx, f, f.x * CELL - x0, f.y * CELL - y0, CELL * 1.1);
 
@@ -1820,7 +2013,7 @@ function draw(dt) {
   ctx.globalAlpha = 1;
 
   // Frozen by someone else: frosty screen edge
-  if (freezer && freezer !== me && me.alive) {
+  if (freezer && freezer !== focus && focus.alive) {
     const grad = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.max(W, H) * 0.75);
     grad.addColorStop(0, 'rgba(160, 225, 255, 0)');
     grad.addColorStop(1, 'rgba(160, 225, 255, 0.55)');
@@ -1828,8 +2021,8 @@ function draw(dt) {
     ctx.fillRect(0, 0, W, H);
   }
 
-  // Danger warning: red glow around the screen edge
-  if (danger > 0.3) {
+  // Danger warning: red glow around the screen edge (your view only)
+  if (danger > 0.3 && focus === me) {
     const a = danger * 0.35 * (0.6 + 0.4 * Math.sin(time * 18));
     const grad = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.75);
     grad.addColorStop(0, 'rgba(255, 60, 80, 0)');
@@ -1839,7 +2032,7 @@ function draw(dt) {
   }
 
   // Enemies near your trail: a "!" above them, or an arrow at the screen edge if off-screen
-  for (const o of threats) {
+  for (const o of focus === me ? threats : []) {
     const sx = o.x * CELL - x0, sy = o.y * CELL - y0;
     const pulse = 1 + 0.15 * Math.sin(time * 14);
     if (sx > 20 && sy > 20 && sx < W - 20 && sy < H - 20) {
@@ -1887,7 +2080,7 @@ function draw(dt) {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.lineWidth = 8;
-    ctx.strokeStyle = me.dark;
+    ctx.strokeStyle = focus.dark;
     ctx.strokeText(text, 0, 0);
     ctx.fillStyle = '#fff';
     ctx.fillText(text, 0, 0);
@@ -1895,7 +2088,7 @@ function draw(dt) {
   }
 
   // Touch joystick
-  if (stick.active && state === 'play') {
+  if (stick.active && state === 'play' && !gameMode.duo) {
     const R = stickRadius();
     ctx.strokeStyle = 'rgba(38, 48, 74, 0.3)';
     ctx.lineWidth = 2;
@@ -1932,8 +2125,6 @@ function draw(dt) {
   }
 
   // Minimap
-  minimapTimer -= dt;
-  if (minimapTimer <= 0) { updateMinimap(); minimapTimer = 0.25; }
   const ms = Math.min(130, W * 0.28), mx = 16, my = H - ms - 16;
   ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
   ctx.fillRect(mx - 4, my - 4, ms + 8, ms + 8);
@@ -1947,11 +2138,11 @@ function draw(dt) {
   ctx.lineWidth = 1;
   ctx.strokeRect(mx + (x0 / CELL / N) * ms, my + (y0 / CELL / N) * ms, (W / CELL / N) * ms, (H / CELL / N) * ms);
   ctx.restore();
-  if (me.alive) {
+  if (focus.alive) {
     ctx.fillStyle = '#fff';
-    ctx.strokeStyle = me.dark;
+    ctx.strokeStyle = focus.dark;
     ctx.beginPath();
-    ctx.arc(mx + (me.x / N) * ms, my + (me.y / N) * ms, 3 + Math.sin(time * 6), 0, TAU);
+    ctx.arc(mx + (focus.x / N) * ms, my + (focus.y / N) * ms, 3 + Math.sin(time * 6), 0, TAU);
     ctx.fill();
     ctx.stroke();
   }
@@ -2048,8 +2239,9 @@ function updateHud() {
   if (freezer && freezer !== me && me.alive) fx.push('<span class="fx" style="--c:#3fc7f5">Frozen!</span>');
   const fxHtml = fx.join('');
   if ($('effects').innerHTML !== fxHtml) $('effects').innerHTML = fxHtml;
-  $('team-score').classList.toggle('hidden', !gameMode.teams);
-  if (gameMode.teams) $('team-score').innerHTML = `<b class="us">Your team ${teamPct(0).toFixed(1)}%</b> <span>vs</span> <b class="them">${teamPct(1).toFixed(1)}%</b>`;
+  $('team-score').classList.toggle('hidden', !gameMode.teams && !gameMode.duo);
+  if (gameMode.duo) $('team-score').innerHTML = `<b class="us">P1 ${pct(me).toFixed(1)}%</b> <span>vs</span> <b class="them">P2 ${pct(p2).toFixed(1)}%</b>`;
+  else if (gameMode.teams) $('team-score').innerHTML = `<b class="us">Your team ${teamPct(0).toFixed(1)}%</b> <span>vs</span> <b class="them">${teamPct(1).toFixed(1)}%</b>`;
   const ranked = players.filter(p => p && p.alive).sort((a, b) => counts[b.id] - counts[a.id]);
   const top = ranked.slice(0, 5);
   if (me.alive && !top.includes(me)) top.push(me);

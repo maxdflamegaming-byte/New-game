@@ -20,9 +20,11 @@ A territory game inspired by Paper.io.
   | Timed | Be the biggest when the 3:00 clock runs out |
   | Daily | Same starting map for everyone today (claim 50%) |
   | Marathon | A 120×120 map (claim 60%) |
+  | 2 Players | Two people on one keyboard (WASD vs arrow keys) with a split screen. First to 40%, or last one standing, wins |
   | Teams | You + 3 bots vs 4 bots; teammates can't cut, bump or steal from each other. First team to 50% wins |
 
-- **Maps:** Square, Round arena and Pillars (walls you slide along).
+- **Maps:** Square, Round arena and Pillars (walls you slide along), plus up to 3 of your own from the **map editor** (paint walls with mirroring, the middle stays clear for your start).
+- **Season pass:** each month is a season with 20 tiers filled by XP. Every tier pays coins, and tiers 10 and 20 give that season's trail effect and skin (Lightning/Crystal or Snowflakes/Tiger).
 - **Power-ups:** Speed (1.6× faster), Shield (nobody can cut or bump you), Freeze (everyone else at half speed), Ghost (cross your own trail safely) and Paint Bomb (instantly claim a circle of land). Bots use them too.
 - **Gold coins** appear on the map. Grab them before the bots do.
 - **The Giant:** once you reach 20% (90 s into a Timed game), a big, fast boss bot arrives and hunts your trail. Knock it out for 100 coins.

@@ -57,9 +57,11 @@
     <p class="small"><b id="menu-best"></b></p>
     <nav class="menu-nav">
       <button class="nav-btn" data-open="missions">Missions <span id="mission-badge" class="badge">0/3</span></button>
+      <button class="nav-btn" data-open="season">Season</button>
       <button class="nav-btn" data-open="locker">Locker</button>
       <button class="nav-btn" data-open="trophies">Trophies</button>
       <button class="nav-btn" data-open="stats">Stats</button>
+      <button class="nav-btn" data-open="editor">Map editor</button>
       <button class="nav-btn" data-open="settings">Settings</button>
       <button id="howto-open" class="nav-btn">How to play</button>
       <button id="install-btn" class="nav-btn install hidden">Install app</button>
@@ -84,6 +86,31 @@
     <p class="small">New missions every day. Rewards are paid out as soon as you finish one.</p>
     <ul id="mission-list"></ul>
     <button class="secondary" data-back>Back</button>
+  </div>
+
+  <div id="season" class="screen">
+    <h2>Season pass</h2>
+    <p id="season-head" class="season-head"></p>
+    <div id="season-tiers"></div>
+    <p class="small">Every game's XP fills the pass. Rewards are yours as soon as you reach a tier.</p>
+    <button class="secondary" data-back>Back</button>
+  </div>
+
+  <div id="editor" class="screen">
+    <h2>Map editor</h2>
+    <p class="small">Draw walls, then save. Your map shows up in the map picker. The blue circle stays clear so there's room to start.</p>
+    <div class="seg" id="editor-slots"></div>
+    <canvas id="editor-canvas" width="480" height="480"></canvas>
+    <div class="row">
+      <div class="seg" id="editor-tool"></div>
+      <div class="seg" id="editor-brush"></div>
+      <div class="seg" id="editor-mirror"></div>
+    </div>
+    <div class="row">
+      <button id="editor-save">Save map</button>
+      <button id="editor-clear" class="secondary">Clear</button>
+      <button class="secondary" data-back>Back</button>
+    </div>
   </div>
 
   <div id="trophies" class="screen">
@@ -131,6 +158,7 @@
     <p id="over-coins" class="coins-earned"></p>
     <p id="over-xp" class="xp-earned"></p>
     <ul id="over-missions" class="hidden"></ul>
+    <ul id="over-season" class="hidden"></ul>
     <p id="over-unlock" class="unlock hidden"></p>
     <ul id="over-ach" class="hidden"></ul>
     <div class="row">

@@ -320,6 +320,38 @@ canvas { display: block; touch-action: none; }
 #board li.ally { color: #1f5fd6; }
 #board li.boss { color: #d6304a; }
 
+.season-head { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.xpbar.wide { width: min(320px, 80vw); height: 8px; }
+#season-tiers { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; width: 100%; max-width: 560px; }
+.tier {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 4px;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 3px 0 #c7cfe0;
+  opacity: 0.6;
+}
+.tier.got { opacity: 1; outline: 2px solid #b06bff; }
+.tier.big { background: #f3eaff; }
+.tier .n { font-size: 11px; font-weight: 900; color: #7d4fd6; }
+.tier canvas { width: 40px; height: 40px; }
+.tier small { font-size: 10px; line-height: 1.2; }
+#over-season { list-style: none; display: flex; flex-direction: column; gap: 4px; font-weight: 800; color: #7d4fd6; }
+
+#editor-canvas {
+  width: min(480px, calc(100vw - 32px), calc(100vh - 330px));
+  aspect-ratio: 1;
+  max-width: 100%;
+  border-radius: 10px;
+  box-shadow: 0 3px 0 #c7cfe0;
+  touch-action: none;
+  cursor: crosshair;
+}
+
 .pickers { display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .seg { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; padding: 4px; background: rgba(255, 255, 255, 0.7); border-radius: 12px; }
 .seg-btn {

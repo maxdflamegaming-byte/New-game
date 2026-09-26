@@ -46,6 +46,8 @@ const TRAIL_FX = [
   { id: 'fire', name: 'Fire', price: 150 },
   { id: 'stars', name: 'Stars', price: 200 },
   { id: 'rainbow', name: 'Rainbow', price: 250 },
+  { id: 'lightning', name: 'Lightning', price: 0, season: true },
+  { id: 'snow', name: 'Snowflakes', price: 0, season: true },
 ];
 let ownedFx = loadJSON('color-claim-owned-fx', ['none']);
 myFx = ownedFx.includes(myFx) ? myFx : 'none';
@@ -121,8 +123,9 @@ function finishRun(won, score) {
     ...runSnapshot(), powerups: run.powerups, coinsPicked: run.coinsPicked, mode: gameModeId, map: gameMapId, won,
   });
   const missionCoins = missionsDone.reduce((a, m) => a + m.reward, 0);
+  const seasonRewards = addSeasonXp(xpGain);
   save('color-claim-stats', JSON.stringify(stats));
-  return { earned, fresh, xpGain, levelsUp, levelCoins, missionsDone, missionCoins };
+  return { earned, fresh, xpGain, levelsUp, levelCoins, missionsDone, missionCoins, seasonRewards };
 }
 
 // ---------- Player level ----------
@@ -225,6 +228,162 @@ function renderEvent() {
   $('event-banner').innerHTML = `<b>This week: ${event.name}</b><span>${event.desc} · ends in ${daysLeft} day${daysLeft === 1 ? '' : 's'}</span>`;
 }
 
+// ---------- Season pass ----------
+// Each calendar month is a season. XP you earn fills 20 tiers; every tier pays out, and
+// tiers 10 and 20 give that season's trail effect and skin (yours to keep).
+const SEASON_TIERS = 20, SEASON_TIER_XP = 150;
+const SEASON_ITEMS = [{ fx: 'lightning', skin: 'crystal' }, { fx: 'snow', skin: 'tiger' }];
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+function seasonNow() {
+  const d = new Date();
+  const end = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+  return {
+    key: `${d.getFullYear()}-${d.getMonth() + 1}`,
+    name: `${MONTHS[d.getMonth()]} season`,
+    items: SEASON_ITEMS[(d.getFullYear() * 12 + d.getMonth()) % SEASON_ITEMS.length],
+    daysLeft: Math.ceil((end - d) / 86400000),
+  };
+}
+
+let season = loadJSON('color-claim-season', {});
+function freshSeason() {
+  const now = seasonNow();
+  if (season.key !== now.key) season = { key: now.key, xp: 0, tier: 0 };
+  return season;
+}
+
+function seasonReward(tier) {
+  const { items } = seasonNow();
+  if (tier === 10) return { fx: items.fx, text: `${TRAIL_FX.find(f => f.id === items.fx).name} trail` };
+  if (tier === 20) return { skin: items.skin, text: `${SKINS.find(k => k.id === items.skin).name} skin` };
+  const c = 20 + tier * 2;
+  return { coins: c, text: `${c} coins` };
+}
+
+function addSeasonXp(n) {
+  const st = freshSeason();
+  st.xp += n;
+  const newTier = Math.min(SEASON_TIERS, Math.floor(st.xp / SEASON_TIER_XP));
+  const rewards = [];
+  for (let t = st.tier + 1; t <= newTier; t++) {
+    const r = seasonReward(t);
+    if (r.coins) addCoins(r.coins);
+    if (r.skin && !ownedSkins.includes(r.skin)) { ownedSkins.push(r.skin); save('color-claim-owned-skins', JSON.stringify(ownedSkins)); }
+    if (r.fx && !ownedFx.includes(r.fx)) { ownedFx.push(r.fx); save('color-claim-owned-fx', JSON.stringify(ownedFx)); }
+    rewards.push({ tier: t, ...r });
+  }
+  st.tier = newTier;
+  save('color-claim-season', JSON.stringify(st));
+  return rewards;
+}
+
+function buildSeason() {
+  const st = freshSeason(), now = seasonNow();
+  const into = st.tier >= SEASON_TIERS ? SEASON_TIER_XP : st.xp - st.tier * SEASON_TIER_XP;
+  $('season-head').innerHTML = `<span><b>${now.name}</b> · tier ${st.tier} / ${SEASON_TIERS} · ends in ${now.daysLeft} day${now.daysLeft === 1 ? '' : 's'}</span>
+    <span class="xpbar wide"><span style="width:${(into / SEASON_TIER_XP) * 100}%"></span></span>
+    <small>${st.tier >= SEASON_TIERS ? 'Season complete!' : `${into} / ${SEASON_TIER_XP} XP to tier ${st.tier + 1}`}</small>`;
+  const box = $('season-tiers');
+  box.innerHTML = '';
+  for (let t = 1; t <= SEASON_TIERS; t++) {
+    const r = seasonReward(t);
+    const cell = document.createElement('div');
+    cell.className = 'tier' + (t <= st.tier ? ' got' : '') + (r.coins ? '' : ' big');
+    cell.innerHTML = `<span class="n">${t}</span>`;
+    if (r.skin) cell.appendChild(skinPreview(r.skin));
+    else if (r.fx) cell.appendChild(fxPreview(r.fx));
+    else cell.insertAdjacentHTML('beforeend', '<span class="coin"></span>');
+    cell.insertAdjacentHTML('beforeend', `<small>${r.text}</small>`);
+    box.appendChild(cell);
+  }
+}
+
+// ---------- Map editor ----------
+// Paint walls on an 80 x 80 grid. The middle stays clear so there's room to start.
+const editor = { slot: 0, cells: new Uint8Array(CUSTOM_SIZE * CUSTOM_SIZE), tool: 1, brush: 1, mirror: true, drawing: false };
+const edCanvas = $('editor-canvas'), edCtx = edCanvas.getContext('2d');
+const edProtected = (x, y) => Math.hypot(x - CUSTOM_SIZE / 2, y - CUSTOM_SIZE / 2) < 7;
+
+function editorLoadSlot(slot) {
+  editor.slot = slot;
+  const saved = loadCustomMaps()[slot];
+  editor.cells = saved ? unpackCells(saved.cells) : new Uint8Array(CUSTOM_SIZE * CUSTOM_SIZE);
+  buildEditor();
+}
+
+function drawEditor() {
+  const C = edCanvas.width / CUSTOM_SIZE;
+  edCtx.fillStyle = '#f5f7fc';
+  edCtx.fillRect(0, 0, edCanvas.width, edCanvas.height);
+  edCtx.fillStyle = '#edf0f8';
+  for (let y = 0; y < CUSTOM_SIZE; y++) for (let x = (y % 2); x < CUSTOM_SIZE; x += 2) edCtx.fillRect(x * C, y * C, C, C);
+  edCtx.fillStyle = 'rgba(79, 140, 255, 0.18)';
+  edCtx.beginPath();
+  edCtx.arc(CUSTOM_SIZE / 2 * C, CUSTOM_SIZE / 2 * C, 7 * C, 0, Math.PI * 2);
+  edCtx.fill();
+  edCtx.fillStyle = '#5a6680';
+  for (let i = 0; i < editor.cells.length; i++) {
+    if (editor.cells[i]) edCtx.fillRect((i % CUSTOM_SIZE) * C, Math.floor(i / CUSTOM_SIZE) * C, Math.ceil(C), Math.ceil(C));
+  }
+}
+
+function editorPaint(e) {
+  const r = edCanvas.getBoundingClientRect();
+  const x = Math.floor(((e.clientX - r.left) / r.width) * CUSTOM_SIZE), y = Math.floor(((e.clientY - r.top) / r.height) * CUSTOM_SIZE);
+  const pts = [[x, y]];
+  if (editor.mirror) pts.push([CUSTOM_SIZE - 1 - x, y], [x, CUSTOM_SIZE - 1 - y], [CUSTOM_SIZE - 1 - x, CUSTOM_SIZE - 1 - y]);
+  for (const [px, py] of pts) {
+    for (let dy = -editor.brush + 1; dy < editor.brush; dy++) {
+      for (let dx = -editor.brush + 1; dx < editor.brush; dx++) {
+        const cx = px + dx, cy = py + dy;
+        if (cx < 0 || cy < 0 || cx >= CUSTOM_SIZE || cy >= CUSTOM_SIZE || edProtected(cx, cy)) continue;
+        editor.cells[cy * CUSTOM_SIZE + cx] = editor.tool;
+      }
+    }
+  }
+  drawEditor();
+}
+
+edCanvas.addEventListener('pointerdown', e => { editor.drawing = true; edCanvas.setPointerCapture(e.pointerId); editorPaint(e); });
+edCanvas.addEventListener('pointermove', e => { if (editor.drawing) editorPaint(e); });
+edCanvas.addEventListener('pointerup', () => { editor.drawing = false; });
+edCanvas.addEventListener('pointercancel', () => { editor.drawing = false; });
+
+function buildEditor() {
+  const seg = (boxId, options, current, onPick) => {
+    const box = $(boxId);
+    box.innerHTML = '';
+    for (const [val, text] of options) {
+      const b = document.createElement('button');
+      b.className = 'seg-btn' + (val === current ? ' picked' : '');
+      b.textContent = text;
+      b.addEventListener('click', () => onPick(val));
+      box.appendChild(b);
+    }
+  };
+  const saved = loadCustomMaps();
+  seg('editor-slots', [0, 1, 2].map(i => [i, saved[i] ? saved[i].name : `Map ${i + 1} (empty)`]), editor.slot, editorLoadSlot);
+  seg('editor-tool', [[1, 'Wall'], [0, 'Eraser']], editor.tool, v => { editor.tool = v; buildEditor(); });
+  seg('editor-brush', [[1, 'Small'], [2, 'Big']], editor.brush, v => { editor.brush = v; buildEditor(); });
+  seg('editor-mirror', [[true, 'Mirror on'], [false, 'Mirror off']], editor.mirror, v => { editor.mirror = v; buildEditor(); });
+  drawEditor();
+}
+
+$('editor-clear').addEventListener('click', () => { editor.cells.fill(0); drawEditor(); });
+$('editor-save').addEventListener('click', () => {
+  const maps = loadCustomMaps();
+  while (maps.length < 3) maps.push(null);
+  maps[editor.slot] = { name: `My map ${editor.slot + 1}`, cells: packCells(editor.cells) };
+  save('color-claim-maps', JSON.stringify(maps));
+  myMap = 'custom' + editor.slot;
+  save('color-claim-map', myMap);
+  if (MODES[myMode].daily) { myMode = 'classic'; save('color-claim-mode', myMode); }
+  buildPickers();
+  showScreen('menu');
+  toast(`Saved My map ${editor.slot + 1}. It's picked on the menu.`);
+});
+
 // ---------- Menu navigation ----------
 function openScreen(id) {
   if (id === 'locker') buildLocker();
@@ -232,6 +391,8 @@ function openScreen(id) {
   if (id === 'trophies') buildTrophies();
   if (id === 'stats') buildStats();
   if (id === 'missions') buildMissions();
+  if (id === 'season') buildSeason();
+  if (id === 'editor') editorLoadSlot(editor.slot);
   showScreen(id);
 }
 document.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => openScreen(b.dataset.open)));
@@ -276,13 +437,13 @@ function buildLocker() {
   const items = lockerTab === 'skins'
     ? SKINS.map(sk => ({
       id: sk.id, name: sk.name, canvas: skinPreview(sk.id), open: isUnlocked(sk), equipped: sk.id === mySkin,
-      price: SKIN_PRICE, how: sk.need && sk.need.text,
+      price: SKIN_PRICE, how: sk.need && sk.need.text, season: sk.need && sk.need.stat === 'season',
       equip: () => { mySkin = sk.id; save('color-claim-skin', sk.id); },
       buy: () => { ownedSkins.push(sk.id); save('color-claim-owned-skins', JSON.stringify(ownedSkins)); },
     }))
     : TRAIL_FX.map(fx => ({
       id: fx.id, name: fx.name, canvas: fxPreview(fx.id), open: ownedFx.includes(fx.id), equipped: fx.id === myFx,
-      price: fx.price,
+      price: fx.price, season: fx.season,
       equip: () => { myFx = fx.id; save('color-claim-fx', fx.id); },
       buy: () => { ownedFx.push(fx.id); save('color-claim-owned-fx', JSON.stringify(ownedFx)); },
     }));
@@ -299,6 +460,9 @@ function buildLocker() {
     } else if (it.open) {
       btn.textContent = 'Use';
       btn.addEventListener('click', () => { it.equip(); buildLocker(); });
+    } else if (it.season) {
+      btn.textContent = 'Season reward';
+      btn.disabled = true;
     } else {
       btn.innerHTML = `Buy · ${it.price} <span class="coin"></span>`;
       btn.disabled = coins < it.price;
@@ -312,7 +476,7 @@ function buildLocker() {
       });
     }
     card.appendChild(btn);
-    if (!it.open && it.how) card.insertAdjacentHTML('beforeend', `<span class="how">or: ${it.how}</span>`);
+    if (!it.open && it.how && !it.season) card.insertAdjacentHTML('beforeend', `<span class="how">or: ${it.how}</span>`);
     box.appendChild(card);
   }
 }
