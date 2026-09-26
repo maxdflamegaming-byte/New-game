@@ -2,7 +2,7 @@
 
 // Keeps a copy of the game so it works offline. Files are served from the cache
 // straight away and refreshed in the background, so updates arrive on the next visit.
-const CACHE = 'color-claim-v6';
+const CACHE = 'color-claim-v7';
 const FILES = [
   './', 'index.html', 'style.css', 'game.js', 'progress.js', 'gif.js', 'manifest.webmanifest',
   'icon-180.png', 'icon-192.png', 'icon-512.png',

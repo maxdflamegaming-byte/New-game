@@ -73,6 +73,7 @@ let owner;            // which player owns each cell (0 = nobody)
 let trail;            // whose trail is on each cell (0 = none)
 let wall;             // 0 = floor, 1 = pillar, 2 = outside the arena
 let seen;             // scratch buffer for flood fill
+let belt;             // conveyor belt direction on each cell (0 = none, see BELT_DIRS)
 let playCells = 1;    // number of floor cells, for percentages
 const counts = new Int32Array(16); // cells owned per player id
 
@@ -82,6 +83,7 @@ function allocWorld(size) {
   trail = new Uint8Array(N * N);
   wall = new Uint8Array(N * N);
   seen = new Uint8Array(N * N);
+  belt = new Int8Array(N * N);
   bfsPrev = new Int32Array(N * N);
   bfsMark = new Uint32Array(N * N);
   bfsQueue = new Int32Array(N * N);
@@ -95,6 +97,7 @@ const MODES = {
   classic: { name: 'Classic', desc: 'Claim 50% of the map to win', size: 80, win: 50, powerups: 4 },
   timed: { name: 'Timed', desc: 'Biggest player after 3:00 wins', size: 80, win: 0, time: 180, powerups: 5 },
   daily: { name: 'Daily', desc: 'Same starting map for everyone today · claim 50%', size: 80, win: 50, powerups: 4, daily: true },
+  weekly: { name: 'Weekly', desc: "This week's tournament: the same map and start all week · 3:00 · race the ghost of your best run", size: 80, win: 0, time: 180, powerups: 5, weekly: true },
   marathon: { name: 'Marathon', desc: 'A huge map · claim 60% to win', size: 120, win: 60, powerups: 7 },
   tutorial: { name: 'Tutorial', desc: 'Learn the game step by step', size: 48, win: 0, powerups: 0, tutorial: true, hidden: true },
   cup: { name: 'Cup', desc: '3 two-minute rounds on different maps · most points wins the cup', size: 80, win: 0, time: 120, powerups: 5, cup: true },
@@ -110,6 +113,8 @@ const MAPS = {
   islands: { name: 'Islands' },
   saws: { name: 'Saw Mill' },
   storm: { name: 'Storm' },
+  belts: { name: 'Conveyor' },
+  portals: { name: 'Portals' },
 };
 
 // Custom maps are saved as a bit string of wall cells (80 x 80), base64 encoded
@@ -205,7 +210,26 @@ const STORM_FIRST = 40, STORM_EVERY = 25, STORM_WARN = 6, STORM_SHRINK = 4;
 function buildHazards(id) {
   saws = [];
   storm = null;
-  if (id === 'saws') {
+  portals = [];
+  if (id === 'belts') {
+    // Four conveyor strips that carry you around the map in a big square
+    const w = N > 100 ? 4 : 3, a = Math.round(N * 0.25), b = Math.round(N * 0.75), lo = Math.round(N * 0.1), hi = Math.round(N * 0.9);
+    const lay = (x0, y0, x1, y1, dir) => {
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) belt[y * N + x] = dir;
+    };
+    lay(lo, a, hi, a + w - 1, 1);
+    lay(lo, b - w + 1, hi, b, 3);
+    lay(b - w + 1, lo, b, hi, 2);
+    lay(a, lo, a + w - 1, hi, 4);
+  } else if (id === 'portals') {
+    // Pairs of portals: step into one and you come out of its twin
+    const pairs = [[[0.18, 0.18], [0.82, 0.82], '#3fa9f5'], [[0.82, 0.18], [0.18, 0.82], '#ff8c42']];
+    if (N > 100) pairs.push([[0.5, 0.12], [0.5, 0.88], '#b06bff']);
+    for (const [a, b, color] of pairs) {
+      const k = portals.length;
+      portals.push({ x: N * a[0], y: N * a[1], color, link: k + 1 }, { x: N * b[0], y: N * b[1], color, link: k });
+    }
+  } else if (id === 'saws') {
     // Saws run back and forth along horizontal and vertical lanes, and one circles the middle
     const lanes = N > 100 ? [0.2, 0.4, 0.6, 0.8] : [0.28, 0.72];
     for (const f of lanes) {
@@ -242,6 +266,38 @@ function sawAhead(sw, ahead) {
 }
 
 const nearSaw = (x, y, d) => saws.some(sw => Math.hypot(sw.x - x, sw.y - y) < d);
+const nearPortal = (x, y, d) => portals.some(pt => Math.hypot(pt.x - x, pt.y - y) < d);
+
+// Conveyor belts push anything standing on them
+const BELT_DIRS = [null, [1, 0], [0, 1], [-1, 0], [0, -1]];
+const BELT_SPEED = 2.6;
+const beltAt = (x, y) => BELT_DIRS[belt[Math.floor(y) * N + Math.floor(x)]];
+
+let portals = [];
+const PORTAL_R = 1.1;
+function checkPortals(p) {
+  if (!portals.length || !p.alive || (p.portalWait || 0) > time) return;
+  const from = portals.find(pt => Math.hypot(p.x - pt.x, p.y - pt.y) < PORTAL_R);
+  if (from) teleport(p, from, portals[from.link]);
+}
+
+function teleport(p, from, to) {
+  burst(p.x, p.y, from.color, 14, 6);
+  p.x = clamp(to.x + Math.cos(p.angle) * 1.6, 0.5, N - 0.5);
+  p.y = clamp(to.y + Math.sin(p.angle) * 1.6, 0.5, N - 0.5);
+  p.portalWait = time + 1;
+  p.cx = Math.floor(p.x);
+  p.cy = Math.floor(p.y);
+  visit(p, p.cx, p.cy); // your trail carries on from the other side
+  burst(p.x, p.y, to.color, 14, 6);
+  if (p === me) { cam.x = p.x; cam.y = p.y; Sfx.play('zap'); }
+  if (p === p2) { cam2.x = p.x; cam2.y = p.y; }
+  if (p.isBot) {
+    p.route = null;
+    if (p.trail.length) goHome(p);
+    else { p.wp = []; p.mode = 'idle'; }
+  }
+}
 
 // Is this spot safe from the storm? While the ring is about to shrink, "safe" means inside the new ring.
 function stormSafe(x, y, margin = 0) {
@@ -360,7 +416,7 @@ function weekInfo() {
   const monday = new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7));
   const week = Math.floor((monday - new Date(2024, 0, 1)) / (7 * 86400000)); // 1 Jan 2024 was a Monday
   const daysLeft = 7 - ((d.getDay() + 6) % 7);
-  return { event: EVENTS[((week % EVENTS.length) + EVENTS.length) % EVENTS.length], daysLeft };
+  return { event: EVENTS[((week % EVENTS.length) + EVENTS.length) % EVENTS.length], daysLeft, week };
 }
 const eventOn = id => weekInfo().event.id === id;
 
@@ -418,9 +474,14 @@ let myMap = load('color-claim-map', 'square');
 if (!MAPS[myMap] && !(myMap.startsWith('custom') && load('color-claim-maps', '').length)) myMap = 'square';
 let gameMode = MODES.classic, gameModeId = 'classic', gameMapId = 'square', playTime = 0;
 
-const bestKey = modeId => (modeId === 'classic' ? 'color-claim-best' : modeId === 'daily' ? `color-claim-daily-${todayKey()}` : `color-claim-best-${modeId}`);
+const bestKey = modeId => (modeId === 'classic' ? 'color-claim-best'
+  : modeId === 'daily' ? `color-claim-daily-${todayKey()}`
+  : modeId === 'weekly' ? `color-claim-weekly-${weekInfo().week}`
+  : `color-claim-best-${modeId}`);
 const bestFor = modeId => Number(load(bestKey(modeId), 0)) || 0;
 const dailyMap = () => Object.keys(MAPS)[hashStr(todayKey()) % Object.keys(MAPS).length];
+const weeklyMap = () => Object.keys(MAPS)[hashStr('color-claim-week-' + weekInfo().week) % Object.keys(MAPS).length];
+const fixedMap = modeId => (MODES[modeId].daily ? dailyMap() : MODES[modeId].weekly ? weeklyMap() : null);
 let myColor = clamp(Number(load('color-claim-color', 0)) || 0, 0, COLORS.length - 1);
 let myName = load('color-claim-name', '');
 let stats = { games: 0, kills: 0, wins: 0, bestPct: 0 };
@@ -446,6 +507,7 @@ function buzz(pattern) {
 let run = { powerups: 0, bigLoop: 0, freezeKO: false, trophies: [], coinsPicked: 0, giantKO: false }; // this game's numbers
 let fxParts = [], fxTimer = 0, achTimer = 1;
 let mySkin = load('color-claim-skin', 'classic');
+let myPet = load('color-claim-pet', 'chick');
 if (!SKINS.some(sk => sk.id === mySkin && isUnlocked(sk))) mySkin = 'classic';
 let powerups = [], powerTimer = 5, freezer = null;
 let mapCoins = [], coinTimer = 3; // gold coins lying on the map
@@ -480,6 +542,7 @@ function makePlayer(id, name, color, isBot, skin) {
     x: 0, y: 0, cx: 0, cy: 0, angle: 0, desired: 0,
     alive: false, trail: [], kills: 0, respawn: 0,
     wp: [], mode: 'idle', think: 0, blink: rand(1, 4), squash: 0,
+    pet: 'none', petX: 0, petY: 0, petFace: 1,
     // Bot personality: how greedy, how aggressive, how big their loops are
     greed: rand(25, 60), aggro: rand(0.1, 0.5), loopScale: rand(0.8, 1.5),
   };
@@ -508,6 +571,7 @@ function spawn(p, fx, fy) {
       if (owner[y * N + x] || trail[y * N + x] || wall[y * N + x] || !stormSafe(x, y, 5)) continue;
       let score = freeStartCells(x, y).length;
       if (nearSaw(x, y, 4)) score -= 20;
+      if (nearPortal(x, y, 5)) continue;
       for (const o of players) if (o && o !== p && o.alive && Math.hypot(o.x - x, o.y - y) < 10) score -= 30;
       if (score > bestScore) { bestScore = score; bx = x; by = y; }
     }
@@ -523,6 +587,8 @@ function spawn(p, fx, fy) {
   p.y = by + 0.5;
   p.cx = bx;
   p.cy = by;
+  p.petX = p.x;
+  p.petY = p.y + 1;
   p.angle = p.desired = Math.random() * TAU;
   p.alive = true;
   p.trail = [];
@@ -693,9 +759,9 @@ function move(p, dt) {
   // Squash a little while turning hard, spring back when going straight
   const turning = dt > 0 ? Math.abs(turn) / (TURN * dt) : 0;
   p.squash += (turning * 0.5 - p.squash) * Math.min(1, dt * 10);
-  const v = speedOf(p);
-  let nx = clamp(p.x + Math.cos(p.angle) * v * dt, 0.01, N - 0.01);
-  let ny = clamp(p.y + Math.sin(p.angle) * v * dt, 0.01, N - 0.01);
+  const v = speedOf(p), push = beltAt(p.x, p.y);
+  let nx = clamp(p.x + (Math.cos(p.angle) * v + (push ? push[0] * BELT_SPEED : 0)) * dt, 0.01, N - 0.01);
+  let ny = clamp(p.y + (Math.sin(p.angle) * v + (push ? push[1] * BELT_SPEED : 0)) * dt, 0.01, N - 0.01);
   if (isWallAt(nx, ny)) {
     // Slide along walls instead of stopping dead
     if (!isWallAt(p.x, ny)) nx = p.x;
@@ -723,7 +789,7 @@ function spawnPowerup() {
   const kinds = Object.keys(POWERUPS);
   for (let t = 0; t < 20; t++) {
     const x = randInt(3, N - 4), y = randInt(3, N - 4);
-    if (wall[y * N + x] || !stormSafe(x, y, 3) || powerups.some(pu => Math.hypot(pu.x - x, pu.y - y) < 10)) continue;
+    if (wall[y * N + x] || !stormSafe(x, y, 3) || nearPortal(x, y, 2.5) || powerups.some(pu => Math.hypot(pu.x - x, pu.y - y) < 10)) continue;
     powerups.push({ x: x + 0.5, y: y + 0.5, kind: kinds[randInt(0, kinds.length - 1)], age: 0 });
     return;
   }
@@ -788,7 +854,7 @@ function updateMapCoins(dt) {
     if (mapCoins.length < max) {
       for (let t = 0; t < 20; t++) {
         const x = randInt(2, N - 3), y = randInt(2, N - 3);
-        if (wall[y * N + x] || !stormSafe(x, y, 3)) continue;
+        if (wall[y * N + x] || !stormSafe(x, y, 3) || nearPortal(x, y, 2.5)) continue;
         mapCoins.push({ x: x + 0.5, y: y + 0.5, age: 0, life: 25 });
         break;
       }
@@ -905,6 +971,7 @@ function bfsHome(p, padded) {
     const nearHead = Math.abs(x - p.cx) <= 2 && Math.abs(y - p.cy) <= 2;
     if (padded && !nearHead && touchesOwnTrail(p, x, y)) return;
     if (padded && !nearHead && saws.length && nearSaw(x + 0.5, y + 0.5, 2.2)) return;
+    if (!nearHead && portals.length && nearPortal(x + 0.5, y + 0.5, 1.8)) return;
     bfsMark[j] = bfsGen;
     bfsPrev[j] = from;
     bfsQueue[tail++] = j;
@@ -937,8 +1004,9 @@ function safeSteps(p, desired, steps = 10, dt = 0.05) {
   for (let k = 0; k < steps; k++) {
     let diff = Math.atan2(Math.sin(desired - a), Math.cos(desired - a));
     a += clamp(diff, -TURN * dt, TURN * dt);
-    let nx = clamp(x + Math.cos(a) * v * dt, 0.01, N - 0.01);
-    let ny = clamp(y + Math.sin(a) * v * dt, 0.01, N - 0.01);
+    const push = beltAt(x, y);
+    let nx = clamp(x + (Math.cos(a) * v + (push ? push[0] * BELT_SPEED : 0)) * dt, 0.01, N - 0.01);
+    let ny = clamp(y + (Math.sin(a) * v + (push ? push[1] * BELT_SPEED : 0)) * dt, 0.01, N - 0.01);
     // Walls aren't deadly: slide along them exactly like move() does
     if (isWallAt(nx, ny)) {
       if (!isWallAt(x, ny)) nx = x;
@@ -983,12 +1051,13 @@ function clearLine(ax, ay, bx, by) {
 
 // Will a saw run into this loop (you -> A -> B -> back) in the next few seconds?
 function sawCrosses(p, A, B) {
-  if (!saws.length) return false;
+  if (!saws.length && !portals.length) return false;
   const segDist = (x, y, a, b) => {
     const dx = b.x - a.x, dy = b.y - a.y, t = clamp(((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy || 1), 0, 1);
     return Math.hypot(x - (a.x + dx * t), y - (a.y + dy * t));
   };
   const legs = [[p, A], [A, B], [B, p]];
+  if (portals.some(pt => legs.some(([a, b]) => segDist(pt.x, pt.y, a, b) < 2.2))) return true;
   for (const sw of saws) {
     for (const ahead of [0, 1, 2, 3, 4]) {
       const at = ahead ? sawAhead(sw, ahead) : sw;
@@ -1298,15 +1367,15 @@ function buildPickers() {
       box.appendChild(b);
     }
   };
-  const daily = MODES[myMode].daily;
+  const daily = !!fixedMap(myMode);
   seg('modes', MODES, myMode, id => { myMode = id; save('color-claim-mode', id); buildPickers(); });
   seg('diffs', DIFFICULTY, myDiff, id => { myDiff = id; save('color-claim-diff', id); buildPickers(); });
   const allMaps = { ...MAPS };
   loadCustomMaps().forEach((m, i) => { if (m) allMaps['custom' + i] = { name: m.name }; });
   if (!allMaps[myMap]) myMap = 'square';
-  seg('maps', allMaps, daily ? dailyMap() : myMap, id => { myMap = id; save('color-claim-map', id); buildPickers(); }, daily || MODES[myMode].cup);
+  seg('maps', allMaps, daily ? fixedMap(myMode) : myMap, id => { myMap = id; save('color-claim-map', id); buildPickers(); }, daily || MODES[myMode].cup);
   const ranked = RANKED_MODES.includes(myMode) && (daily || !myMap.startsWith('custom'));
-  $('mode-desc').textContent = MODES[myMode].desc + (ranked ? ' · Ranked' : '') + (daily ? ` · Today's map: ${MAPS[dailyMap()].name}` : '')
+  $('mode-desc').textContent = MODES[myMode].desc + (ranked ? ' · Ranked' : '') + (daily ? ` · ${MODES[myMode].weekly ? "This week's" : "Today's"} map: ${MAPS[fixedMap(myMode)].name}` : '')
     + (myDiff !== 'normal' ? ` · ${DIFFICULTY[myDiff].name} bots pay ×${DIFFICULTY[myDiff].coins} coins` : '')
     + (!daily && myMap.startsWith('custom') && MODES[myMode].size !== CUSTOM_SIZE ? ' · Custom maps are always normal size' : '');
   updateMenuBest();
@@ -1329,9 +1398,10 @@ function startGame() {
   gameDiffId = cfg.diff;
   gameDiff = DIFFICULTY[cfg.diff];
   if (gameMode.cup && (!cup || cup.round > 3)) cup = newCup();
-  gameMapId = gameMode.daily ? dailyMap() : gameMode.cup ? cup.maps[cup.round - 1] : cfg.map;
+  gameMapId = fixedMap(cfg.mode) || (gameMode.cup ? cup.maps[cup.round - 1] : cfg.map);
   gameSeed = challenge ? challenge.seed
     : gameMode.daily ? hashStr('color-claim-' + todayKey())
+    : gameMode.weekly ? hashStr('color-claim-week-' + weekInfo().week)
     : gameMode.cup ? cup.seed
     : (Math.random() * 4294967296) >>> 0;
   random = mulberry32(gameSeed);
@@ -1365,6 +1435,9 @@ function startGame() {
   // Personalities: a mix of hunters, turtles, explorers, collectors and wildcards
   const mix = PERSONA_MIX.slice().sort(() => random() - 0.5);
   players.filter(p => p && p.isBot).forEach((p, i) => givePersonality(p, mix[i % mix.length]));
+  // Pets (Math.random, so the seeded layout stays the same)
+  me.pet = myPet;
+  for (const p of players) if (p && p.isBot && Math.random() < 0.3) p.pet = BOT_PETS[Math.floor(Math.random() * BOT_PETS.length)];
   // Teams: you and the first 3 bots against the other 4. Otherwise everyone is on their own.
   for (const p of players) if (p) p.team = gameMode.teams ? (p.id <= 4 ? 0 : 1) : p.id;
   giant = null;
@@ -1386,6 +1459,7 @@ function startGame() {
   run = { powerups: 0, bigLoop: 0, freezeKO: false, trophies: [], coinsPicked: 0, giantKO: false };
   replayFrames = [];
   replayTimer = 0;
+  startGhost();
   emoteCooldown = 0;
   $('emote-tray').classList.add('hidden');
   resetGif();
@@ -1444,8 +1518,13 @@ function endGame(won, reason) {
 
   // Update lifetime stats and announce any skins that just unlocked
   const before = SKINS.filter(isUnlocked);
-  const { earned, fresh: trophies, xpGain, levelsUp, levelCoins, missionsDone, missionCoins, seasonRewards, ranked } = finishRun(won, score);
+  const { earned, fresh: trophies, xpGain, levelsUp, levelCoins, missionsDone, missionCoins, seasonRewards, ranked, streakDay } = finishRun(won, score);
   showRankResult(ranked);
+  $('over-streak').classList.toggle('hidden', !streakDay);
+  if (streakDay) {
+    $('over-streak').innerHTML = `${FLAME}<b>Day ${streakDay.day} streak!</b> +${streakDay.coins} coins${streakDay.pet ? ' · <b>Star Sprite pet unlocked!</b>' : ''}`;
+    if (streakDay.pet) toast('7-day streak! Star Sprite pet unlocked in the Locker');
+  }
   const fresh = SKINS.filter(sk => isUnlocked(sk) && !before.includes(sk));
   $('over-unlock').textContent = fresh.length ? `🎁 New skin unlocked: ${fresh.map(sk => sk.name).join(', ')}! Find it in the Locker.` : '';
   $('over-unlock').classList.toggle('hidden', !fresh.length);
@@ -1466,8 +1545,9 @@ function endGame(won, reason) {
   $('over-title').textContent = won ? '🏆 You win!' : 'Game Over';
   $('over-reason').textContent = reason;
   $('over-stats').textContent = `Best size: ${score.toFixed(1)}% · ${me.kills} knockouts`;
-  const label = gameModeId === 'daily' ? "Today's best" : `${gameMode.name} best`;
-  $('over-best').textContent = isBest ? `New ${label.toLowerCase()}!` : `${label}: ${prevBest.toFixed(1)}%`;
+  const label = gameModeId === 'daily' ? "Today's best" : gameModeId === 'weekly' ? "This week's best" : `${gameMode.name} best`;
+  if (gameMode.weekly && isBest && ghostRec) saveGhost(score);
+  $('over-best').textContent = isBest ? `New ${label.toLowerCase()}!${gameMode.weekly ? ' Your ghost will race you next time.' : ''}` : `${label}: ${prevBest.toFixed(1)}%`;
 
   // Playing a friend's challenge: did you beat their score?
   $('challenge-result').classList.toggle('hidden', !challenge);
@@ -1483,7 +1563,7 @@ function endGame(won, reason) {
   const shareable = !gameMode.duo && !gameMode.cup && !gameMapId.startsWith('custom');
   $('challenge-share').classList.toggle('hidden', !shareable);
   $('challenge-code').classList.add('hidden');
-  lastChallenge = shareable ? { seed: gameSeed, mode: gameMode.daily ? 'classic' : gameModeId, map: gameMapId, diff: gameDiffId, score } : null;
+  lastChallenge = shareable ? { seed: gameSeed, mode: gameMode.daily ? 'classic' : gameMode.weekly ? 'timed' : gameModeId, map: gameMapId, diff: gameDiffId, score } : null;
 
   if (gameMode.cup) {
     scoreCupRound();
@@ -1521,7 +1601,7 @@ function endDuo(winner, reason) {
   $('over-stats').textContent = `${me.name} ${pct(me).toFixed(1)}% · ${p2.name} ${pct(p2).toFixed(1)}%`;
   $('over-best').textContent = "2-player games are just for fun: they don't give coins, XP or trophies.";
   for (const id of ['over-coins', 'over-xp']) $(id).innerHTML = '';
-  for (const id of ['over-missions', 'over-season', 'over-unlock', 'over-ach', 'over-rank']) $(id).classList.add('hidden');
+  for (const id of ['over-missions', 'over-season', 'over-unlock', 'over-ach', 'over-rank', 'over-streak']) $(id).classList.add('hidden');
   $('replay-btn').classList.toggle('hidden', replayFrames.length < 5);
   $('gif-box').classList.toggle('hidden', replayFrames.length < 5);
   showScreen('over');
@@ -1613,6 +1693,252 @@ function startTutorial() {
   startGame();
   countdown = 0;
   renderTutorial();
+}
+
+// ---------- Pets ----------
+// A little friend that follows your square around (some bots bring one too).
+// How each one unlocks lives in progress.js.
+const PETS = [
+  { id: 'none', name: 'No pet' },
+  { id: 'chick', name: 'Chick', price: 0 },
+  { id: 'slime', name: 'Slime', price: 120 },
+  { id: 'bat', name: 'Bat', price: 200 },
+  { id: 'kitty', name: 'Kitty', rank: 1 },
+  { id: 'dragon', name: 'Dragon', rank: 2 },
+  { id: 'ufo', name: 'UFO', rank: 3 },
+  { id: 'star', name: 'Star Sprite', streak: 7 },
+];
+const BOT_PETS = ['chick', 'slime', 'bat', 'kitty'];
+
+function updatePet(p, dt) {
+  // Trot along behind, a little late
+  const tx = p.x - Math.cos(p.angle) * 1.4, ty = p.y - Math.sin(p.angle) * 1.4;
+  const k = Math.min(1, dt * 9);
+  if (Math.abs(tx - p.petX) > 0.01) p.petFace = tx > p.petX ? 1 : -1;
+  p.petX += (tx - p.petX) * k;
+  p.petY += (ty - p.petY) * k;
+}
+
+// Draws pet `id` centred on (x, y), about `s` pixels tall; t is time, face is 1 (right) or -1
+function drawPet(g, id, x, y, s, t, face = 1) {
+  const r = s / 2;
+  g.save();
+  g.translate(x, y);
+  g.scale(face, 1);
+  const eye = (ex, ey, er = 0.12) => {
+    g.fillStyle = '#26304a';
+    g.beginPath();
+    g.arc(ex * r, ey * r, er * r, 0, TAU);
+    g.fill();
+    g.fillStyle = '#fff';
+    g.beginPath();
+    g.arc(ex * r + er * r * 0.35, ey * r - er * r * 0.35, er * r * 0.4, 0, TAU);
+    g.fill();
+  };
+  const blob = (cx, cy, rx, ry, color) => {
+    g.fillStyle = color;
+    g.beginPath();
+    g.ellipse(cx * r, cy * r, rx * r, ry * r, 0, 0, TAU);
+    g.fill();
+  };
+  // Soft shadow
+  g.fillStyle = 'rgba(38, 48, 74, 0.15)';
+  g.beginPath();
+  g.ellipse(0, r * 0.95, r * 0.7, r * 0.2, 0, 0, TAU);
+  g.fill();
+  if (id === 'chick') {
+    const hop = Math.abs(Math.sin(t * 8)) * r * 0.25;
+    g.translate(0, -hop);
+    blob(0, 0.1, 0.8, 0.75, '#ffd23f');
+    blob(-0.25, 0.25, 0.35, 0.25, '#f5b400');
+    g.fillStyle = '#ff8c42';
+    g.beginPath();
+    g.moveTo(r * 0.7, -r * 0.05);
+    g.lineTo(r * 1.1, r * 0.08);
+    g.lineTo(r * 0.7, r * 0.22);
+    g.fill();
+    eye(0.35, -0.2);
+  } else if (id === 'slime') {
+    const sq = Math.sin(t * 6) * 0.12;
+    g.fillStyle = '#6fd66f';
+    g.beginPath();
+    g.moveTo(-r * (0.9 + sq), r * 0.8);
+    g.quadraticCurveTo(-r * (0.9 + sq), -r * (0.8 - sq), 0, -r * (0.8 - sq));
+    g.quadraticCurveTo(r * (0.9 + sq), -r * (0.8 - sq), r * (0.9 + sq), r * 0.8);
+    g.closePath();
+    g.fill();
+    blob(-0.35, -0.35, 0.18, 0.1, 'rgba(255, 255, 255, 0.6)');
+    eye(-0.2, 0.05);
+    eye(0.3, 0.05);
+  } else if (id === 'bat') {
+    const flap = Math.sin(t * 16);
+    g.translate(0, -r * 0.4 + Math.sin(t * 4) * r * 0.15);
+    g.fillStyle = '#7d4fd6';
+    for (const side of [-1, 1]) {
+      g.beginPath();
+      g.moveTo(side * r * 0.4, -r * 0.1);
+      g.lineTo(side * r * 1.4, -r * (0.5 + flap * 0.4));
+      g.lineTo(side * r * 1.1, r * 0.15);
+      g.lineTo(side * r * 0.8, -r * 0.05);
+      g.lineTo(side * r * 0.6, r * 0.3);
+      g.closePath();
+      g.fill();
+    }
+    blob(0, 0, 0.55, 0.55, '#9b6bff');
+    g.fillStyle = '#9b6bff';
+    g.beginPath();
+    g.moveTo(-r * 0.4, -r * 0.3);
+    g.lineTo(-r * 0.3, -r * 0.8);
+    g.lineTo(-r * 0.1, -r * 0.4);
+    g.moveTo(r * 0.4, -r * 0.3);
+    g.lineTo(r * 0.3, -r * 0.8);
+    g.lineTo(r * 0.1, -r * 0.4);
+    g.fill();
+    eye(-0.18, -0.05, 0.1);
+    eye(0.2, -0.05, 0.1);
+  } else if (id === 'kitty') {
+    const hop = Math.abs(Math.sin(t * 7)) * r * 0.15;
+    g.translate(0, -hop);
+    g.fillStyle = '#ffa94d';
+    g.beginPath();
+    g.moveTo(-r * 0.7, -r * 0.3);
+    g.lineTo(-r * 0.55, -r * 0.95);
+    g.lineTo(-r * 0.15, -r * 0.55);
+    g.moveTo(r * 0.7, -r * 0.3);
+    g.lineTo(r * 0.55, -r * 0.95);
+    g.lineTo(r * 0.15, -r * 0.55);
+    g.fill();
+    blob(0, 0.1, 0.8, 0.7, '#ffa94d');
+    blob(0, 0.35, 0.35, 0.22, '#fff1e0');
+    eye(-0.3, 0);
+    eye(0.3, 0);
+    g.strokeStyle = 'rgba(38, 48, 74, 0.5)';
+    g.lineWidth = Math.max(1, r * 0.06);
+    g.beginPath();
+    for (const side of [-1, 1]) {
+      g.moveTo(side * r * 0.35, r * 0.3);
+      g.lineTo(side * r * 0.95, r * 0.2);
+      g.moveTo(side * r * 0.35, r * 0.38);
+      g.lineTo(side * r * 0.95, r * 0.45);
+    }
+    g.stroke();
+  } else if (id === 'dragon') {
+    const flap = Math.sin(t * 10);
+    g.translate(0, -r * 0.3 + Math.sin(t * 3) * r * 0.12);
+    g.fillStyle = '#2eaa6a';
+    g.beginPath();
+    g.moveTo(-r * 0.2, -r * 0.2);
+    g.lineTo(-r * 0.9, -r * (0.9 + flap * 0.3));
+    g.lineTo(-r * 0.6, 0);
+    g.closePath();
+    g.fill();
+    blob(0, 0.1, 0.75, 0.62, '#3ccf82');
+    blob(0.1, 0.35, 0.4, 0.22, '#c7f5d9');
+    g.fillStyle = '#ffd23f';
+    g.beginPath();
+    g.moveTo(r * 0.1, -r * 0.4);
+    g.lineTo(r * 0.2, -r * 0.9);
+    g.lineTo(r * 0.4, -r * 0.45);
+    g.fill();
+    eye(0.4, -0.1);
+    if (Math.sin(t * 2) > 0.85) { // a puff of smoke now and then
+      blob(1.05, 0.05, 0.14, 0.14, 'rgba(160, 170, 190, 0.7)');
+      blob(1.3, -0.1, 0.1, 0.1, 'rgba(160, 170, 190, 0.5)');
+    }
+  } else if (id === 'ufo') {
+    g.translate(0, -r * 0.5 + Math.sin(t * 3) * r * 0.15);
+    g.rotate(Math.sin(t * 2) * 0.12);
+    blob(0, -0.15, 0.45, 0.4, 'rgba(111, 195, 255, 0.85)');
+    blob(0, 0.1, 1, 0.32, '#8d97ab');
+    blob(0, 0.02, 0.9, 0.18, '#aab4c8');
+    for (let k = -1; k <= 1; k++) blob(k * 0.55, 0.18, 0.09, 0.09, Math.floor(t * 4 + k) % 2 ? '#ffd23f' : '#ff5d73');
+    eye(-0.12, -0.18, 0.08);
+    eye(0.14, -0.18, 0.08);
+  } else if (id === 'star') {
+    g.translate(0, -r * 0.4 + Math.sin(t * 4) * r * 0.15);
+    const glow = g.createRadialGradient(0, 0, 0, 0, 0, r * 1.4);
+    glow.addColorStop(0, 'rgba(255, 210, 63, 0.5)');
+    glow.addColorStop(1, 'rgba(255, 210, 63, 0)');
+    g.fillStyle = glow;
+    g.beginPath();
+    g.arc(0, 0, r * 1.4, 0, TAU);
+    g.fill();
+    g.rotate(Math.sin(t * 2) * 0.25);
+    g.fillStyle = '#ffd23f';
+    g.beginPath();
+    for (let k = 0; k < 10; k++) {
+      const a = -Math.PI / 2 + (k * Math.PI) / 5, rr = k % 2 ? r * 0.45 : r;
+      g.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+    }
+    g.closePath();
+    g.fill();
+    eye(-0.18, 0, 0.1);
+    eye(0.18, 0, 0.1);
+  }
+  g.restore();
+}
+
+// ---------- Weekly ghost ----------
+// In the Weekly tournament your best run this week is recorded (where you went, and how
+// big you were) and replayed as a see-through ghost next time you play.
+let ghostRun = null, ghostRec = null;
+const ghostKey = () => `color-claim-ghost-${weekInfo().week}`;
+
+function startGhost() {
+  ghostRun = null;
+  ghostRec = null;
+  if (!gameMode.weekly) return;
+  try { ghostRun = JSON.parse(load(ghostKey(), 'null')); } catch { ghostRun = null; }
+  ghostRec = { path: [], pcts: [] };
+}
+
+function recordGhost() {
+  // One point every 0.1 s of play: position (in tenths of a cell) and your land
+  while (ghostRec.pcts.length <= playTime * 10) {
+    ghostRec.path.push(Math.round(me.x * 10), Math.round(me.y * 10));
+    ghostRec.pcts.push(Math.round(pct(me) * 10));
+  }
+}
+
+function saveGhost(score) {
+  save(ghostKey(), JSON.stringify({ score, path: ghostRec.path, pcts: ghostRec.pcts }));
+  // Older weeks' ghosts aren't needed any more
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('color-claim-ghost-') && k !== ghostKey()) localStorage.removeItem(k);
+    }
+  } catch { /* storage unavailable */ }
+}
+
+// Where the ghost is right now (null once its run had ended)
+function ghostNow() {
+  if (!ghostRun || !ghostRun.pcts || !ghostRun.pcts.length) return null;
+  const k = playTime * 10, i = Math.floor(k);
+  if (i >= ghostRun.pcts.length - 1) return null;
+  const t = k - i, P = ghostRun.path;
+  const x = (P[i * 2] + (P[i * 2 + 2] - P[i * 2]) * t) / 10, y = (P[i * 2 + 1] + (P[i * 2 + 3] - P[i * 2 + 1]) * t) / 10;
+  const angle = Math.atan2(P[i * 2 + 3] - P[i * 2 + 1], P[i * 2 + 2] - P[i * 2]);
+  return { x, y, angle, pct: ghostRun.pcts[i] / 10 };
+}
+
+function drawGhost(x0, y0) {
+  const g = ghostNow();
+  if (!g || !me) return;
+  const gx = g.x * CELL - x0, gy = g.y * CELL - y0, sz = CELL * 1.4;
+  if (gx < -60 || gy < -60 || gx > W + 60 || gy > H + 60) return;
+  ctx.save();
+  ctx.globalAlpha = 0.38;
+  ctx.translate(gx, gy);
+  ctx.rotate(g.angle);
+  drawBody(ctx, { color: me.color, dark: me.dark, skin: me.skin, blink: 1, hueOff: me.hueOff }, sz, time);
+  ctx.restore();
+  ctx.globalAlpha = 0.7;
+  ctx.font = `bold ${Math.round(CELL * 0.7)}px system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(38, 48, 74, 0.9)';
+  ctx.fillText(`Best run · ${g.pct.toFixed(1)}%`, gx, gy - sz * 0.85);
+  ctx.globalAlpha = 1;
 }
 
 // ---------- Emotes ----------
@@ -1798,7 +2124,7 @@ buildEmoteTray();
 // ---------- Cup ----------
 const CUP_POINTS = [10, 7, 5, 3, 2, 1, 1, 1];
 function newCup() {
-  const maps = ['square', 'round', 'pillars', 'maze', 'islands', 'saws', 'storm'].sort(() => Math.random() - 0.5).slice(0, 3);
+  const maps = ['square', 'round', 'pillars', 'maze', 'islands', 'saws', 'storm', 'belts', 'portals'].sort(() => Math.random() - 0.5).slice(0, 3);
   return { round: 1, seed: (Math.random() * 4294967296) >>> 0, maps, points: {}, last: {} };
 }
 
@@ -1837,7 +2163,7 @@ function showScreen(id) {
 
 function updateMenuBest() {
   const b = bestFor(myMode);
-  $('menu-best').textContent = `${myMode === 'daily' ? "Today's best" : MODES[myMode].name + ' best'}: ${b.toFixed(1)}%`;
+  $('menu-best').textContent = `${myMode === 'daily' ? "Today's best" : myMode === 'weekly' ? "This week's best" : MODES[myMode].name + ' best'}: ${b.toFixed(1)}%`;
 }
 
 let toastTimeout;
@@ -1903,6 +2229,7 @@ function update(dt) {
   goFlash = Math.max(0, goFlash - dt);
   if (state === 'play') {
     playTime += dt;
+    if (ghostRec && me.alive) recordGhost();
     if (gameMode.time && playTime >= gameMode.time && me.alive) timeUp();
     achTimer -= dt;
     if (achTimer <= 0 && me.alive && !gameMode.duo && !gameMode.tutorial) { achTimer = 1; liveAchievementCheck(); }
@@ -1935,8 +2262,12 @@ function update(dt) {
     }
     p.blink -= dt;
     if (p.blink < -0.12) p.blink = rand(2, 5);
+    if (p.pet !== 'none') updatePet(p, dt);
     if (p.isBot) steerBot(p, dt);
-    if (p !== me || state === 'play') move(p, dt);
+    if (p !== me || state === 'play') {
+      move(p, dt);
+      checkPortals(p);
+    }
   }
   checkBumps();
   updateHazards(dt);
@@ -2030,7 +2361,7 @@ function updateMinimap() {
   const d = miniImg.data;
   for (let i = 0; i < N * N; i++) {
     const id = owner[i] || trail[i];
-    const [r, g, b] = id ? rgbOf(id) : wall[i] === 1 ? [107, 118, 144] : wall[i] === 3 ? [122, 91, 176] : [245, 247, 252];
+    const [r, g, b] = id ? rgbOf(id) : wall[i] === 1 ? [107, 118, 144] : wall[i] === 3 ? [122, 91, 176] : belt[i] ? [200, 207, 222] : [245, 247, 252];
     d[i * 4] = r;
     d[i * 4 + 1] = g;
     d[i * 4 + 2] = b;
@@ -2557,6 +2888,7 @@ function drawWorld(focus, c) {
     }
   };
   drawWalls(2, wallColor[2], 0);
+  if (gameMapId === 'belts') drawBelts(c0, c1, r0, r1, x0, y0, false);
   drawWalls(1, '#4a5369', CELL * 0.35);
   drawWalls(1, '#6b7690', 0);
   if (storm) drawWalls(3, '#6b4fa0', 0);
@@ -2605,6 +2937,7 @@ function drawWorld(focus, c) {
     });
   }
 
+  if (gameMapId === 'belts') drawBelts(c0, c1, r0, r1, x0, y0, true);
   drawHazards(x0, y0);
 
   // Gold coins spin (and blink before they vanish)
@@ -2649,7 +2982,13 @@ function drawWorld(focus, c) {
   let leader = null;
   for (const p of players) if (p && p.alive && (!leader || counts[p.id] > counts[leader.id])) leader = p;
   const leaderId = leader && leader.id;
+  for (const p of players) {
+    if (!p || !p.alive || p.pet === 'none') continue;
+    const px = p.petX * CELL - x0, py = p.petY * CELL - y0;
+    if (px > -40 && py > -40 && px < W + 40 && py < H + 40) drawPet(ctx, p.pet, px, py, CELL * 1.4, time + p.id, p.petFace);
+  }
   for (const p of players) if (p && p.alive && p !== focus) drawHead(p, x0, y0, leaderId);
+  if (ghostRun && (state === 'play' || state === 'won') && focus === me) drawGhost(x0, y0);
   if (focus.alive) drawHead(focus, x0, y0, leaderId);
 
   for (const f of fxParts) drawFxShape(ctx, f, f.x * CELL - x0, f.y * CELL - y0, CELL * 1.1);
@@ -2840,6 +3179,12 @@ function drawWorld(focus, c) {
     ctx.arc(mx + (sw.x / N) * ms, my + (sw.y / N) * ms, 2, 0, TAU);
     ctx.fill();
   }
+  for (const pt of portals) {
+    ctx.fillStyle = pt.color;
+    ctx.beginPath();
+    ctx.arc(mx + (pt.x / N) * ms, my + (pt.y / N) * ms, 3, 0, TAU);
+    ctx.fill();
+  }
   ctx.restore();
   if (focus.alive) {
     ctx.fillStyle = '#fff';
@@ -2852,7 +3197,56 @@ function drawWorld(focus, c) {
 }
 
 // Saw tracks, saws and the storm's edge
+// Conveyor strips: the grey base goes under the land, the moving arrows on top
+function drawBelts(c0, c1, r0, r1, x0, y0, arrows) {
+  if (!arrows) {
+    ctx.fillStyle = '#c8cfde';
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+      if (belt[r * N + c]) ctx.fillRect(Math.floor(c * CELL - x0), Math.floor(r * CELL - y0), Math.ceil(CELL), Math.ceil(CELL));
+    }
+    return;
+  }
+  const shift = (time * BELT_SPEED) % 1, k = CELL * 0.28;
+  ctx.strokeStyle = 'rgba(38, 48, 74, 0.28)';
+  ctx.lineWidth = Math.max(1.5, CELL * 0.14);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) {
+    const d = BELT_DIRS[belt[r * N + c]];
+    if (!d) continue;
+    const cx = (c + 0.5 + d[0] * (shift - 0.5)) * CELL - x0, cy = (r + 0.5 + d[1] * (shift - 0.5)) * CELL - y0;
+    ctx.moveTo(cx - d[0] * k - d[1] * k, cy - d[1] * k - d[0] * k);
+    ctx.lineTo(cx, cy);
+    ctx.lineTo(cx - d[0] * k + d[1] * k, cy - d[1] * k + d[0] * k);
+  }
+  ctx.stroke();
+}
+
 function drawHazards(x0, y0) {
+  for (const pt of portals) {
+    const sx = pt.x * CELL - x0, sy = pt.y * CELL - y0, R = PORTAL_R * CELL * 1.3;
+    if (sx < -R * 2 || sy < -R * 2 || sx > W + R * 2 || sy > H + R * 2) continue;
+    const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, R * 1.6);
+    grad.addColorStop(0, alpha(pt.color, 0.05));
+    grad.addColorStop(0.6, alpha(pt.color, 0.35));
+    grad.addColorStop(1, alpha(pt.color, 0));
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(sx, sy, R * 1.6, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = '#26304a';
+    ctx.beginPath();
+    ctx.arc(sx, sy, R * 0.75, 0, TAU);
+    ctx.fill();
+    ctx.lineWidth = Math.max(2, CELL * 0.22);
+    for (let k = 0; k < 3; k++) {
+      ctx.strokeStyle = alpha(pt.color, 0.9 - k * 0.25);
+      ctx.beginPath();
+      const a = time * (3 + k) + k * 2;
+      ctx.arc(sx, sy, R * (0.95 - k * 0.22), a, a + Math.PI * 1.3);
+      ctx.stroke();
+    }
+  }
   if (saws.length) {
     ctx.strokeStyle = 'rgba(38, 48, 74, 0.16)';
     ctx.lineWidth = Math.max(2, CELL * 0.3);
@@ -3024,8 +3418,13 @@ function updateHud() {
   if (freezer && freezer !== me && me.alive) fx.push('<span class="fx" style="--c:#3fc7f5">Frozen!</span>');
   const fxHtml = fx.join('');
   if ($('effects').innerHTML !== fxHtml) $('effects').innerHTML = fxHtml;
-  $('team-score').classList.toggle('hidden', !gameMode.teams && !gameMode.duo && !challenge && !gameMode.cup);
-  if (challenge) $('team-score').innerHTML = `<b class="us">Beat ${challenge.score.toFixed(1)}%</b> <span>· ${pct(me) > challenge.score ? 'ahead!' : 'keep going'}</span>`;
+  $('team-score').classList.toggle('hidden', !gameMode.teams && !gameMode.duo && !challenge && !gameMode.cup && !gameMode.weekly);
+  if (gameMode.weekly && !challenge) {
+    const g = ghostNow();
+    $('team-score').innerHTML = !ghostRun ? '<b class="us">No ghost yet</b> <span>· set this week\'s best!</span>'
+      : g ? `<b class="us">Ghost ${g.pct.toFixed(1)}%</b> <span>· ${pct(me) >= g.pct ? 'you\'re ahead!' : 'catch up!'}</span>`
+      : `<b class="us">Best ${ghostRun.score.toFixed(1)}%</b> <span>· beat it!</span>`;
+  } else if (challenge) $('team-score').innerHTML = `<b class="us">Beat ${challenge.score.toFixed(1)}%</b> <span>· ${pct(me) > challenge.score ? 'ahead!' : 'keep going'}</span>`;
   else if (gameMode.cup) $('team-score').innerHTML = `<b class="us">Cup round ${cup.round} of 3</b>`;
   else if (gameMode.duo) $('team-score').innerHTML = `<b class="us">P1 ${pct(me).toFixed(1)}%</b> <span>vs</span> <b class="them">P2 ${pct(p2).toFixed(1)}%</b>`;
   else if (gameMode.teams) $('team-score').innerHTML = `<b class="us">Your team ${teamPct(0).toFixed(1)}%</b> <span>vs</span> <b class="them">${teamPct(1).toFixed(1)}%</b>`;
@@ -3049,6 +3448,7 @@ function recordFrame() {
     saws: saws.map(sw => [sw.x, sw.y, sw.spin]),
     ps: players.map(p => p && {
       x: p.x, y: p.y, angle: p.angle, alive: p.alive, shield: p.fx.shield > 0, ghost: p.fx.ghost > 0, emote: p.emote && { ...p.emote },
+      px: p.petX, py: p.petY, pf: p.petFace,
     }),
     cam: { x: cam.x, y: cam.y, zoom: cam.zoom },
   });
@@ -3088,7 +3488,7 @@ function withReplayFrame(k, fn) {
   const f = replayFrames[i], g = replayFrames[i + 1] || f;
   const lerp = (a, b) => a + (b - a) * t;
   const saved = { owner, trail, wall, freezer, threats, danger, countdown, goFlash, particles, flashes, fades, floats, fxParts, shake };
-  const savedPlayers = players.map(p => p && { x: p.x, y: p.y, angle: p.angle, alive: p.alive, trail: p.trail, fx: p.fx, emote: p.emote });
+  const savedPlayers = players.map(p => p && { x: p.x, y: p.y, angle: p.angle, alive: p.alive, trail: p.trail, fx: p.fx, emote: p.emote, petX: p.petX, petY: p.petY, petFace: p.petFace });
   const savedSaws = saws.map(sw => [sw.x, sw.y, sw.spin]);
   const savedStorm = storm && { ...storm };
   owner = f.owner;
@@ -3108,6 +3508,7 @@ function withReplayFrame(k, fn) {
     p.trail = [];
     p.fx = { speed: 0, shield: a.shield ? 1 : 0, freeze: 0, ghost: a.ghost ? 1 : 0 };
     p.emote = a.emote && { id: a.emote.id, t: a.emote.t + t * 0.1 };
+    p.petX = lerp(a.px, b.px); p.petY = lerp(a.py, b.py); p.petFace = a.pf;
   });
   try {
     fn({ x: lerp(f.cam.x, g.cam.x), y: lerp(f.cam.y, g.cam.y), zoom: lerp(f.cam.zoom, g.cam.zoom) });

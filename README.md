@@ -19,6 +19,7 @@ A territory game inspired by Paper.io.
   | Classic | Claim 50% of the map |
   | Timed | Be the biggest when the 3:00 clock runs out |
   | Daily | Same starting map for everyone today (claim 50%) |
+  | Weekly | This week's tournament: the same map and start all week, 3:00. Race a see-through **ghost** of your best run this week |
   | Marathon | A 120×120 map (claim 60%) |
   | Cup | 3 two-minute rounds on 3 different maps; points for your finishing place each round (10, 7, 5…); most points wins a coin prize |
   | 2 Players | Two people on one keyboard (WASD vs arrow keys) with a split screen. First to 40%, or last one standing, wins |
@@ -30,7 +31,9 @@ A territory game inspired by Paper.io.
 - **Hazard maps:**
   - **Saw Mill:** spinning saws run along tracks and cut any trail they touch (a Shield keeps you safe).
   - **Storm:** from 0:40 the arena shrinks every 25 seconds, with a warning ring first. Land, trails and players caught outside are lost.
-- **Ranked ladder:** Classic, Timed, Daily and Marathon games earn or lose rank points (RP) by where you finish. Tiers: Bronze, Silver, Gold, Platinum, Diamond and Champion, each with 3 divisions, and a coin reward the first time you reach each tier. You can drop a division but never a tier.
+  - **Conveyor:** moving belts carry you (and your trail) around the map.
+  - **Portals:** step into a portal and pop out of its twin, trail and all.
+- **Ranked ladder:** Classic, Timed, Daily, Weekly and Marathon games earn or lose rank points (RP) by where you finish. Tiers: Bronze, Silver, Gold, Platinum, Diamond and Champion, each with 3 divisions, and a coin reward the first time you reach each tier. You can drop a division but never a tier.
 - **Emotes:** press 1-6 or the smiley button to pop up Hi, LOL, Grr, Cool, Love or GG over your square. Nearby bots answer back, cheer their knockouts and say GG when you win (bot emotes can be turned off in Settings).
 - **Season pass:** each month is a season with 20 tiers filled by XP. Every tier pays coins, and tiers 10 and 20 give that season's trail effect and skin (Lightning/Crystal or Snowflakes/Tiger).
 - **Power-ups:** Speed (1.6× faster), Shield (nobody can cut or bump you), Freeze (everyone else at half speed), Ghost (cross your own trail safely) and Paint Bomb (instantly claim a circle of land). Bots use them too.
@@ -39,6 +42,8 @@ A territory game inspired by Paper.io.
 - **Weekly events** rotate every Monday: Double Coins, Power-up Frenzy, Gold Rush, Speed Week and XP Boost.
 - **Colorblind patterns** (in Settings) give every player's land and trail its own pattern.
 - **Daily missions:** 3 new missions every day with coin rewards.
+- **Daily streak:** the first game each day pays coins, more for every day in a row (20 up to 150 on day 7, then 100 a day). Day 7 unlocks the Star Sprite pet.
+- **Pets:** a little friend follows your square: Chick, Slime, Bat, Kitty (Silver rank), Dragon (Gold), UFO (Platinum) and Star Sprite (7-day streak). Some bots bring pets too.
 - **Player level:** every game earns XP, and each level-up pays a coin bonus.
 - **Coins and the Locker:** earn coins every game (2 per % claimed, 5 per knockout, 50 for a win, 25 per trophy). Unlock 8 skins by playing or buy them, and buy trail effects (Sparkles, Bubbles, Hearts, Fire, Stars, Rainbow).
 - **19 trophies** (wear one as a **badge** next to your name) and a **stats** page (wins, best claim, knockouts, time played and best score per mode).

@@ -119,6 +119,7 @@ function finishRun(won, score) {
   stats.emotes = (stats.emotes || 0) + (run.emotes || 0);
 
   const ranked = isRanked() ? rankGameResult(won) : null;
+  const streakDay = tickStreak();
   const earned = Math.round((Math.round(score * 2) + me.kills * 5 + (won ? 50 : 0)) * (eventOn('double') ? 2 : 1) * gameDiff.coins);
   addCoins(earned);
   const fresh = [...run.trophies, ...checkAchievements(runSnapshot())];
@@ -130,7 +131,7 @@ function finishRun(won, score) {
   const missionCoins = missionsDone.reduce((a, m) => a + m.reward, 0);
   const seasonRewards = addSeasonXp(xpGain);
   save('color-claim-stats', JSON.stringify(stats));
-  return { earned, fresh, xpGain, levelsUp, levelCoins, missionsDone, missionCoins, seasonRewards, ranked };
+  return { earned, fresh, xpGain, levelsUp, levelCoins, missionsDone, missionCoins, seasonRewards, ranked, streakDay };
 }
 
 // ---------- Player level ----------
@@ -172,7 +173,7 @@ const RANKS = [
   { name: 'Diamond', at: 1200, color: '#4f8cff', reward: 400 },
   { name: 'Champion', at: 1500, color: '#b06bff', reward: 600 },
 ];
-const RANKED_MODES = ['classic', 'timed', 'daily', 'marathon'];
+const RANKED_MODES = ['classic', 'timed', 'daily', 'weekly', 'marathon'];
 const RP_PLACE = [30, 20, 12, 6, -2, -6, -10, -14];
 let rp = Math.max(0, Number(load('color-claim-rp', 0)) || 0);
 let rankBest = Number(load('color-claim-rank-best', 0)) || 0; // highest tier ever reached (its reward is paid once)
@@ -260,6 +261,45 @@ function buildRank() {
     const reward = i === 0 ? '' : i <= rankBest ? `✓ +${t.reward}` : `+${t.reward} <span class="coin"></span>`;
     return `<li class="${cls}">${rankIcon(i, 26)}<b>${t.name}</b><span>${t.at} RP</span><small>${reward}</small></li>`;
   }).reverse().join('');
+}
+
+// ---------- Daily streak ----------
+// Finish a game every day to keep your streak going. The first game each day pays out,
+// more for every day in a row, and day 7 unlocks the Star Sprite pet.
+const STREAK_COINS = [20, 30, 40, 50, 60, 80, 150]; // days 1-7; every day after that pays 100
+let streak = loadJSON('color-claim-streak', { last: '', count: 0, best: 0 });
+const streakPay = day => (day <= 7 ? STREAK_COINS[day - 1] : 100);
+
+function yesterdayKey() {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+// The streak still counts if you played today or yesterday
+const streakNow = () => (streak.last === todayKey() || streak.last === yesterdayKey() ? streak.count : 0);
+
+function tickStreak() {
+  if (streak.last === todayKey()) return null;
+  streak.count = streak.last === yesterdayKey() ? streak.count + 1 : 1;
+  streak.last = todayKey();
+  streak.best = Math.max(streak.best || 0, streak.count);
+  save('color-claim-streak', JSON.stringify(streak));
+  const coinsWon = streakPay(streak.count);
+  addCoins(coinsWon);
+  renderStreak();
+  return { day: streak.count, coins: coinsWon, pet: streak.count === 7 };
+}
+
+const FLAME = '<svg class="flame" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2c1 4 5 6 5 11a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5 0 2 1 3 2 3-1-3 0-6 1-9.5z" fill="#ff8c42"/><path d="M12 12c.6 2 2.5 2.8 2.5 5a2.5 2.5 0 0 1-5 0c0-1.5 1.2-2.5 2.5-5z" fill="#ffd23f"/></svg>';
+
+function renderStreak() {
+  const n = streakNow(), playedToday = streak.last === todayKey();
+  const pips = Array.from({ length: 7 }, (_, i) => `<i class="${i < Math.min(n, 7) ? 'on' : ''}${i === 6 ? ' star' : ''}"></i>`).join('');
+  const next = streakPay(n + 1);
+  const text = !n ? `Start a streak: finish a game today for +${next} coins`
+    : playedToday ? `<b>${n}-day streak!</b> Come back tomorrow for +${next}`
+    : `<b>${n}-day streak</b> · play today to keep it (+${next})`;
+  $('streak-line').innerHTML = `${FLAME}<span>${text}</span><span class="pips" title="Day 7 unlocks the Star Sprite pet">${pips}</span>`;
 }
 
 // ---------- Daily missions ----------
@@ -487,7 +527,7 @@ $('editor-save').addEventListener('click', () => {
   save('color-claim-maps', JSON.stringify(maps));
   myMap = 'custom' + editor.slot;
   save('color-claim-map', myMap);
-  if (MODES[myMode].daily) { myMode = 'classic'; save('color-claim-mode', myMode); }
+  if (fixedMap(myMode)) { myMode = 'classic'; save('color-claim-mode', myMode); }
   buildPickers();
   showScreen('menu');
   toast(`Saved My map ${editor.slot + 1}. It's picked on the menu.`);
@@ -497,7 +537,7 @@ $('editor-save').addEventListener('click', () => {
 // A code holds a game's seed, mode, map, bot difficulty and score, plus a check letter to catch typos.
 // Your friend gets the same starting map and bots and tries to beat your score.
 const CODE_MODES = ['classic', 'timed', 'marathon', 'team'];
-const CODE_MAPS = ['square', 'round', 'pillars', 'maze', 'islands', 'saws', 'storm'];
+const CODE_MAPS = ['square', 'round', 'pillars', 'maze', 'islands', 'saws', 'storm', 'belts', 'portals'];
 const CODE_DIFFS = ['easy', 'normal', 'hard'];
 let lastChallenge = null;
 
@@ -605,6 +645,28 @@ document.querySelectorAll('[data-back]').forEach(b => b.addEventListener('click'
 
 // ---------- Locker ----------
 let lockerTab = 'skins';
+let ownedPets = loadJSON('color-claim-owned-pets', ['none', 'chick']);
+const RANK_NAMES = ['Bronze', 'Silver', 'Gold', 'Platinum', 'Diamond', 'Champion'];
+const petOpen = pet => pet.price === 0 || pet.id === 'none' || ownedPets.includes(pet.id)
+  || (pet.rank && rankBest >= pet.rank) || (pet.streak && (streak.best || 0) >= pet.streak);
+if (!petOpen(PETS.find(pt => pt.id === myPet) || PETS[0])) myPet = 'chick';
+
+function petPreview(petId) {
+  const c = document.createElement('canvas');
+  c.width = c.height = 88;
+  drawPet(c.getContext('2d'), petId, 44, 50, 46, 0.4);
+  if (petId === 'none') {
+    const g = c.getContext('2d');
+    g.strokeStyle = '#aab4c8';
+    g.lineWidth = 4;
+    g.beginPath();
+    g.arc(44, 44, 20, 0, TAU);
+    g.moveTo(30, 58);
+    g.lineTo(58, 30);
+    g.stroke();
+  }
+  return c;
+}
 function refreshLocker() {
   if ($('locker').classList.contains('show')) buildLocker();
 }
@@ -639,7 +701,15 @@ function buildLocker() {
   document.querySelectorAll('#locker .tab').forEach(t => t.classList.toggle('picked', t.dataset.tab === lockerTab));
   const box = $('locker-items');
   box.innerHTML = '';
-  const items = lockerTab === 'skins'
+  const items = lockerTab === 'pets'
+    ? PETS.map(pet => ({
+      id: pet.id, name: pet.name, canvas: petPreview(pet.id), open: petOpen(pet), equipped: pet.id === myPet,
+      price: pet.price, locked: !pet.price && pet.price !== 0 && pet.id !== 'none',
+      how: pet.rank ? `Reach ${RANK_NAMES[pet.rank]} rank` : pet.streak ? `Play ${pet.streak} days in a row` : '',
+      equip: () => { myPet = pet.id; save('color-claim-pet', pet.id); },
+      buy: () => { ownedPets.push(pet.id); save('color-claim-owned-pets', JSON.stringify(ownedPets)); },
+    }))
+    : lockerTab === 'skins'
     ? SKINS.map(sk => ({
       id: sk.id, name: sk.name, canvas: skinPreview(sk.id), open: isUnlocked(sk), equipped: sk.id === mySkin,
       price: SKIN_PRICE, how: sk.need && sk.need.text, season: sk.need && sk.need.stat === 'season',
@@ -668,6 +738,9 @@ function buildLocker() {
     } else if (it.season) {
       btn.textContent = 'Season reward';
       btn.disabled = true;
+    } else if (it.locked) {
+      btn.innerHTML = `${Icons.lock} Locked`;
+      btn.disabled = true;
     } else {
       btn.innerHTML = `Buy · ${it.price} <span class="coin"></span>`;
       btn.disabled = coins < it.price;
@@ -681,7 +754,7 @@ function buildLocker() {
       });
     }
     card.appendChild(btn);
-    if (!it.open && it.how && !it.season) card.insertAdjacentHTML('beforeend', `<span class="how">or: ${it.how}</span>`);
+    if (!it.open && it.how && !it.season) card.insertAdjacentHTML('beforeend', `<span class="how">${it.locked ? '' : 'or: '}${it.how}</span>`);
     box.appendChild(card);
   }
 }
@@ -741,9 +814,11 @@ function buildStats() {
     ['Trophies', `${ACHIEVEMENTS.filter(a => achieved[a.id]).length} / ${ACHIEVEMENTS.length}`],
     ['Giants beaten', s.giants || 0],
     ['Rank', rankInfo(rp).label],
+    ['Day streak', streakNow()],
+    ['Best streak', streak.best || 0],
     ['Most RP', s.bestRp || 0],
   ];
-  const modes = ['classic', 'timed', 'marathon', 'team', 'daily'].map(m => [m === 'daily' ? "Today's Daily" : `${MODES[m].name} best`, `${bestFor(m).toFixed(1)}%`]);
+  const modes = ['classic', 'timed', 'marathon', 'team', 'daily', 'weekly'].map(m => [m === 'daily' ? "Today's Daily" : m === 'weekly' ? "This week's Weekly" : `${MODES[m].name} best`, `${bestFor(m).toFixed(1)}%`]);
   $('stats-grid').innerHTML = [...tiles, ...modes].map(([k, v]) => `<div class="tile"><b>${v}</b><span>${k}</span></div>`).join('');
 }
 
@@ -811,5 +886,6 @@ renderLevel();
 renderMissionBadge();
 renderEvent();
 renderRankNav();
+renderStreak();
 showScreen('menu');
 requestAnimationFrame(frame);

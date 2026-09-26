@@ -71,6 +71,7 @@
     <div id="event-banner" class="event-banner"></div>
     <button id="play-btn">Play</button>
     <p class="small"><b id="menu-best"></b></p>
+    <p id="streak-line" class="streak-line"></p>
     <nav class="menu-nav">
       <button class="nav-btn rank-nav" data-open="rank"><span id="rank-nav-icon"></span><span id="rank-nav-label">Rank</span></button>
       <button class="nav-btn" data-open="missions">Missions <span id="mission-badge" class="badge">0/3</span></button>
@@ -90,10 +91,11 @@
   <div id="locker" class="screen">
     <div class="wallet"><span class="coin"></span> <span class="coin-count">0</span></div>
     <h2>Locker</h2>
-    <p class="small">Earn coins every game. Unlock skins by playing, or buy them. Trail effects puff out behind you.</p>
+    <p class="small">Earn coins every game. Unlock skins by playing, or buy them. Trail effects puff out behind you, and pets follow you around.</p>
     <div class="seg">
       <button class="seg-btn tab" data-tab="skins">Skins</button>
       <button class="seg-btn tab" data-tab="trails">Trail effects</button>
+      <button class="seg-btn tab" data-tab="pets">Pets</button>
     </div>
     <div id="locker-items"></div>
     <button class="secondary" data-back>Back</button>
@@ -133,7 +135,7 @@
     <div id="rank-card" class="rank-card"></div>
     <ol id="rank-ladder" class="rank-ladder"></ol>
     <div class="rank-rules small">
-      <p><b>Ranked modes:</b> Classic, Timed, Daily and Marathon (not challenges or custom maps).</p>
+      <p><b>Ranked modes:</b> Classic, Timed, Daily, Weekly and Marathon (not challenges or custom maps).</p>
       <p><b>Points for your place:</b> 1st +30 · 2nd +20 · 3rd +12 · 4th +6 · 5th −2 · 6th −6 · 7th −10 · 8th −14</p>
       <p>Winning +10 · each knockout +2 (up to +10) · getting knocked out −4. Hard bots give ×1.5 points, Easy bots ×0.5. Higher tiers lose a little more.</p>
       <p>You can drop a division, but never out of a tier you've reached.</p>
@@ -215,6 +217,7 @@
     <p id="over-coins" class="coins-earned"></p>
     <p id="over-xp" class="xp-earned"></p>
     <div id="over-rank" class="rank-earned hidden"></div>
+    <p id="over-streak" class="streak-earned hidden"></p>
     <ul id="over-missions" class="hidden"></ul>
     <ul id="over-season" class="hidden"></ul>
     <p id="over-unlock" class="unlock hidden"></p>

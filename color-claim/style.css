@@ -563,3 +563,17 @@ button:active { transform: translateY(3px); box-shadow: 0 2px 0 #2f5fbf; }
 .gif-box p { margin: 0; }
 .gif-img { width: 200px; height: 200px; border-radius: 12px; box-shadow: 0 4px 0 #c7cfe0; image-rendering: auto; }
 a.nav-btn { text-decoration: none; }
+
+/* ---------- Phase K: streaks and pets ---------- */
+.flame { width: 20px; height: 20px; flex: none; vertical-align: -4px; }
+.streak-line { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px; margin: 0; font-size: 14px; color: #6b7690; }
+.streak-line b { color: #e0661b; }
+.streak-line .pips { display: inline-flex; gap: 3px; }
+.streak-line .pips i { width: 9px; height: 9px; border-radius: 50%; background: #dfe4ee; }
+.streak-line .pips i.on { background: #ff8c42; }
+.streak-line .pips i.star { border-radius: 2px; transform: rotate(45deg); }
+.streak-line .pips i.star.on { background: #ffd23f; }
+.streak-earned { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px; margin: 0; font-weight: 800; color: #e0661b; }
+.item-btn svg { width: 13px; height: 13px; vertical-align: -2px; }
+/* Keep the menu clear of the level and coin badges when it scrolls */
+#menu { padding-top: 58px; }
