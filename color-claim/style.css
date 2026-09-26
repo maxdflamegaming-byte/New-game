@@ -577,3 +577,32 @@ a.nav-btn { text-decoration: none; }
 .item-btn svg { width: 13px; height: 13px; vertical-align: -2px; }
 /* Keep the menu clear of the level and coin badges when it scrolls */
 #menu { padding-top: 58px; }
+
+/* ---------- Phase L: boss bar, trophy pages, map codes ---------- */
+.boss-bar {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 14px;
+  font-weight: 900;
+  color: #d6304a;
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 12px;
+  box-shadow: 0 3px 0 #c7cfe0;
+  pointer-events: none;
+}
+.boss-bar .hearts { display: flex; gap: 3px; }
+.boss-bar svg { width: 20px; height: 20px; fill: #e3e8f2; transition: fill 0.2s, transform 0.2s; }
+.boss-bar svg.on { fill: #ff3c50; }
+@media (max-width: 600px) { .boss-bar { top: 128px; } .boss-bar svg { width: 16px; height: 16px; } }
+#trophy-pages small { opacity: 0.6; }
+.map-share { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; max-width: 480px; }
+.map-share p { margin: 0; }
+.map-code { width: min(320px, 70vw); font-size: 12px; }
+.boss-bar small { font-size: 11px; color: #4f8cff; letter-spacing: 1px; }
+body.boss-on #feed { padding-top: 78px; }

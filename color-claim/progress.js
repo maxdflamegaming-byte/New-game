@@ -75,11 +75,24 @@ const ACHIEVEMENTS = [
   { id: 'collector', name: 'Collector', desc: 'Own 5 skins', test: () => SKINS.filter(isUnlocked).length >= 5, progress: () => [SKINS.filter(isUnlocked).length, 5] },
   { id: 'regular', name: 'Regular', desc: 'Play 25 games', test: (r, s) => s.games >= 25, progress: s => [s.games, 25] },
   { id: 'golden', name: 'Golden', desc: 'Reach Gold rank', test: () => rankBest >= 2 },
+  // Page 2
+  { id: 'kingslayer', name: 'Kingslayer', desc: 'Defeat the King in a Boss Battle', test: (r, s) => (s.bossWins || 0) >= 1, page: 2 },
+  { id: 'diamond', name: 'Diamond', desc: 'Reach Diamond rank', test: () => rankBest >= 4, page: 2 },
+  { id: 'ghostbuster', name: 'Ghostbuster', desc: 'Beat your own ghost in the Weekly', test: r => !!r.beatGhost, page: 2 },
+  { id: 'onfire', name: 'On Fire', desc: 'Play 7 days in a row', test: () => (streak.best || 0) >= 7, progress: () => [streakNow(), 7], page: 2 },
+  { id: 'portals', name: 'Now You See Me', desc: 'Go through 10 portals', test: (r, s) => (s.teleports || 0) >= 10, progress: s => [s.teleports || 0, 10], page: 2 },
+  { id: 'eye', name: 'Eye of the Storm', desc: 'Win a game on the Storm map', test: r => r.won && r.map === 'storm', page: 2 },
+  { id: 'lumberjack', name: 'Saw Survivor', desc: 'Survive 3 minutes on the Saw Mill map', test: r => r.map === 'saws' && r.time >= 180, page: 2 },
+  { id: 'petlover', name: 'Pet Lover', desc: 'Own 4 pets', test: () => PETS.filter(pt => pt.id !== 'none' && petOpen(pt)).length >= 4, progress: () => [PETS.filter(pt => pt.id !== 'none' && petOpen(pt)).length, 4], page: 2 },
+  { id: 'chatty', name: 'Chatterbox', desc: 'Send 25 emotes', test: (r, s) => (s.emotes || 0) >= 25, progress: s => [s.emotes || 0, 25], page: 2 },
 ];
 let achieved = loadJSON('color-claim-achievements', {});
 
-function runSnapshot() {
-  return { peak: peakPct, kills: me ? me.kills : 0, time: playTime, bigLoop: run.bigLoop, freezeKO: run.freezeKO, giantKO: run.giantKO };
+function runSnapshot(won = false) {
+  return {
+    peak: peakPct, kills: me ? me.kills : 0, time: playTime, bigLoop: run.bigLoop, freezeKO: run.freezeKO, giantKO: run.giantKO,
+    beatGhost: run.beatGhost, map: gameMapId, mode: gameModeId, won,
+  };
 }
 
 function checkAchievements(r) {
@@ -117,12 +130,14 @@ function finishRun(won, score) {
   if (gameModeId === 'team' && won) stats.teamWins = (stats.teamWins || 0) + 1;
   if (run.giantKO) stats.giants = (stats.giants || 0) + 1;
   stats.emotes = (stats.emotes || 0) + (run.emotes || 0);
+  stats.teleports = (stats.teleports || 0) + (run.teleports || 0);
+  if (gameModeId === 'boss' && won) stats.bossWins = (stats.bossWins || 0) + 1;
 
   const ranked = isRanked() ? rankGameResult(won) : null;
   const streakDay = tickStreak();
   const earned = Math.round((Math.round(score * 2) + me.kills * 5 + (won ? 50 : 0)) * (eventOn('double') ? 2 : 1) * gameDiff.coins);
   addCoins(earned);
-  const fresh = [...run.trophies, ...checkAchievements(runSnapshot())];
+  const fresh = [...run.trophies, ...checkAchievements(runSnapshot(won))];
   const xpGain = Math.round((score * 10 + me.kills * 30 + (won ? 150 : 0) + playTime / 2) * (eventOn('xp') ? 1.5 : 1));
   const { levelsUp, levelCoins } = addXp(xpGain);
   const missionsDone = updateMissions({
@@ -456,6 +471,8 @@ const edProtected = (x, y) => Math.hypot(x - CUSTOM_SIZE / 2, y - CUSTOM_SIZE / 
 
 function editorLoadSlot(slot) {
   editor.slot = slot;
+  $('map-code').classList.add('hidden');
+  $('map-import-info').textContent = '';
   const saved = loadCustomMaps()[slot];
   editor.cells = saved ? unpackCells(saved.cells) : new Uint8Array(CUSTOM_SIZE * CUSTOM_SIZE);
   buildEditor();
@@ -520,6 +537,62 @@ function buildEditor() {
 }
 
 $('editor-clear').addEventListener('click', () => { editor.cells.fill(0); drawEditor(); });
+
+// Map codes: the wall grid as run lengths (a varint per run, walls and floor taking turns),
+// base64url encoded, with a check letter to catch copy mistakes
+function mapToCode(cells) {
+  const bytes = [];
+  let cur = 0, runLen = 0;
+  const flush = () => { let n = runLen; do { bytes.push((n & 127) | (n > 127 ? 128 : 0)); n >>= 7; } while (n); };
+  for (let i = 0; i < cells.length; i++) {
+    if (cells[i] === cur) { runLen++; continue; }
+    flush();
+    cur = cells[i];
+    runLen = 1;
+  }
+  flush();
+  const body = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  return `MAP-${body}-${(hashStr(body) % 36).toString(36).toUpperCase()}`;
+}
+
+function codeToMap(text) {
+  const m = /^MAP-([A-Za-z0-9_-]+)-([0-9A-Z])$/.exec(text.trim().replace(/\s+/g, ''));
+  if (!m || (hashStr(m[1]) % 36).toString(36).toUpperCase() !== m[2]) return null;
+  let bin;
+  try { bin = atob(m[1].replace(/-/g, '+').replace(/_/g, '/')); } catch { return null; }
+  const cells = new Uint8Array(CUSTOM_SIZE * CUSTOM_SIZE);
+  let pos = 0, cur = 0, i = 0;
+  while (i < bin.length) {
+    let n = 0, shift = 0, b;
+    do { b = bin.charCodeAt(i++); n |= (b & 127) << shift; shift += 7; } while (b & 128 && i < bin.length);
+    if (pos + n > cells.length) return null;
+    if (cur) cells.fill(1, pos, pos + n);
+    pos += n;
+    cur ^= 1;
+  }
+  if (pos !== cells.length) return null;
+  // The start area always stays clear
+  for (let y = 0; y < CUSTOM_SIZE; y++) for (let x = 0; x < CUSTOM_SIZE; x++) if (edProtected(x, y)) cells[y * CUSTOM_SIZE + x] = 0;
+  return cells;
+}
+
+$('editor-share').addEventListener('click', () => {
+  $('map-code-text').value = mapToCode(editor.cells);
+  $('map-code').classList.remove('hidden');
+  $('map-code-text').select();
+});
+$('map-code-copy').addEventListener('click', async () => {
+  const text = $('map-code-text').value;
+  try { await navigator.clipboard.writeText(text); toast('Map code copied!'); } catch { $('map-code-text').select(); toast('Select the code and copy it'); }
+});
+$('map-import').addEventListener('click', () => {
+  const cells = codeToMap($('map-import-text').value);
+  if (!cells) { $('map-import-info').textContent = "That code doesn't look right. Check it and try again."; return; }
+  editor.cells = cells;
+  drawEditor();
+  $('map-import-info').textContent = `Loaded into slot ${editor.slot + 1}. Press Save map to keep it.`;
+  Sfx.play('coin');
+});
 $('editor-save').addEventListener('click', () => {
   const maps = loadCustomMaps();
   while (maps.length < 3) maps.push(null);
@@ -777,10 +850,16 @@ function badgeName() {
 }
 
 // ---------- Trophies ----------
+let trophyPage = 1;
 function buildTrophies() {
   const got = ACHIEVEMENTS.filter(a => achieved[a.id]).length;
   $('trophy-count').textContent = `${got} / ${ACHIEVEMENTS.length} unlocked · ${ACH_REWARD} coins each · wear one as a badge under your name`;
-  $('trophy-list').innerHTML = ACHIEVEMENTS.map(a => {
+  $('trophy-pages').innerHTML = [1, 2].map(n => {
+    const list = ACHIEVEMENTS.filter(a => (a.page || 1) === n);
+    return `<button class="seg-btn${n === trophyPage ? ' picked' : ''}" data-page="${n}">Page ${n} <small>${list.filter(a => achieved[a.id]).length}/${list.length}</small></button>`;
+  }).join('');
+  $('trophy-pages').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { trophyPage = Number(b.dataset.page); buildTrophies(); }));
+  $('trophy-list').innerHTML = ACHIEVEMENTS.filter(a => (a.page || 1) === trophyPage).map(a => {
     const done = !!achieved[a.id];
     let extra = '';
     if (!done && a.progress) {
@@ -833,6 +912,7 @@ function buildSettings() {
     { label: 'Screen shake', value: settings.shake, options: [[true, 'On'], [false, 'Off']], set: v => { settings.shake = v; } },
     { label: 'Touch controls', value: settings.controls, options: [['joystick', 'Joystick'], ['turn', 'Tap to turn']], set: v => { settings.controls = v; } },
     { label: 'Joystick size', value: settings.stickSize, options: [['normal', 'Normal'], ['large', 'Large']], set: v => { settings.stickSize = v; } },
+    { label: 'Music style', value: settings.track, options: [['sunny', 'Sunny'], ['night', 'Night']], set: v => { settings.track = v; Music.track = v; } },
   ];
   const box = $('settings-list');
   box.innerHTML = '';

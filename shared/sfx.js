@@ -74,6 +74,13 @@ const Sfx = (() => {
     paint: { gap: 0.3, fn: () => { noise({ dur: 0.25, vol: 0.12 }); arp([392, 523, 659], 0.05, { type: 'triangle', vol: 0.07 }); } },
     win: { gap: 1, fn: () => arp([523, 659, 784, 1047, 1319, 1568], 0.09, { type: 'triangle', vol: 0.09 }) },
     emote: { gap: 0.15, fn: () => tone({ freq: 660, to: 990, dur: 0.09, type: 'triangle', vol: 0.05 }) },
+    portal: { gap: 0.2, fn: () => { tone({ freq: 300, to: 1400, dur: 0.18, type: 'sine', vol: 0.07 }); tone({ freq: 1400, to: 500, dur: 0.16, type: 'triangle', vol: 0.05, delay: 0.15 }); } },
+    saw: { gap: 0.3, fn: () => { tone({ freq: 900, to: 600, dur: 0.25, type: 'sawtooth', vol: 0.035 }); noise({ dur: 0.2, vol: 0.04 }); } },
+    belt: { gap: 0.4, fn: () => tone({ freq: 220, to: 260, dur: 0.06, type: 'square', vol: 0.02 }) },
+    rumble: { gap: 1, fn: () => { noise({ dur: 0.8, vol: 0.06 }); tone({ freq: 70, to: 40, dur: 0.8, type: 'sine', vol: 0.12 }); } },
+    roar: { gap: 1, fn: () => { tone({ freq: 160, to: 60, dur: 0.6, type: 'sawtooth', vol: 0.09 }); tone({ freq: 240, to: 90, dur: 0.5, type: 'square', vol: 0.03, delay: 0.05 }); noise({ dur: 0.4, vol: 0.05 }); } },
+    bosshit: { gap: 0.2, fn: () => { tone({ freq: 520, to: 130, dur: 0.25, type: 'square', vol: 0.07 }); noise({ dur: 0.2, vol: 0.08 }); } },
+    bossdown: { gap: 1, fn: () => { noise({ dur: 0.9, vol: 0.14 }); arp([196, 262, 330, 392, 523], 0.1, { type: 'triangle', vol: 0.09 }); } },
     rankup: { gap: 1, fn: () => arp([392, 523, 659, 784, 1047], 0.08, { type: 'square', vol: 0.05 }) },
   };
 

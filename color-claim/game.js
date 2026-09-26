@@ -103,6 +103,7 @@ const MODES = {
   cup: { name: 'Cup', desc: '3 two-minute rounds on different maps · most points wins the cup', size: 80, win: 0, time: 120, powerups: 5, cup: true },
   duo: { name: '2 Players', desc: 'Same keyboard: Player 1 uses WASD, Player 2 the arrow keys · first to 40% (or last one standing) wins', size: 80, win: 40, powerups: 5, duo: true },
   team: { name: 'Teams', desc: 'You + 3 bots vs 4 bots · first team to 50% wins', size: 80, win: 50, powerups: 5, teams: true },
+  boss: { name: 'Boss Battle', desc: "Just you and the King · cut his trail to hit him · knock off all his hearts to win", size: 64, win: 0, powerups: 4, boss: true },
 };
 
 const MAPS = {
@@ -290,7 +291,7 @@ function teleport(p, from, to) {
   p.cy = Math.floor(p.y);
   visit(p, p.cx, p.cy); // your trail carries on from the other side
   burst(p.x, p.y, to.color, 14, 6);
-  if (p === me) { cam.x = p.x; cam.y = p.y; Sfx.play('zap'); }
+  if (p === me) { cam.x = p.x; cam.y = p.y; Sfx.play('portal'); run.teleports++; }
   if (p === p2) { cam2.x = p.x; cam2.y = p.y; }
   if (p.isBot) {
     p.route = null;
@@ -314,7 +315,10 @@ function updateHazards(dt) {
       for (let x = Math.floor(sw.x - SAW_R); x <= Math.floor(sw.x + SAW_R); x++) {
         if (x < 0 || y < 0 || x >= N || y >= N || Math.hypot(x + 0.5 - sw.x, y + 0.5 - sw.y) > SAW_R + 0.3) continue;
         const id = trail[y * N + x];
-        if (id && players[id] && players[id].alive) kill(players[id], null, 'saw');
+        if (id && players[id] && players[id].alive) {
+          kill(players[id], null, 'saw');
+          if (!players[id].alive && me && dist(sw, me) < 20) Sfx.play('saw');
+        }
       }
     }
   }
@@ -335,6 +339,7 @@ function updateStorm(dt) {
     st.phase = 'shrink';
     st.from = st.r;
     st.clock = STORM_SHRINK;
+    if (me.alive) Sfx.play('rumble');
   } else if (st.phase === 'shrink') {
     st.r = st.to + (st.from - st.to) * Math.max(0, st.clock / STORM_SHRINK);
     if (st.clock <= 0) {
@@ -494,7 +499,7 @@ const isUnlocked = sk => !sk.need || stats[sk.need.stat] >= sk.need.n || ownedSk
 let myFx = load('color-claim-fx', 'none');
 
 // Settings (changed on the Settings screen)
-const settings = { vibrate: true, shake: true, controls: 'joystick', stickSize: 'normal', patterns: false, emotes: true };
+const settings = { vibrate: true, shake: true, controls: 'joystick', stickSize: 'normal', patterns: false, emotes: true, track: 'sunny' };
 try { Object.assign(settings, JSON.parse(load('color-claim-settings', '{}'))); } catch { /* bad saved data */ }
 const saveSettings = () => save('color-claim-settings', JSON.stringify(settings));
 
@@ -504,7 +509,7 @@ function buzz(pattern) {
     try { navigator.vibrate(pattern); } catch { /* not allowed */ }
   }
 }
-let run = { powerups: 0, bigLoop: 0, freezeKO: false, trophies: [], coinsPicked: 0, giantKO: false }; // this game's numbers
+let run = { powerups: 0, bigLoop: 0, freezeKO: false, trophies: [], coinsPicked: 0, giantKO: false, teleports: 0, bossHits: 0, beatGhost: false }; // this game's numbers
 let fxParts = [], fxTimer = 0, achTimer = 1;
 let mySkin = load('color-claim-skin', 'classic');
 let myPet = load('color-claim-pet', 'chick');
@@ -606,6 +611,7 @@ function kill(victim, killer, how = 'cut') {
   // A shield stops other players cutting or bumping you. Your own mistakes still count,
   // and so does losing all your land. Nothing protects you from the storm.
   if (victim.fx.shield > 0 && killer !== victim && how !== 'swallow' && how !== 'storm') return;
+  if (victim.isKing && victim.hp > 1) { hurtKing(victim, killer, how); return; }
   victim.alive = false;
   const lost = [];
   for (const i of victim.trail) if (trail[i] === victim.id) { trail[i] = 0; lost.push(i); }
@@ -633,6 +639,18 @@ function kill(victim, killer, how = 'cut') {
     const winner = victim === me ? p2 : me;
     const by = killer && killer !== victim ? ` by ${killer.name}` : '';
     later(900, () => endDuo(winner, `${victim.name} was knocked out${by}.`));
+  } else if (victim === me && gameMode.boss && lives > 1 && king && king.alive) {
+    // Boss Battle: lose a life and come back somewhere else
+    lives--;
+    shake = 1;
+    Sfx.play('hurt');
+    buzz(200);
+    toast(`Ouch! ${lives} ${lives === 1 ? 'life' : 'lives'} left`);
+    later(1200, () => {
+      if (!spawn(me)) spawn(me, N / 2, N / 2);
+      cam.x = me.x;
+      cam.y = me.y;
+    });
   } else if (victim === me && gameMode.tutorial) {
     // Tutorial: no game over, just a tip and a fresh start
     toast(killer === me ? "Oops! Don't cross your own trail." : 'Watch out: your trail was cut!');
@@ -649,6 +667,14 @@ function kill(victim, killer, how = 'cut') {
       : how === 'bump' ? `You bumped into ${killer.name} outside your land!`
       : `${killer.name} cut your trail!`;
     later(900, () => endGame(false, reason));
+  } else if (victim.isKing) {
+    run.bossHits++;
+    Sfx.play('bossdown');
+    buzz([60, 40, 60, 40, 200]);
+    shake = 1;
+    for (let k = 0; k < 6; k++) burst(victim.x + rand(-3, 3), victim.y + rand(-3, 3), COLORS[k], 30, 14);
+    toast('The King is defeated!');
+    later(900, () => { if (state === 'play') win('You defeated the King!'); });
   } else if (killer === me && victim.isBoss) {
     run.giantKO = true;
     addCoins(100);
@@ -721,7 +747,7 @@ function capture(p) {
 // ---------- Movement ----------
 function speedOf(p) {
   let v = SPEED;
-  if (p.isBoss) v *= 1.12;
+  if (p.isBoss) v *= p.rage ? 1.28 : 1.12;
   else if (p.isBot) v *= gameDiff.speed;
   if (eventOn('speed')) v *= 1.2;
   if (p.fx.speed > 0) v *= 1.6;
@@ -752,6 +778,12 @@ function visit(p, x, y) {
 }
 
 function move(p, dt) {
+  // A little click when you step onto a conveyor
+  if (p === me && belt) {
+    const on = !!beltAt(p.x, p.y);
+    if (on && !p.onBelt) Sfx.play('belt');
+    p.onBelt = on;
+  }
   let diff = p.desired - p.angle;
   diff = Math.atan2(Math.sin(diff), Math.cos(diff));
   const turn = clamp(diff, -TURN * dt, TURN * dt);
@@ -906,7 +938,7 @@ function updatePowerups(dt) {
 // The Giant: a big, fast boss bot that arrives once you're doing well, and hunts your trail
 let giant = null;
 function giantDue() {
-  if (giant || !me.alive || gameMode.duo || gameMode.cup || gameMode.tutorial) return false;
+  if (giant || !me.alive || gameMode.duo || gameMode.cup || gameMode.tutorial || gameMode.boss) return false;
   if (gameMode.time) return playTime >= 90;
   return pct(me) >= (N > 100 ? 15 : 20);
 }
@@ -924,6 +956,86 @@ function spawnGiant() {
   toast('The Giant is coming for your trail!');
   Sfx.play('warn');
   shake = 0.6;
+}
+
+// ---------- Boss Battle: the King ----------
+// A huge bot with hearts. Cutting his trail (or him crossing it) takes a heart instead of
+// knocking him out. At half health he calls two guards; on his last heart he gets faster.
+let king = null;
+let lives = 1; // Boss Battle gives you 3
+const KING_HEARTS = { easy: 3, normal: 5, hard: 7 };
+
+function spawnKing() {
+  const k = makePlayer(players.length, 'King', '#3b3f58', true, 'giant');
+  k.isBoss = true;
+  k.isKing = true;
+  k.maxHp = k.hp = KING_HEARTS[gameDiffId] || 5;
+  k.greed = 55;
+  k.aggro = 0.7;
+  k.loopScale = 1.7;
+  k.fleeDist = 0;
+  k.team = k.id;
+  k.hitFlash = 0;
+  players.push(k);
+  if (spawn(k)) growKingdom(k);
+  king = k;
+}
+
+// The King starts with a bigger home than everyone else
+function growKingdom(k) {
+  for (let dy = -5; dy <= 5; dy++) {
+    for (let dx = -5; dx <= 5; dx++) {
+      const x = k.cx + dx, y = k.cy + dy, i = y * N + x;
+      if (x < 0 || y < 0 || x >= N || y >= N || dx * dx + dy * dy > 26 || owner[i] || trail[i] || wall[i]) continue;
+      setOwner(i, k.id);
+    }
+  }
+}
+
+function hurtKing(k, killer, how) {
+  k.hp--;
+  run.bossHits++;
+  // His trail breaks, and he gets a moment to recover
+  const lost = [];
+  for (const i of k.trail) if (trail[i] === k.id) { trail[i] = 0; lost.push(i); }
+  k.trail = [];
+  fades.push({ cells: lost, color: k.color, life: 0.7 });
+  k.fx.shield = 2.5;
+  k.wp = [];
+  k.mode = 'idle';
+  k.route = null;
+  k.hitFlash = 1;
+  // Swallowed (no land left) or caught by the storm: he escapes to a new home
+  if (how === 'swallow' || how === 'storm' || counts[k.id] === 0) {
+    k.alive = false;
+    if (spawn(k)) growKingdom(k);
+    else k.respawn = 0.5;
+  }
+  burst(k.x, k.y, '#ffd23f', 40, 14);
+  floats.push({ x: k.x, y: k.y - 3, text: '-1 ♥', life: 1.2, big: true, gold: true });
+  shake = 0.8;
+  Sfx.play('bosshit');
+  buzz([40, 30, 80]);
+  addFeed(`👑 ${killer === k ? 'The King tripped on his own trail' : `${killer ? killer.name : 'A hazard'} hit the King`} · ${k.hp} ♥ left`);
+  if (k.hp === Math.ceil(k.maxHp / 2)) later(600, () => callGuards(k));
+  if (k.hp === 1) {
+    k.rage = true;
+    toast('Last heart! The King is furious!');
+  }
+}
+
+function callGuards(k) {
+  if (!k.alive || state !== 'play') return;
+  const colors = COLORS.filter((_, i) => i !== myColor);
+  ['Guard', 'Knight'].forEach((name, n) => {
+    const g = makePlayer(players.length, name, colors[n * 3], true, 'classic');
+    givePersonality(g, 'hunter');
+    g.team = g.id;
+    players.push(g);
+    if (!spawn(g)) g.respawn = 1;
+  });
+  toast('The King calls his guards!');
+  Sfx.play('roar');
 }
 
 // Two squares touching: whoever is safe on their own land wins. If both are outside,
@@ -1430,7 +1542,7 @@ function startGame() {
     players.push(p2);
   }
   const botColors = COLORS.filter((_, i) => !taken.includes(i));
-  const names = BOT_NAMES.slice().sort(() => random() - 0.5).slice(0, gameMode.tutorial ? 0 : botColors.length);
+  const names = BOT_NAMES.slice().sort(() => random() - 0.5).slice(0, gameMode.tutorial || gameMode.boss ? 0 : botColors.length);
   names.forEach((name, i) => players.push(makePlayer(players.length, name, botColors[i], true, SKINS[randInt(0, SKINS.length - 1)].id)));
   // Personalities: a mix of hunters, turtles, explorers, collectors and wildcards
   const mix = PERSONA_MIX.slice().sort(() => random() - 0.5);
@@ -1453,10 +1565,13 @@ function startGame() {
     spawn(me, N / 2, N / 2);
   }
   for (const p of players) if (p && p.isBot) spawn(p);
+  king = null;
+  lives = gameMode.boss ? 3 : 1;
+  if (gameMode.boss) spawnKing();
   if (p2) { cam2.x = p2.x; cam2.y = p2.y; cam2.zoom = 0.8; }
   random = Math.random;
   playTime = 0;
-  run = { powerups: 0, bigLoop: 0, freezeKO: false, trophies: [], coinsPicked: 0, giantKO: false };
+  run = { powerups: 0, bigLoop: 0, freezeKO: false, trophies: [], coinsPicked: 0, giantKO: false, teleports: 0, bossHits: 0, beatGhost: false };
   replayFrames = [];
   replayTimer = 0;
   startGhost();
@@ -1480,9 +1595,12 @@ function startGame() {
   state = 'play';
   showScreen(null);
   Sfx.play('beep');
+  Music.track = gameMode.boss ? 'boss' : settings.track;
   Music.start();
   const ev = weekInfo().event;
-  later(3400, () => toast(`${ev.name}: ${ev.desc}`));
+  if (gameMode.boss) {
+    later(3400, () => { toast(`Cut the King's trail ${king.maxHp} times to win!`); Sfx.play('roar'); });
+  } else later(3400, () => toast(`${ev.name}: ${ev.desc}`));
 }
 
 function togglePause() {
@@ -1513,6 +1631,7 @@ function endGame(won, reason) {
   const score = Math.round(peakPct * 10) / 10;
   const prevBest = bestFor(gameModeId);
   const isBest = score > prevBest;
+  if (gameMode.weekly && ghostRun && score > ghostRun.score) run.beatGhost = true;
   if (isBest) save(bestKey(gameModeId), score);
   if (gameModeId === 'classic') best = Math.max(best, score);
 
@@ -1560,7 +1679,7 @@ function endGame(won, reason) {
     if (beat) challengeBeaten();
   }
   // Offer a challenge code for this game (not for 2 players, the Cup or custom maps)
-  const shareable = !gameMode.duo && !gameMode.cup && !gameMapId.startsWith('custom');
+  const shareable = !gameMode.duo && !gameMode.cup && !gameMode.boss && !gameMapId.startsWith('custom');
   $('challenge-share').classList.toggle('hidden', !shareable);
   $('challenge-code').classList.add('hidden');
   lastChallenge = shareable ? { seed: gameSeed, mode: gameMode.daily ? 'classic' : gameMode.weekly ? 'timed' : gameModeId, map: gameMapId, diff: gameDiffId, score } : null;
@@ -2158,6 +2277,7 @@ function timeUp() {
 function showScreen(id) {
   for (const el of document.querySelectorAll('.screen')) el.classList.toggle('show', el.id === id);
   $('hud').classList.toggle('hidden', state === 'menu' || state === 'over' || state === 'replay');
+  if (state === 'menu' || state === 'over' || state === 'replay') $('boss-bar').classList.add('hidden');
   updateMenuBest();
 }
 
@@ -2262,6 +2382,7 @@ function update(dt) {
     }
     p.blink -= dt;
     if (p.blink < -0.12) p.blink = rand(2, 5);
+    if (p.hitFlash) p.hitFlash = Math.max(0, p.hitFlash - dt * 2);
     if (p.pet !== 'none') updatePet(p, dt);
     if (p.isBot) steerBot(p, dt);
     if (p !== me || state === 'play') {
@@ -2758,6 +2879,10 @@ function drawHead(p, x0, y0, leaderId) {
   if (p.fx.ghost > 0) ctx.globalAlpha = 0.45 + 0.15 * Math.sin(time * 10);
   drawBody(ctx, p, s, time);
   ctx.globalAlpha = 1;
+  if (p.hitFlash > 0) {
+    ctx.fillStyle = `rgba(255, 255, 255, ${p.hitFlash * 0.8})`;
+    ctx.fillRect(-s / 2, -s / 2, s, s);
+  }
   // Frozen: icy tint
   if (freezer && freezer !== p) {
     ctx.fillStyle = 'rgba(160, 225, 255, 0.55)';
@@ -2784,7 +2909,7 @@ function drawHead(p, x0, y0, leaderId) {
   ctx.strokeText(p.name, hx, hy - s * 0.85 + bob);
   ctx.fillStyle = p.isBoss ? '#d6304a' : gameMode.teams && p !== me && allies(p, me) ? '#1f5fd6' : 'rgba(38, 48, 74, 0.9)';
   ctx.fillText(gameMode.teams && p !== me && allies(p, me) ? `★ ${p.name}` : p.name, hx, hy - s * 0.85 + bob);
-  if (p.id === leaderId) drawCrown(hx, hy - s * 1.75 + bob + Math.sin(time * 4) * 2, CELL * 0.9);
+  if (p.id === leaderId || p.isKing) drawCrown(hx, hy - s * 1.75 + bob + Math.sin(time * 4) * 2, CELL * 0.9);
 
   // Under the square: a bot's personality, or the badge you're wearing
   const tag = p.isBot && !p.isBoss && p.persona ? PERSONALITIES[p.persona].name : p === me ? badgeName() : '';
@@ -3406,6 +3531,15 @@ function updateHud() {
   }
   $('goal-fill').style.background = me.color;
   $('storm-info').classList.toggle('hidden', !storm);
+  const bossShown = !!king && state !== 'over' && state !== 'replay';
+  $('boss-bar').classList.toggle('hidden', !bossShown);
+  document.body.classList.toggle('boss-on', bossShown);
+  if (king) {
+    const heart = on => `<svg viewBox="0 0 24 24" class="${on ? 'on' : ''}"><path d="M12 21s-8-5.5-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 5.5-8 11-8 11z"/></svg>`;
+    const html = `<b>King${king.rage ? ' · furious!' : ''}</b><span class="hearts">${Array.from({ length: king.maxHp }, (_, i) => heart(i < (king.alive ? king.hp : 0))).join('')}</span>`
+      + `<small>You: ${Array.from({ length: 3 }, (_, i) => (i < lives ? '●' : '○')).join(' ')}</small>`;
+    if ($('boss-bar').innerHTML !== html) $('boss-bar').innerHTML = html;
+  }
   if (storm) {
     const left = storm.phase === 'wait' ? storm.clock + STORM_WARN : storm.clock;
     $('storm-info').textContent = storm.phase === 'shrink' ? 'Storm closing!'

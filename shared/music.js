@@ -1,18 +1,33 @@
 'use strict';
 
 // Background music made in code: a looping four-chord progression with bass,
-// an arpeggio and soft hi-hats. Respects the sound mute (Sfx.muted).
+// an arpeggio and soft hi-hats. There are a few tracks to pick from (Music.track).
+// Respects the sound mute (Sfx.muted).
 const Music = (() => {
   let ac = null, master = null, hatBuf = null, timer = null;
   let nextTime = 0, step = 0, playing = false;
   let enabled = true;
   try { enabled = localStorage.getItem('music-on') !== '0'; } catch { /* storage unavailable */ }
 
-  const BPM = 112;
-  const STEP = 60 / BPM / 2; // eighth notes
-  // C major, A minor, F major, G major (MIDI note numbers)
-  const CHORDS = [[48, 55, 60, 64], [45, 52, 57, 60], [41, 48, 53, 57], [43, 50, 55, 59]];
-  const ARP = [0, 1, 2, 3, 2, 1, 2, 3];
+  // Chords are MIDI note numbers; each lasts two bars of eighth notes
+  const TRACKS = {
+    // C major, A minor, F major, G major: bright and bouncy
+    sunny: {
+      bpm: 112, chords: [[48, 55, 60, 64], [45, 52, 57, 60], [41, 48, 53, 57], [43, 50, 55, 59]],
+      arp: [0, 1, 2, 3, 2, 1, 2, 3], bassEvery: 4, bass: ['triangle', 0.12], lead: ['square', 0.022], hatEvery: 2,
+    },
+    // A minor 7, F major 7, D minor 7, E major: slower and dreamy
+    night: {
+      bpm: 90, chords: [[45, 52, 55, 60], [41, 48, 52, 57], [38, 45, 48, 53], [40, 47, 52, 56]],
+      arp: [0, 2, 1, 3, 2, 1, 3, 2], bassEvery: 8, bass: ['sine', 0.16], lead: ['triangle', 0.045], hatEvery: 4,
+    },
+    // D minor, B flat, C, A: fast and tense, with a kick drum
+    boss: {
+      bpm: 142, chords: [[50, 57, 62, 65], [46, 53, 58, 62], [48, 55, 60, 64], [45, 52, 57, 61]],
+      arp: [0, 3, 1, 3, 2, 3, 1, 3], bassEvery: 1, bass: ['sawtooth', 0.045], lead: ['square', 0.02], hatEvery: 1, kick: true,
+    },
+  };
+  let track = 'sunny';
   const freq = n => 440 * Math.pow(2, (n - 69) / 12);
 
   function note(f, t, dur, type, vol) {
@@ -36,13 +51,26 @@ const Music = (() => {
     src.start(t);
   }
 
+  function kick(t) {
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.frequency.setValueAtTime(140, t);
+    o.frequency.exponentialRampToValueAtTime(40, t + 0.12);
+    g.gain.setValueAtTime(0.25, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.15);
+    o.connect(g).connect(master);
+    o.start(t);
+    o.stop(t + 0.17);
+  }
+
   function schedule() {
+    const T = TRACKS[track] || TRACKS.sunny, STEP = 60 / T.bpm / 2; // eighth notes
     while (nextTime < ac.currentTime + 0.15) {
-      const chord = CHORDS[Math.floor(step / 16) % CHORDS.length]; // two bars per chord
+      const chord = T.chords[Math.floor(step / 16) % T.chords.length]; // two bars per chord
       const s = step % 8;
-      if (s === 0 || s === 4) note(freq(chord[0] - 12), nextTime, STEP * 3.5, 'triangle', 0.12);
-      note(freq(chord[ARP[s]] + 12), nextTime, STEP * 0.9, 'square', 0.022);
-      if (s % 2 === 1) hat(nextTime);
+      if (s % T.bassEvery === 0) note(freq(chord[0] - 12), nextTime, STEP * Math.min(3.5, T.bassEvery * 0.9), T.bass[0], T.bass[1]);
+      note(freq(chord[T.arp[s]] + 12), nextTime, STEP * 0.9, T.lead[0], T.lead[1]);
+      if ((s + 1) % T.hatEvery === 0) hat(nextTime);
+      if (T.kick && s % 4 === 0) kick(nextTime);
       nextTime += STEP;
       step++;
     }
@@ -88,6 +116,10 @@ const Music = (() => {
     start,
     stop,
     get enabled() { return enabled; },
+    get track() { return track; },
+    // Switching tracks takes effect on the next note, so it can change mid-song
+    set track(id) { if (TRACKS[id]) track = id; },
+    tracks: Object.keys(TRACKS),
     get playing() { return playing; },
     toggle() {
       enabled = !enabled;

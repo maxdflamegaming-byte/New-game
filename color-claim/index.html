@@ -39,6 +39,8 @@
     </div>
   </div>
 
+  <div id="boss-bar" class="boss-bar hidden"></div>
+
   <div id="toast"></div>
 
   <div id="tutorial-panel" class="tutorial-panel hidden">
@@ -166,11 +168,24 @@
       <button id="editor-clear" class="secondary">Clear</button>
       <button class="secondary" data-back>Back</button>
     </div>
+    <div class="map-share">
+      <button id="editor-share" class="nav-btn">Get a code for this map</button>
+      <div id="map-code" class="hidden code-box">
+        <input id="map-code-text" class="code-input map-code" readonly>
+        <button id="map-code-copy" class="nav-btn">Copy</button>
+      </div>
+      <div class="code-box">
+        <input id="map-import-text" class="code-input map-code" placeholder="Paste a friend's map code" autocomplete="off" spellcheck="false">
+        <button id="map-import" class="nav-btn">Load</button>
+      </div>
+      <p id="map-import-info" class="small"></p>
+    </div>
   </div>
 
   <div id="trophies" class="screen">
     <h2>Trophies</h2>
     <p id="trophy-count" class="small"></p>
+    <div id="trophy-pages" class="seg"></div>
     <ul id="trophy-list"></ul>
     <button class="secondary" data-back>Back</button>
   </div>
