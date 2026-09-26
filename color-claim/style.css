@@ -525,3 +525,41 @@ button:active { transform: translateY(3px); box-shadow: 0 2px 0 #2f5fbf; }
   #pct { font-size: 26px; }
   #board { min-width: 120px; font-size: 11px; padding: 6px 8px; }
 }
+
+/* ---------- Phase J: emotes, storm, ranks, GIFs ---------- */
+.storm-info { font-size: 13px; font-weight: 800; color: #6b4fa0; }
+.storm-info.urgent { color: #d6304a; }
+.emote-tray {
+  pointer-events: auto;
+  display: grid;
+  grid-template-columns: repeat(3, 44px);
+  gap: 6px;
+  padding: 6px;
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: 12px;
+  box-shadow: 0 3px 0 #c7cfe0;
+}
+.emote-btn { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; background: #f0f3fa; box-shadow: none; border-radius: 10px; }
+.emote-btn canvas { width: 32px; height: 32px; }
+.emote-btn:active { transform: scale(0.9); }
+
+.rank-nav { display: inline-flex; align-items: center; gap: 6px; font-weight: 800; }
+.rank-icon { flex: none; vertical-align: middle; }
+.rank-card { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 14px 24px; background: #fff; border-radius: 16px; box-shadow: 0 4px 0 #c7cfe0; }
+.rank-card > b { font-size: 26px; font-weight: 900; }
+.rank-ladder { list-style: none; display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 380px; padding: 0; }
+.rank-ladder li { display: grid; grid-template-columns: 30px 1fr auto auto; align-items: center; gap: 10px; padding: 6px 12px; text-align: left; background: rgba(255, 255, 255, 0.7); border-radius: 10px; }
+.rank-ladder li span { font-size: 13px; color: #6b7690; }
+.rank-ladder li small { font-weight: 800; color: #c98a00; min-width: 58px; text-align: right; }
+.rank-ladder li.done { opacity: 0.75; }
+.rank-ladder li.done small { color: #1f9d6b; }
+.rank-ladder li.here { background: #fff; box-shadow: 0 0 0 2px #26304a; }
+.rank-rules { max-width: 520px; }
+.rank-rules p { margin: 4px 0; }
+.rank-earned { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; font-weight: 800; }
+.rank-earned .promo { width: 100%; color: #b06bff; }
+
+.gif-box { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.gif-box p { margin: 0; }
+.gif-img { width: 200px; height: 200px; border-radius: 12px; box-shadow: 0 4px 0 #c7cfe0; image-rendering: auto; }
+a.nav-btn { text-decoration: none; }

@@ -23,16 +23,19 @@
       <div id="timer" class="hidden"></div>
       <div id="team-score" class="hidden"></div>
       <div id="kills">0 knockouts</div>
+      <div id="storm-info" class="storm-info hidden"></div>
       <div id="effects"></div>
     </div>
     <ul id="feed"></ul>
     <div class="right">
       <ol id="board"></ol>
       <div class="btns">
+        <button id="emote-btn" class="icon-btn" title="Emotes (1-6)" aria-label="Emotes"></button>
         <button id="pause-btn" class="icon-btn" title="Pause (P)" aria-label="Pause"></button>
         <button id="music-btn" class="icon-btn" title="Music on/off (N)" aria-label="Music on/off"></button>
         <button id="mute-btn" class="icon-btn" title="Sound on/off (M)" aria-label="Sound on/off"></button>
       </div>
+      <div id="emote-tray" class="emote-tray hidden"></div>
     </div>
   </div>
 
@@ -69,6 +72,7 @@
     <button id="play-btn">Play</button>
     <p class="small"><b id="menu-best"></b></p>
     <nav class="menu-nav">
+      <button class="nav-btn rank-nav" data-open="rank"><span id="rank-nav-icon"></span><span id="rank-nav-label">Rank</span></button>
       <button class="nav-btn" data-open="missions">Missions <span id="mission-badge" class="badge">0/3</span></button>
       <button class="nav-btn" data-open="challenge">Challenge</button>
       <button class="nav-btn" data-open="season">Season</button>
@@ -80,7 +84,7 @@
       <button id="howto-open" class="nav-btn">How to play</button>
       <button id="install-btn" class="nav-btn install hidden">Install app</button>
     </nav>
-    <p class="small keys">Steer: mouse, WASD / arrows, or drag on touch screens &middot; P pause &middot; M sound &middot; N music</p>
+    <p class="small keys">Steer: mouse, WASD / arrows, or drag on touch screens &middot; 1-6 emotes &middot; P pause &middot; M sound &middot; N music</p>
   </div>
 
   <div id="locker" class="screen">
@@ -122,6 +126,19 @@
       <button id="cup-next">Next round</button>
       <button id="cup-quit" class="secondary">Quit cup</button>
     </div>
+  </div>
+
+  <div id="rank" class="screen">
+    <h2>Ranked ladder</h2>
+    <div id="rank-card" class="rank-card"></div>
+    <ol id="rank-ladder" class="rank-ladder"></ol>
+    <div class="rank-rules small">
+      <p><b>Ranked modes:</b> Classic, Timed, Daily and Marathon (not challenges or custom maps).</p>
+      <p><b>Points for your place:</b> 1st +30 · 2nd +20 · 3rd +12 · 4th +6 · 5th −2 · 6th −6 · 7th −10 · 8th −14</p>
+      <p>Winning +10 · each knockout +2 (up to +10) · getting knocked out −4. Hard bots give ×1.5 points, Easy bots ×0.5. Higher tiers lose a little more.</p>
+      <p>You can drop a division, but never out of a tier you've reached.</p>
+    </div>
+    <button class="secondary" data-back>Back</button>
   </div>
 
   <div id="season" class="screen">
@@ -197,6 +214,7 @@
     <p id="challenge-result" class="challenge-result hidden"></p>
     <p id="over-coins" class="coins-earned"></p>
     <p id="over-xp" class="xp-earned"></p>
+    <div id="over-rank" class="rank-earned hidden"></div>
     <ul id="over-missions" class="hidden"></ul>
     <ul id="over-season" class="hidden"></ul>
     <p id="over-unlock" class="unlock hidden"></p>
@@ -213,11 +231,21 @@
       <button id="replay-btn" class="secondary">Watch replay</button>
       <button id="menu-btn" class="secondary">Menu</button>
     </div>
+    <div id="gif-box" class="gif-box hidden">
+      <div class="code-box">
+        <button id="gif-btn" class="nav-btn">Make a GIF</button>
+        <a id="gif-save" class="nav-btn hidden" download="color-claim-replay.gif">Download GIF</a>
+        <button id="gif-share" class="nav-btn hidden">Share</button>
+      </div>
+      <p id="gif-status" class="small"></p>
+      <img id="gif-img" class="gif-img hidden" alt="Replay GIF">
+    </div>
   </div>
 
   <script src="../shared/sfx.js"></script>
   <script src="../shared/icons.js"></script>
   <script src="../shared/music.js"></script>
+  <script src="gif.js"></script>
   <script src="game.js"></script>
   <script src="progress.js"></script>
 </body>

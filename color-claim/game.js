@@ -2,7 +2,7 @@
 
 // ---------- Canvas setup ----------
 const canvas = document.getElementById('game');
-const ctx = canvas.getContext('2d');
+let ctx = canvas.getContext('2d'); // swapped for an offscreen canvas while saving a GIF
 let W = 0, H = 0, BASE_CELL = 16, CELL = 16;
 
 function resize() {
@@ -108,6 +108,8 @@ const MAPS = {
   pillars: { name: 'Pillars' },
   maze: { name: 'Maze' },
   islands: { name: 'Islands' },
+  saws: { name: 'Saw Mill' },
+  storm: { name: 'Storm' },
 };
 
 // Custom maps are saved as a bit string of wall cells (80 x 80), base64 encoded
@@ -190,6 +192,129 @@ function buildMap(id) {
   }
   playCells = 0;
   for (let i = 0; i < N * N; i++) if (!wall[i]) playCells++;
+}
+
+// ---------- Hazards ----------
+// Saw Mill: spinning saws slide along tracks and cut any trail they touch (a shield keeps you safe).
+// Storm: the arena keeps shrinking. Land, trails and players caught outside the ring are lost.
+let saws = [];
+let storm = null;
+const SAW_R = 1.2;
+const STORM_FIRST = 40, STORM_EVERY = 25, STORM_WARN = 6, STORM_SHRINK = 4;
+
+function buildHazards(id) {
+  saws = [];
+  storm = null;
+  if (id === 'saws') {
+    // Saws run back and forth along horizontal and vertical lanes, and one circles the middle
+    const lanes = N > 100 ? [0.2, 0.4, 0.6, 0.8] : [0.28, 0.72];
+    for (const f of lanes) {
+      saws.push({ kind: 'line', ax: N * 0.08, ay: N * f, bx: N * 0.92, by: N * f, speed: rand(3.2, 4.2), t: random(), x: 0, y: 0, spin: 0 });
+      saws.push({ kind: 'line', ax: N * f, ay: N * 0.08, bx: N * f, by: N * 0.92, speed: rand(3.2, 4.2), t: random(), x: 0, y: 0, spin: 0 });
+    }
+    saws.push({ kind: 'circle', cx: N / 2, cy: N / 2, r: N * 0.2, speed: 3.6, t: random(), x: 0, y: 0, spin: 0 });
+    for (const sw of saws) moveSaw(sw, 0);
+  } else if (id === 'storm') {
+    storm = { r: N * 0.72, from: N * 0.72, to: N * 0.72, min: N * 0.3, clock: STORM_FIRST, phase: 'wait' };
+  }
+}
+
+function moveSaw(sw, dt) {
+  sw.spin += dt * 10;
+  if (sw.kind === 'line') {
+    const len = Math.hypot(sw.bx - sw.ax, sw.by - sw.ay);
+    sw.t = (sw.t + (sw.speed * dt) / (2 * len)) % 1;
+    const u = sw.t < 0.5 ? sw.t * 2 : 2 - sw.t * 2;
+    sw.x = sw.ax + (sw.bx - sw.ax) * u;
+    sw.y = sw.ay + (sw.by - sw.ay) * u;
+  } else {
+    sw.t = (sw.t + (sw.speed * dt) / (TAU * sw.r)) % 1;
+    sw.x = sw.cx + Math.cos(sw.t * TAU) * sw.r;
+    sw.y = sw.cy + Math.sin(sw.t * TAU) * sw.r;
+  }
+}
+
+// Where a saw will be `ahead` seconds from now
+function sawAhead(sw, ahead) {
+  const copy = { ...sw };
+  moveSaw(copy, ahead);
+  return copy;
+}
+
+const nearSaw = (x, y, d) => saws.some(sw => Math.hypot(sw.x - x, sw.y - y) < d);
+
+// Is this spot safe from the storm? While the ring is about to shrink, "safe" means inside the new ring.
+function stormSafe(x, y, margin = 0) {
+  if (!storm) return true;
+  const r = storm.phase === 'wait' ? storm.r : storm.to;
+  return Math.hypot(x - N / 2, y - N / 2) < r - margin;
+}
+
+function updateHazards(dt) {
+  for (const sw of saws) {
+    moveSaw(sw, dt);
+    // Cut every trail the blade touches
+    for (let y = Math.floor(sw.y - SAW_R); y <= Math.floor(sw.y + SAW_R); y++) {
+      for (let x = Math.floor(sw.x - SAW_R); x <= Math.floor(sw.x + SAW_R); x++) {
+        if (x < 0 || y < 0 || x >= N || y >= N || Math.hypot(x + 0.5 - sw.x, y + 0.5 - sw.y) > SAW_R + 0.3) continue;
+        const id = trail[y * N + x];
+        if (id && players[id] && players[id].alive) kill(players[id], null, 'saw');
+      }
+    }
+  }
+  if (storm) updateStorm(dt);
+}
+
+function updateStorm(dt) {
+  const st = storm;
+  st.clock -= dt;
+  if (st.phase === 'wait' && st.clock <= STORM_WARN && st.r > st.min + 0.5) {
+    st.phase = 'warn';
+    st.to = Math.max(st.min, Math.min(N * 0.56, st.r - N * 0.065)); // the first one cuts off the corners
+    if (me.alive) {
+      toast('The storm is closing in! Stay inside the ring.');
+      Sfx.play('warn');
+    }
+  } else if (st.phase === 'warn' && st.clock <= 0) {
+    st.phase = 'shrink';
+    st.from = st.r;
+    st.clock = STORM_SHRINK;
+  } else if (st.phase === 'shrink') {
+    st.r = st.to + (st.from - st.to) * Math.max(0, st.clock / STORM_SHRINK);
+    if (st.clock <= 0) {
+      st.r = st.to;
+      st.phase = 'wait';
+      st.clock = STORM_EVERY;
+    }
+    applyStorm();
+  }
+}
+
+// Turn everything outside the ring into storm (wall 3)
+function applyStorm() {
+  const c = N / 2;
+  let changed = false;
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      const i = y * N + x;
+      if (wall[i] || Math.hypot(x + 0.5 - c, y + 0.5 - c) <= storm.r) continue;
+      wall[i] = 3;
+      playCells--;
+      changed = true;
+      if (owner[i]) setOwner(i, 0);
+      const t = trail[i];
+      if (t) {
+        trail[i] = 0;
+        if (players[t] && players[t].alive) kill(players[t], null, 'storm');
+      }
+    }
+  }
+  if (!changed) return;
+  for (const p of players) {
+    if (p && p.alive && (wall[p.cy * N + p.cx] || counts[p.id] === 0)) kill(p, null, 'storm');
+  }
+  powerups = powerups.filter(pu => !isWallAt(pu.x, pu.y));
+  mapCoins = mapCoins.filter(co => !isWallAt(co.x, co.y));
 }
 
 // Bot personalities, shown under each bot's name
@@ -308,7 +433,7 @@ const isUnlocked = sk => !sk.need || stats[sk.need.stat] >= sk.need.n || ownedSk
 let myFx = load('color-claim-fx', 'none');
 
 // Settings (changed on the Settings screen)
-const settings = { vibrate: true, shake: true, controls: 'joystick', stickSize: 'normal', patterns: false };
+const settings = { vibrate: true, shake: true, controls: 'joystick', stickSize: 'normal', patterns: false, emotes: true };
 try { Object.assign(settings, JSON.parse(load('color-claim-settings', '{}'))); } catch { /* bad saved data */ }
 const saveSettings = () => save('color-claim-settings', JSON.stringify(settings));
 
@@ -380,8 +505,9 @@ function spawn(p, fx, fy) {
     let bestScore = -Infinity;
     for (let t = 0; t < 60; t++) {
       const x = randInt(4, N - 5), y = randInt(4, N - 5);
-      if (owner[y * N + x] || trail[y * N + x] || wall[y * N + x]) continue;
+      if (owner[y * N + x] || trail[y * N + x] || wall[y * N + x] || !stormSafe(x, y, 5)) continue;
       let score = freeStartCells(x, y).length;
+      if (nearSaw(x, y, 4)) score -= 20;
       for (const o of players) if (o && o !== p && o.alive && Math.hypot(o.x - x, o.y - y) < 10) score -= 30;
       if (score > bestScore) { bestScore = score; bx = x; by = y; }
     }
@@ -412,8 +538,8 @@ function spawn(p, fx, fy) {
 function kill(victim, killer, how = 'cut') {
   if (!victim.alive) return;
   // A shield stops other players cutting or bumping you. Your own mistakes still count,
-  // and so does losing all your land.
-  if (victim.fx.shield > 0 && killer !== victim && how !== 'swallow') return;
+  // and so does losing all your land. Nothing protects you from the storm.
+  if (victim.fx.shield > 0 && killer !== victim && how !== 'swallow' && how !== 'storm') return;
   victim.alive = false;
   const lost = [];
   for (const i of victim.trail) if (trail[i] === victim.id) { trail[i] = 0; lost.push(i); }
@@ -424,8 +550,11 @@ function kill(victim, killer, how = 'cut') {
   victim.respawn = victim.isBoss ? Infinity : 3; // the Giant doesn't come back
 
   if (killer && killer !== victim) killer.kills++;
+  if (killer && killer.isBot && killer !== victim && Math.random() < (victim === me ? 0.7 : 0.35)) botEmote(killer, Math.random() < 0.5 ? 'cool' : 'lol');
   if (killer === me && victim !== me && me.fx.freeze > 0) run.freezeKO = true;
-  if (killer === victim) addFeed(`💥 ${victim.name} crossed their own trail`);
+  if (how === 'saw') addFeed(`🪚 A saw cut ${victim.name}`);
+  else if (how === 'storm') addFeed(`🌀 The storm caught ${victim.name}`);
+  else if (killer === victim) addFeed(`💥 ${victim.name} crossed their own trail`);
   else if (how === 'swallow') addFeed(`🍽️ ${killer.name} swallowed ${victim.name}`);
   else if (how === 'bump') addFeed(`💢 ${killer.name} bumped ${victim.name}`);
   else addFeed(`✂️ ${killer.name} cut ${victim.name}`);
@@ -447,7 +576,9 @@ function kill(victim, killer, how = 'cut') {
     shake = 1;
     Sfx.play('death');
     buzz(300);
-    const reason = killer === me ? 'You crossed your own trail!'
+    const reason = how === 'saw' ? 'A saw cut your trail!'
+      : how === 'storm' ? 'The storm caught you!'
+      : killer === me ? 'You crossed your own trail!'
       : how === 'swallow' ? `${killer.name} swallowed all your land!`
       : how === 'bump' ? `You bumped into ${killer.name} outside your land!`
       : `${killer.name} cut your trail!`;
@@ -508,6 +639,7 @@ function capture(p) {
   // Anyone who lost all their land is out
   for (const o of players) if (o && o !== p && o.alive && counts[o.id] === 0) kill(o, p, 'swallow');
 
+  if (p.isBot && gained.length / playCells > 0.02 && Math.random() < 0.3) botEmote(p, Math.random() < 0.5 ? 'hi' : 'cool');
   if (p === me && gained.length) {
     const gainPct = (gained.length / playCells) * 100;
     run.bigLoop = Math.max(run.bigLoop, gainPct);
@@ -591,7 +723,7 @@ function spawnPowerup() {
   const kinds = Object.keys(POWERUPS);
   for (let t = 0; t < 20; t++) {
     const x = randInt(3, N - 4), y = randInt(3, N - 4);
-    if (wall[y * N + x] || powerups.some(pu => Math.hypot(pu.x - x, pu.y - y) < 10)) continue;
+    if (wall[y * N + x] || !stormSafe(x, y, 3) || powerups.some(pu => Math.hypot(pu.x - x, pu.y - y) < 10)) continue;
     powerups.push({ x: x + 0.5, y: y + 0.5, kind: kinds[randInt(0, kinds.length - 1)], age: 0 });
     return;
   }
@@ -656,7 +788,7 @@ function updateMapCoins(dt) {
     if (mapCoins.length < max) {
       for (let t = 0; t < 20; t++) {
         const x = randInt(2, N - 3), y = randInt(2, N - 3);
-        if (wall[y * N + x]) continue;
+        if (wall[y * N + x] || !stormSafe(x, y, 3)) continue;
         mapCoins.push({ x: x + 0.5, y: y + 0.5, age: 0, life: 25 });
         break;
       }
@@ -772,13 +904,14 @@ function bfsHome(p, padded) {
     if (bfsMark[j] === bfsGen || trail[j] === p.id || wall[j]) return;
     const nearHead = Math.abs(x - p.cx) <= 2 && Math.abs(y - p.cy) <= 2;
     if (padded && !nearHead && touchesOwnTrail(p, x, y)) return;
+    if (padded && !nearHead && saws.length && nearSaw(x + 0.5, y + 0.5, 2.2)) return;
     bfsMark[j] = bfsGen;
     bfsPrev[j] = from;
     bfsQueue[tail++] = j;
   };
   while (head < tail) {
     const i = bfsQueue[head++];
-    if (owner[i] === p.id) {
+    if (owner[i] === p.id && (!storm || stormSafe((i % N) + 0.5, Math.floor(i / N) + 0.5, 1.5))) {
       const path = [];
       for (let c = i; c !== start; c = bfsPrev[c]) path.push(c);
       return path.reverse();
@@ -848,6 +981,48 @@ function clearLine(ax, ay, bx, by) {
   return true;
 }
 
+// Will a saw run into this loop (you -> A -> B -> back) in the next few seconds?
+function sawCrosses(p, A, B) {
+  if (!saws.length) return false;
+  const segDist = (x, y, a, b) => {
+    const dx = b.x - a.x, dy = b.y - a.y, t = clamp(((x - a.x) * dx + (y - a.y) * dy) / (dx * dx + dy * dy || 1), 0, 1);
+    return Math.hypot(x - (a.x + dx * t), y - (a.y + dy * t));
+  };
+  const legs = [[p, A], [A, B], [B, p]];
+  for (const sw of saws) {
+    for (const ahead of [0, 1, 2, 3, 4]) {
+      const at = ahead ? sawAhead(sw, ahead) : sw;
+      if (legs.some(([a, b]) => segDist(at.x, at.y, a, b) < 2.5)) return true;
+    }
+  }
+  return false;
+}
+
+// A saw about to reach our head or trail?
+function sawThreat(p) {
+  for (const sw of saws) {
+    for (const at of [sw, sawAhead(sw, 0.7)]) {
+      if (Math.hypot(at.x - p.x, at.y - p.y) < 4) return true;
+      for (let k = 0; k < p.trail.length; k += 2) {
+        const i = p.trail[k];
+        if (Math.hypot((i % N) + 0.5 - at.x, Math.floor(i / N) + 0.5 - at.y) < 2.8) return true;
+      }
+    }
+  }
+  return false;
+}
+
+// Is any of our trail (or our head) where the storm is about to be?
+function stormThreat(p) {
+  if (!storm || storm.phase === 'wait') return false;
+  if (!stormSafe(p.x, p.y, 2)) return true;
+  for (let k = 0; k < p.trail.length; k += 3) {
+    const i = p.trail[k];
+    if (!stormSafe((i % N) + 0.5, Math.floor(i / N) + 0.5, 1)) return true;
+  }
+  return false;
+}
+
 function planLoop(p) {
   const tight = gameMapId === 'islands' ? 0.55 : 1; // small islands: small loops
   const c = v => clamp(v, 1.5, N - 1.5);
@@ -859,6 +1034,7 @@ function planLoop(p) {
     const wid = rand(4, 10) * p.loopScale * tight * shrink * (Math.random() < 0.5 ? -1 : 1);
     const A = { x: c(p.x + Math.cos(a) * len), y: c(p.y + Math.sin(a) * len) };
     const B = { x: c(A.x + Math.cos(a + Math.PI / 2) * wid), y: c(A.y + Math.sin(a + Math.PI / 2) * wid) };
+    if (!stormSafe(A.x, A.y, 3) || !stormSafe(B.x, B.y, 3) || sawCrosses(p, A, B)) continue;
     if (clearLine(p.x, p.y, A.x, A.y) && clearLine(A.x, A.y, B.x, B.y) && clearLine(B.x, B.y, p.x, p.y)) {
       p.wp = [A, B];
       p.mode = 'loop';
@@ -872,6 +1048,12 @@ function planLoop(p) {
 
 function think(p) {
   const outside = p.trail.length > 0;
+
+  // Hazards come first: get home (inside the ring) before the storm or a saw gets us
+  if (p.mode !== 'home' && (stormThreat(p) || (outside && saws.length && sawThreat(p)))) {
+    goHome(p);
+    return;
+  }
 
   // Head home if an enemy gets close while our trail is exposed, or if we got greedy
   if (outside && p.mode !== 'home') {
@@ -905,8 +1087,8 @@ function think(p) {
 
   // At home: sometimes go and grab a nearby power-up (Collectors also go for coins)
   if (!outside && p.mode !== 'grab') {
-    const pu = powerups.find(q => Math.hypot(q.x - p.x, q.y - p.y) < 12)
-      || (p.persona === 'collector' && mapCoins.find(c => Math.hypot(c.x - p.x, c.y - p.y) < 15));
+    const pu = powerups.find(q => Math.hypot(q.x - p.x, q.y - p.y) < 12 && stormSafe(q.x, q.y, 3))
+      || (p.persona === 'collector' && mapCoins.find(c => Math.hypot(c.x - p.x, c.y - p.y) < 15 && stormSafe(c.x, c.y, 3)));
     if (pu && Math.random() < (p.grabChance || 0.5)) {
       p.wp = [{ x: pu.x, y: pu.y }];
       p.mode = 'grab';
@@ -992,6 +1174,7 @@ window.addEventListener('keydown', e => {
   if ((k === 'p' || k === 'escape') && (state === 'play' || state === 'paused')) togglePause();
   if (k === 'm') toggleMute();
   if (k === 'n') toggleMusic();
+  if (k >= '1' && k <= '6' && state === 'play') playerEmote(EMOTES[Number(k) - 1].id);
   if ((k === 'enter' || k === ' ') && (state === 'menu' || state === 'over') && !document.querySelector('.screen.show:not(#menu):not(#over)')) {
     e.preventDefault();
     if (state === 'menu') playFromMenu();
@@ -1122,7 +1305,8 @@ function buildPickers() {
   loadCustomMaps().forEach((m, i) => { if (m) allMaps['custom' + i] = { name: m.name }; });
   if (!allMaps[myMap]) myMap = 'square';
   seg('maps', allMaps, daily ? dailyMap() : myMap, id => { myMap = id; save('color-claim-map', id); buildPickers(); }, daily || MODES[myMode].cup);
-  $('mode-desc').textContent = MODES[myMode].desc + (daily ? ` · Today's map: ${MAPS[dailyMap()].name}` : '')
+  const ranked = RANKED_MODES.includes(myMode) && (daily || !myMap.startsWith('custom'));
+  $('mode-desc').textContent = MODES[myMode].desc + (ranked ? ' · Ranked' : '') + (daily ? ` · Today's map: ${MAPS[dailyMap()].name}` : '')
     + (myDiff !== 'normal' ? ` · ${DIFFICULTY[myDiff].name} bots pay ×${DIFFICULTY[myDiff].coins} coins` : '')
     + (!daily && myMap.startsWith('custom') && MODES[myMode].size !== CUSTOM_SIZE ? ' · Custom maps are always normal size' : '');
   updateMenuBest();
@@ -1154,6 +1338,7 @@ function startGame() {
   // Custom maps are always 80 x 80
   allocWorld(gameMapId.startsWith('custom') ? CUSTOM_SIZE : gameMode.size);
   buildMap(gameMapId);
+  buildHazards(gameMapId);
   counts.fill(0);
   particles = [];
   flashes = [];
@@ -1201,6 +1386,9 @@ function startGame() {
   run = { powerups: 0, bigLoop: 0, freezeKO: false, trophies: [], coinsPicked: 0, giantKO: false };
   replayFrames = [];
   replayTimer = 0;
+  emoteCooldown = 0;
+  $('emote-tray').classList.add('hidden');
+  resetGif();
   fxParts = [];
   achTimer = 1;
   cam.x = me.x;
@@ -1256,7 +1444,8 @@ function endGame(won, reason) {
 
   // Update lifetime stats and announce any skins that just unlocked
   const before = SKINS.filter(isUnlocked);
-  const { earned, fresh: trophies, xpGain, levelsUp, levelCoins, missionsDone, missionCoins, seasonRewards } = finishRun(won, score);
+  const { earned, fresh: trophies, xpGain, levelsUp, levelCoins, missionsDone, missionCoins, seasonRewards, ranked } = finishRun(won, score);
+  showRankResult(ranked);
   const fresh = SKINS.filter(sk => isUnlocked(sk) && !before.includes(sk));
   $('over-unlock').textContent = fresh.length ? `🎁 New skin unlocked: ${fresh.map(sk => sk.name).join(', ')}! Find it in the Locker.` : '';
   $('over-unlock').classList.toggle('hidden', !fresh.length);
@@ -1302,11 +1491,14 @@ function endGame(won, reason) {
     return;
   }
   $('replay-btn').classList.toggle('hidden', replayFrames.length < 5);
+  $('gif-box').classList.toggle('hidden', replayFrames.length < 5);
   showScreen('over');
 }
 
 function win(reason = `You claimed ${gameMode.win}% of the map!`) {
   state = 'won';
+  players.filter(p => p && p.isBot && p.alive && !p.isBoss).sort((a, b) => dist(a, me) - dist(b, me)).slice(0, 2)
+    .forEach((p, i) => later(300 + i * 400, () => botEmote(p, 'gg')));
   Sfx.play('win');
   for (let i = 0; i < 6; i++) burst(me.x + rand(-8, 8), me.y + rand(-6, 6), COLORS[i], 30, 14);
   later(1600, () => endGame(true, reason));
@@ -1329,8 +1521,9 @@ function endDuo(winner, reason) {
   $('over-stats').textContent = `${me.name} ${pct(me).toFixed(1)}% · ${p2.name} ${pct(p2).toFixed(1)}%`;
   $('over-best').textContent = "2-player games are just for fun: they don't give coins, XP or trophies.";
   for (const id of ['over-coins', 'over-xp']) $(id).innerHTML = '';
-  for (const id of ['over-missions', 'over-season', 'over-unlock', 'over-ach']) $(id).classList.add('hidden');
+  for (const id of ['over-missions', 'over-season', 'over-unlock', 'over-ach', 'over-rank']) $(id).classList.add('hidden');
   $('replay-btn').classList.toggle('hidden', replayFrames.length < 5);
+  $('gif-box').classList.toggle('hidden', replayFrames.length < 5);
   showScreen('over');
 }
 
@@ -1422,10 +1615,190 @@ function startTutorial() {
   renderTutorial();
 }
 
+// ---------- Emotes ----------
+// Press 1-6 (or the smiley button) to pop a bubble over your square. Nearby bots answer back.
+const EMOTES = [
+  { id: 'hi', name: 'Hi!' },
+  { id: 'lol', name: 'LOL' },
+  { id: 'grr', name: 'Grr' },
+  { id: 'cool', name: 'Cool' },
+  { id: 'love', name: 'Love' },
+  { id: 'gg', name: 'GG' },
+];
+const PERSONA_EMOTES = {
+  hunter: ['grr', 'cool'], turtle: ['hi', 'love'], explorer: ['lol', 'hi'], collector: ['cool', 'love'], wildcard: ['lol', 'grr', 'gg', 'love'],
+};
+const EMOTE_TIME = 2.2;
+let emoteCooldown = 0;
+
+function playerEmote(id) {
+  if (state !== 'play' || !me || !me.alive || emoteCooldown > 0) return false;
+  emoteCooldown = 1.2;
+  me.emote = { id, t: 0 };
+  run.emotes = (run.emotes || 0) + 1;
+  Sfx.play('emote');
+  $('emote-tray').classList.add('hidden');
+  // The nearest bot usually answers
+  const bot = players.filter(p => p && p.isBot && p.alive && !p.isBoss && dist(p, me) < 25).sort((a, b) => dist(a, me) - dist(b, me))[0];
+  if (bot && Math.random() < 0.85) {
+    const mine = PERSONA_EMOTES[bot.persona] || PERSONA_EMOTES.wildcard;
+    const reply = (id === 'hi' || id === 'gg') && Math.random() < 0.6 ? id : mine[Math.floor(Math.random() * mine.length)];
+    later(rand(500, 1200), () => botEmote(bot, reply));
+  }
+  return true;
+}
+
+function botEmote(p, id) {
+  if (!settings.emotes || !p || !p.alive || (p.emoteWait || 0) > time) return;
+  p.emoteWait = time + 3;
+  p.emote = { id, t: 0 };
+  if (me && dist(p, me) < 25) Sfx.play('emote');
+}
+
+// Draws an emote centred on (x, y) with radius r (faces, a heart, or "GG")
+function drawEmote(g, id, x, y, r) {
+  g.save();
+  g.translate(x, y);
+  const pen = (w, color = '#5a3f00') => {
+    g.lineWidth = Math.max(1.2, r * w);
+    g.lineCap = 'round';
+    g.strokeStyle = color;
+  };
+  const dot = (dx, dy, rr, color = '#5a3f00') => {
+    g.fillStyle = color;
+    g.beginPath();
+    g.arc(dx * r, dy * r, rr * r, 0, TAU);
+    g.fill();
+  };
+  if (id === 'love') {
+    g.fillStyle = '#ff5d73';
+    g.beginPath();
+    g.moveTo(0, r * 0.85);
+    g.bezierCurveTo(-r * 1.35, -r * 0.05, -r * 0.6, -r * 1.05, 0, -r * 0.4);
+    g.bezierCurveTo(r * 0.6, -r * 1.05, r * 1.35, -r * 0.05, 0, r * 0.85);
+    g.fill();
+    dot(-0.42, -0.42, 0.14, 'rgba(255, 255, 255, 0.7)');
+  } else if (id === 'gg') {
+    g.fillStyle = '#4f8cff';
+    g.font = `900 ${Math.round(r * 1.2)}px system-ui, sans-serif`;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText('GG', 0, r * 0.08);
+    g.textBaseline = 'alphabetic';
+  } else {
+    g.fillStyle = id === 'grr' ? '#ff7a5c' : '#ffc93c';
+    g.beginPath();
+    g.arc(0, 0, r, 0, TAU);
+    g.fill();
+    pen(0.08, 'rgba(90, 63, 0, 0.35)');
+    g.stroke();
+    if (id === 'hi') {
+      dot(-0.33, -0.2, 0.12);
+      dot(0.33, -0.2, 0.12);
+      pen(0.11);
+      g.beginPath();
+      g.arc(0, 0.02, r * 0.5, 0.15 * Math.PI, 0.85 * Math.PI);
+      g.stroke();
+      dot(-0.62, 0.25, 0.13, 'rgba(255, 93, 115, 0.45)');
+      dot(0.62, 0.25, 0.13, 'rgba(255, 93, 115, 0.45)');
+    } else if (id === 'lol') {
+      pen(0.1);
+      for (const sx of [-1, 1]) {
+        g.beginPath();
+        g.arc(sx * 0.35 * r, -0.12 * r, r * 0.17, Math.PI * 1.1, Math.PI * 1.9);
+        g.stroke();
+      }
+      g.fillStyle = '#5a3f00';
+      g.beginPath();
+      g.arc(0, 0.12 * r, r * 0.45, 0, Math.PI);
+      g.closePath();
+      g.fill();
+      dot(-0.8, 0.02, 0.16, '#6fc3ff');
+      dot(0.8, 0.02, 0.16, '#6fc3ff');
+    } else if (id === 'grr') {
+      pen(0.1);
+      g.beginPath();
+      g.moveTo(-0.62 * r, -0.5 * r);
+      g.lineTo(-0.15 * r, -0.28 * r);
+      g.moveTo(0.62 * r, -0.5 * r);
+      g.lineTo(0.15 * r, -0.28 * r);
+      g.stroke();
+      dot(-0.33, -0.08, 0.11);
+      dot(0.33, -0.08, 0.11);
+      g.beginPath();
+      g.arc(0, 0.68 * r, r * 0.34, 1.15 * Math.PI, 1.85 * Math.PI);
+      g.stroke();
+    } else if (id === 'cool') {
+      g.fillStyle = '#26304a';
+      for (const sx of [-1, 1]) {
+        g.beginPath();
+        g.roundRect(sx * 0.36 * r - 0.3 * r, -0.36 * r, 0.6 * r, 0.36 * r, 0.12 * r);
+        g.fill();
+      }
+      pen(0.08, '#26304a');
+      g.beginPath();
+      g.moveTo(-0.1 * r, -0.26 * r);
+      g.lineTo(0.1 * r, -0.26 * r);
+      g.stroke();
+      pen(0.1);
+      g.beginPath();
+      g.arc(0.08 * r, 0.12 * r, r * 0.4, 0.2 * Math.PI, 0.7 * Math.PI);
+      g.stroke();
+    }
+  }
+  g.restore();
+}
+
+// The speech bubble over a square, popping in and fading out
+function drawEmoteBubble(e, x, y) {
+  const t = e.t, k = Math.min(1, t / 0.25);
+  const pop = t < 0.25 ? 1 + 2.7 * (k - 1) ** 3 + 1.7 * (k - 1) ** 2 : 1; // ease out, with a little overshoot
+  const r = Math.max(13, CELL * 1.05) * pop;
+  ctx.save();
+  ctx.globalAlpha = t > EMOTE_TIME - 0.3 ? Math.max(0, (EMOTE_TIME - t) / 0.3) : 1;
+  ctx.translate(x, y - r * 1.5 - t * 3);
+  ctx.fillStyle = '#fff';
+  ctx.strokeStyle = 'rgba(38, 48, 74, 0.2)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(0, 0, r * 1.2, 0, TAU);
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-r * 0.3, r * 1.05);
+  ctx.lineTo(0, r * 1.6);
+  ctx.lineTo(r * 0.3, r * 1.05);
+  ctx.fill();
+  drawEmote(ctx, e.id, 0, 0, r * 0.85);
+  ctx.restore();
+}
+
+const SMILE_ICON = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="9" cy="10" r="1.4" fill="currentColor"/><circle cx="15" cy="10" r="1.4" fill="currentColor"/><path d="M8 14.2a4.5 4.5 0 0 0 8 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+function buildEmoteTray() {
+  const tray = $('emote-tray');
+  tray.innerHTML = '';
+  EMOTES.forEach((em, n) => {
+    const b = document.createElement('button');
+    b.className = 'emote-btn';
+    b.title = `${em.name} (${n + 1})`;
+    b.setAttribute('aria-label', em.name);
+    b.dataset.emote = em.id;
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = 64;
+    drawEmote(cv.getContext('2d'), em.id, 32, 32, 24);
+    b.appendChild(cv);
+    b.addEventListener('click', () => playerEmote(em.id));
+    tray.appendChild(b);
+  });
+}
+$('emote-btn').innerHTML = SMILE_ICON;
+$('emote-btn').addEventListener('click', () => { if (state === 'play') $('emote-tray').classList.toggle('hidden'); });
+buildEmoteTray();
+
 // ---------- Cup ----------
 const CUP_POINTS = [10, 7, 5, 3, 2, 1, 1, 1];
 function newCup() {
-  const maps = ['square', 'round', 'pillars', 'maze', 'islands'].sort(() => Math.random() - 0.5).slice(0, 3);
+  const maps = ['square', 'round', 'pillars', 'maze', 'islands', 'saws', 'storm'].sort(() => Math.random() - 0.5).slice(0, 3);
   return { round: 1, seed: (Math.random() * 4294967296) >>> 0, maps, points: {}, last: {} };
 }
 
@@ -1566,6 +1939,9 @@ function update(dt) {
     if (p !== me || state === 'play') move(p, dt);
   }
   checkBumps();
+  updateHazards(dt);
+  emoteCooldown -= dt;
+  for (const p of players) if (p && p.emote && (p.emote.t += dt) > EMOTE_TIME) p.emote = null;
   updatePowerups(dt);
   updateMapCoins(dt);
   if (state === 'play' && giantDue()) spawnGiant();
@@ -1584,7 +1960,19 @@ function update(dt) {
       if (closest < 7) danger = Math.max(danger, 1 - closest / 7);
       if (closest < 10) threats.push(o);
     }
+    // Saws heading for your trail get a warning too
+    for (const sw of saws) {
+      let closest = Math.hypot(sw.x - me.x, sw.y - me.y);
+      for (let k = 0; k < me.trail.length; k += 2) {
+        const i = me.trail[k];
+        closest = Math.min(closest, Math.hypot(sw.x - (i % N) - 0.5, sw.y - Math.floor(i / N) - 0.5));
+      }
+      if (closest < 6) danger = Math.max(danger, 1 - closest / 6);
+      if (closest < 8) threats.push(sw);
+    }
   }
+  // Standing where the storm is about to hit
+  if (me.alive && storm && storm.phase !== 'wait' && !stormSafe(me.x, me.y, 0.5)) danger = Math.max(danger, 0.7);
   if (danger > 0.3 && !wasInDanger) Sfx.play('warn');
   wasInDanger = danger > 0.3;
 
@@ -1642,7 +2030,7 @@ function updateMinimap() {
   const d = miniImg.data;
   for (let i = 0; i < N * N; i++) {
     const id = owner[i] || trail[i];
-    const [r, g, b] = id ? rgbOf(id) : wall[i] === 1 ? [107, 118, 144] : [245, 247, 252];
+    const [r, g, b] = id ? rgbOf(id) : wall[i] === 1 ? [107, 118, 144] : wall[i] === 3 ? [122, 91, 176] : [245, 247, 252];
     d[i * 4] = r;
     d[i * 4 + 1] = g;
     d[i * 4 + 2] = b;
@@ -2081,6 +2469,7 @@ function drawHead(p, x0, y0, leaderId) {
     ctx.fillText(tag, hx, ty + 1);
     ctx.textBaseline = 'alphabetic';
   }
+  if (p.emote) drawEmoteBubble(p.emote, hx, hy - s * 0.85 + bob - (p.id === leaderId ? CELL * 1.6 : CELL * 0.6));
 }
 
 function draw(dt) {
@@ -2170,6 +2559,7 @@ function drawWorld(focus, c) {
   drawWalls(2, wallColor[2], 0);
   drawWalls(1, '#4a5369', CELL * 0.35);
   drawWalls(1, '#6b7690', 0);
+  if (storm) drawWalls(3, '#6b4fa0', 0);
 
   // Land: a darker copy nudged down gives a chunky 3D edge, then the top colour
   drawRuns(owner, c0, c1, r0, r1, x0, y0, p => p.dark, CELL * 0.3);
@@ -2214,6 +2604,8 @@ function drawWorld(focus, c) {
       ctx.fillRect(x * CELL - x0 + (CELL - inner) / 2, y * CELL - y0 + (CELL - inner) / 2, inner, inner);
     });
   }
+
+  drawHazards(x0, y0);
 
   // Gold coins spin (and blink before they vanish)
   for (const c of mapCoins) {
@@ -2429,6 +2821,7 @@ function drawWorld(focus, c) {
   }
 
   // Minimap
+  if (drawingGif) return;
   const ms = Math.min(130, W * 0.28), mx = 16, my = H - ms - 16;
   ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
   ctx.fillRect(mx - 4, my - 4, ms + 8, ms + 8);
@@ -2441,6 +2834,12 @@ function drawWorld(focus, c) {
   ctx.strokeStyle = '#26304a';
   ctx.lineWidth = 1;
   ctx.strokeRect(mx + (x0 / CELL / N) * ms, my + (y0 / CELL / N) * ms, (W / CELL / N) * ms, (H / CELL / N) * ms);
+  ctx.fillStyle = '#26304a';
+  for (const sw of saws) {
+    ctx.beginPath();
+    ctx.arc(mx + (sw.x / N) * ms, my + (sw.y / N) * ms, 2, 0, TAU);
+    ctx.fill();
+  }
   ctx.restore();
   if (focus.alive) {
     ctx.fillStyle = '#fff';
@@ -2449,6 +2848,80 @@ function drawWorld(focus, c) {
     ctx.arc(mx + (focus.x / N) * ms, my + (focus.y / N) * ms, 3 + Math.sin(time * 6), 0, TAU);
     ctx.fill();
     ctx.stroke();
+  }
+}
+
+// Saw tracks, saws and the storm's edge
+function drawHazards(x0, y0) {
+  if (saws.length) {
+    ctx.strokeStyle = 'rgba(38, 48, 74, 0.16)';
+    ctx.lineWidth = Math.max(2, CELL * 0.3);
+    ctx.setLineDash([CELL * 0.6, CELL * 0.5]);
+    for (const sw of saws) {
+      ctx.beginPath();
+      if (sw.kind === 'line') {
+        ctx.moveTo(sw.ax * CELL - x0, sw.ay * CELL - y0);
+        ctx.lineTo(sw.bx * CELL - x0, sw.by * CELL - y0);
+      } else {
+        ctx.arc(sw.cx * CELL - x0, sw.cy * CELL - y0, sw.r * CELL, 0, TAU);
+      }
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    for (const sw of saws) {
+      const sx = sw.x * CELL - x0, sy = sw.y * CELL - y0, R = SAW_R * CELL;
+      if (sx < -R * 2 || sy < -R * 2 || sx > W + R * 2 || sy > H + R * 2) continue;
+      ctx.fillStyle = 'rgba(38, 48, 74, 0.2)';
+      ctx.beginPath();
+      ctx.ellipse(sx, sy + R * 0.5, R, R * 0.4, 0, 0, TAU);
+      ctx.fill();
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(sw.spin);
+      ctx.fillStyle = '#8d97ab';
+      ctx.beginPath();
+      for (let k = 0; k < 12; k++) {
+        const a = (k / 12) * TAU;
+        ctx.lineTo(Math.cos(a) * R * 1.15, Math.sin(a) * R * 1.15);
+        ctx.lineTo(Math.cos(a + TAU / 24) * R * 0.8, Math.sin(a + TAU / 24) * R * 0.8);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#d8dde8';
+      ctx.beginPath();
+      ctx.arc(0, 0, R * 0.68, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = '#aab4c8';
+      ctx.lineWidth = Math.max(1, R * 0.1);
+      ctx.beginPath();
+      ctx.moveTo(-R * 0.5, 0);
+      ctx.lineTo(R * 0.5, 0);
+      ctx.stroke();
+      ctx.fillStyle = '#4a5369';
+      ctx.beginPath();
+      ctx.arc(0, 0, R * 0.2, 0, TAU);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+  if (storm) {
+    const cx = (N / 2) * CELL - x0, cy = (N / 2) * CELL - y0;
+    // A glowing edge where the storm is
+    ctx.strokeStyle = `rgba(176, 107, 255, ${0.45 + 0.2 * Math.sin(time * 5)})`;
+    ctx.lineWidth = Math.max(3, CELL * 0.5);
+    ctx.beginPath();
+    ctx.arc(cx, cy, storm.r * CELL, 0, TAU);
+    ctx.stroke();
+    // Where it's about to close in to
+    if (storm.phase !== 'wait') {
+      ctx.strokeStyle = `rgba(255, 60, 80, ${0.55 + 0.35 * Math.sin(time * 12)})`;
+      ctx.lineWidth = Math.max(2, CELL * 0.25);
+      ctx.setLineDash([CELL * 0.8, CELL * 0.6]);
+      ctx.beginPath();
+      ctx.arc(cx, cy, storm.to * CELL, 0, TAU);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
   }
 }
 
@@ -2538,6 +3011,14 @@ function updateHud() {
     $('goal-fill').style.width = `${Math.min(100, (pct(me) / gameMode.win) * 100)}%`;
   }
   $('goal-fill').style.background = me.color;
+  $('storm-info').classList.toggle('hidden', !storm);
+  if (storm) {
+    const left = storm.phase === 'wait' ? storm.clock + STORM_WARN : storm.clock;
+    $('storm-info').textContent = storm.phase === 'shrink' ? 'Storm closing!'
+      : storm.phase === 'warn' ? `Storm closes in ${Math.ceil(left)}s!`
+      : storm.r <= storm.min + 0.5 ? 'Storm: final ring' : `Storm shrinks in ${fmtTime(Math.ceil(left))}`;
+    $('storm-info').classList.toggle('urgent', storm.phase !== 'wait');
+  }
   const fx = Object.keys(POWERUPS).filter(k => POWERUPS[k].time && me.alive && me.fx[k] > 0)
     .map(k => `<span class="fx" style="--c:${POWERUPS[k].color}">${POWERUPS[k].name} ${Math.ceil(me.fx[k])}s</span>`);
   if (freezer && freezer !== me && me.alive) fx.push('<span class="fx" style="--c:#3fc7f5">Frozen!</span>');
@@ -2563,7 +3044,12 @@ function updateHud() {
 function recordFrame() {
   replayFrames.push({
     owner: owner.slice(), trail: trail.slice(),
-    ps: players.map(p => p && { x: p.x, y: p.y, angle: p.angle, alive: p.alive, shield: p.fx.shield > 0, ghost: p.fx.ghost > 0 }),
+    wall: storm ? wall.slice() : null,
+    storm: storm && { r: storm.r, to: storm.to, phase: storm.phase },
+    saws: saws.map(sw => [sw.x, sw.y, sw.spin]),
+    ps: players.map(p => p && {
+      x: p.x, y: p.y, angle: p.angle, alive: p.alive, shield: p.fx.shield > 0, ghost: p.fx.ghost > 0, emote: p.emote && { ...p.emote },
+    }),
     cam: { x: cam.x, y: cam.y, zoom: cam.zoom },
   });
   if (replayFrames.length > 100) replayFrames.shift();
@@ -2587,14 +3073,29 @@ function playReplay(dt) {
   const len = (replayFrames.length - 1) / 10;
   replayT += dt;
   if (replayT >= len) { stopReplay(); return; }
-  const k = replayT * 10, i = Math.floor(k), t = k - i;
+  withReplayFrame(replayT * 10, c => {
+    ctx.fillStyle = '#cfd6e4';
+    ctx.fillRect(0, 0, W, H);
+    drawWorld(me, c);
+  });
+  $('replay-fill').style.width = `${(replayT / len) * 100}%`;
+}
+
+// Swap recorded frame `k` (it can be between two frames) into the world, call fn with its
+// camera, then put the real state back
+function withReplayFrame(k, fn) {
+  const i = Math.min(Math.floor(k), replayFrames.length - 1), t = k - i;
   const f = replayFrames[i], g = replayFrames[i + 1] || f;
   const lerp = (a, b) => a + (b - a) * t;
-  // Swap the recorded board in, draw it, then put the real state back
-  const saved = { owner, trail, freezer, threats, danger, countdown, goFlash, particles, flashes, fades, floats, fxParts, shake };
-  const savedPlayers = players.map(p => p && { x: p.x, y: p.y, angle: p.angle, alive: p.alive, trail: p.trail, fx: p.fx });
+  const saved = { owner, trail, wall, freezer, threats, danger, countdown, goFlash, particles, flashes, fades, floats, fxParts, shake };
+  const savedPlayers = players.map(p => p && { x: p.x, y: p.y, angle: p.angle, alive: p.alive, trail: p.trail, fx: p.fx, emote: p.emote });
+  const savedSaws = saws.map(sw => [sw.x, sw.y, sw.spin]);
+  const savedStorm = storm && { ...storm };
   owner = f.owner;
   trail = f.trail;
+  if (f.wall) wall = f.wall;
+  if (f.storm) Object.assign(storm, f.storm);
+  saws.forEach((sw, n) => { if (f.saws[n]) [sw.x, sw.y, sw.spin] = f.saws[n]; });
   freezer = null; threats = []; danger = 0; countdown = 0; goFlash = 0; shake = 0;
   particles = []; flashes = []; fades = []; floats = []; fxParts = [];
   players.forEach((p, n) => {
@@ -2606,15 +3107,111 @@ function playReplay(dt) {
     p.x = lerp(a.x, b.x); p.y = lerp(a.y, b.y); p.angle = a.angle + da * t; p.alive = a.alive;
     p.trail = [];
     p.fx = { speed: 0, shield: a.shield ? 1 : 0, freeze: 0, ghost: a.ghost ? 1 : 0 };
+    p.emote = a.emote && { id: a.emote.id, t: a.emote.t + t * 0.1 };
   });
-  const c = { x: lerp(f.cam.x, g.cam.x), y: lerp(f.cam.y, g.cam.y), zoom: lerp(f.cam.zoom, g.cam.zoom) };
-  ctx.fillStyle = '#cfd6e4';
-  ctx.fillRect(0, 0, W, H);
-  drawWorld(me, c);
-  ({ owner, trail, freezer, threats, danger, countdown, goFlash, particles, flashes, fades, floats, fxParts, shake } = saved);
-  players.forEach((p, n) => { if (p) Object.assign(p, savedPlayers[n]); });
-  $('replay-fill').style.width = `${(replayT / len) * 100}%`;
+  try {
+    fn({ x: lerp(f.cam.x, g.cam.x), y: lerp(f.cam.y, g.cam.y), zoom: lerp(f.cam.zoom, g.cam.zoom) });
+  } finally {
+    ({ owner, trail, wall, freezer, threats, danger, countdown, goFlash, particles, flashes, fades, floats, fxParts, shake } = saved);
+    players.forEach((p, n) => { if (p) Object.assign(p, savedPlayers[n]); });
+    saws.forEach((sw, n) => { [sw.x, sw.y, sw.spin] = savedSaws[n]; });
+    if (savedStorm) Object.assign(storm, savedStorm);
+  }
 }
+
+// ---------- Replay GIF ----------
+// Draws every replay frame onto a small offscreen canvas and encodes them as a looping GIF.
+const GIF_SIZE = 320;
+let drawingGif = false, gifUrl = null, gifBlob = null, gifJob = 0;
+
+function renderGifFrame(g, k) {
+  const screenW = W, screenH = H, screenCtx = ctx;
+  ctx = g;
+  W = H = GIF_SIZE;
+  drawingGif = true;
+  try {
+    withReplayFrame(k, c => {
+      g.fillStyle = '#cfd6e4';
+      g.fillRect(0, 0, GIF_SIZE, GIF_SIZE);
+      drawWorld(me, { x: c.x, y: c.y, zoom: (c.zoom * GIF_SIZE) / Math.min(screenW, screenH) / 0.8 });
+    });
+  } finally {
+    ctx = screenCtx;
+    W = screenW;
+    H = screenH;
+    drawingGif = false;
+  }
+  // Caption strip
+  g.fillStyle = 'rgba(38, 48, 74, 0.85)';
+  g.fillRect(0, GIF_SIZE - 22, GIF_SIZE, 22);
+  g.fillStyle = '#fff';
+  g.font = '900 12px system-ui, sans-serif';
+  g.textBaseline = 'middle';
+  g.textAlign = 'left';
+  g.fillText('COLOR CLAIM', 8, GIF_SIZE - 11);
+  g.textAlign = 'right';
+  g.font = 'bold 12px system-ui, sans-serif';
+  g.fillText(`${me.name} · best ${peakPct.toFixed(1)}%`, GIF_SIZE - 8, GIF_SIZE - 11);
+  g.textBaseline = 'alphabetic';
+  return g.getImageData(0, 0, GIF_SIZE, GIF_SIZE).data;
+}
+
+async function makeReplayGif(onProgress = () => {}) {
+  const job = ++gifJob;
+  const n = replayFrames.length;
+  const off = document.createElement('canvas');
+  off.width = off.height = GIF_SIZE;
+  const g = off.getContext('2d', { willReadFrequently: true });
+  const pause = () => new Promise(r => setTimeout(r, 0));
+  // Pick the palette from a sample of frames, then encode them all
+  const pal = new GifPalette();
+  const step = Math.max(1, Math.floor(n / 10));
+  for (let k = 0; k < n; k += step) pal.sample(renderGifFrame(g, k));
+  const gif = new GifWriter(GIF_SIZE, GIF_SIZE, pal.build());
+  for (let k = 0; k < n; k++) {
+    if (job !== gifJob) return null; // a new game started
+    gif.addFrame(pal.index(renderGifFrame(g, k)), k === n - 1 ? 150 : 10);
+    onProgress((k + 1) / n);
+    if (k % 4 === 3) await pause();
+  }
+  return new Blob([gif.finish()], { type: 'image/gif' });
+}
+
+function resetGif() {
+  gifJob++;
+  if (gifUrl) URL.revokeObjectURL(gifUrl);
+  gifUrl = null;
+  gifBlob = null;
+  $('gif-btn').disabled = false;
+  $('gif-btn').textContent = 'Make a GIF';
+  for (const id of ['gif-img', 'gif-save', 'gif-share']) $(id).classList.add('hidden');
+  $('gif-status').textContent = '';
+}
+
+async function gifFromReplay() {
+  if (state !== 'over' || replayFrames.length < 5 || $('gif-btn').disabled) return;
+  $('gif-btn').disabled = true;
+  $('gif-status').textContent = 'Making your GIF… 0%';
+  const blob = await makeReplayGif(f => { $('gif-status').textContent = `Making your GIF… ${Math.round(f * 100)}%`; });
+  if (!blob) return;
+  gifBlob = blob;
+  gifUrl = URL.createObjectURL(blob);
+  $('gif-img').src = gifUrl;
+  $('gif-save').href = gifUrl;
+  $('gif-img').classList.remove('hidden');
+  $('gif-save').classList.remove('hidden');
+  const file = new File([blob], 'color-claim-replay.gif', { type: 'image/gif' });
+  $('gif-share').classList.toggle('hidden', !(navigator.canShare && navigator.canShare({ files: [file] })));
+  $('gif-btn').textContent = 'GIF ready';
+  $('gif-status').textContent = `${Math.round(blob.size / 1024)} KB · ${replayFrames.length / 10} seconds. Tap and hold (or right-click) the picture to save it too.`;
+  Sfx.play('coin');
+}
+$('gif-btn').addEventListener('click', gifFromReplay);
+$('gif-share').addEventListener('click', () => {
+  if (!gifBlob) return;
+  const file = new File([gifBlob], 'color-claim-replay.gif', { type: 'image/gif' });
+  navigator.share({ files: [file], title: 'Color Claim replay' }).catch(() => { /* cancelled */ });
+});
 
 // ---------- Main loop ----------
 let last = performance.now();

@@ -74,6 +74,7 @@ const ACHIEVEMENTS = [
   { id: 'challenger', name: 'Challenger', desc: "Beat a friend's challenge", test: (r, s) => (s.challenges || 0) >= 1 },
   { id: 'collector', name: 'Collector', desc: 'Own 5 skins', test: () => SKINS.filter(isUnlocked).length >= 5, progress: () => [SKINS.filter(isUnlocked).length, 5] },
   { id: 'regular', name: 'Regular', desc: 'Play 25 games', test: (r, s) => s.games >= 25, progress: s => [s.games, 25] },
+  { id: 'golden', name: 'Golden', desc: 'Reach Gold rank', test: () => rankBest >= 2 },
 ];
 let achieved = loadJSON('color-claim-achievements', {});
 
@@ -115,7 +116,9 @@ function finishRun(won, score) {
   if (gameModeId === 'marathon' && won) stats.marathonWins = (stats.marathonWins || 0) + 1;
   if (gameModeId === 'team' && won) stats.teamWins = (stats.teamWins || 0) + 1;
   if (run.giantKO) stats.giants = (stats.giants || 0) + 1;
+  stats.emotes = (stats.emotes || 0) + (run.emotes || 0);
 
+  const ranked = isRanked() ? rankGameResult(won) : null;
   const earned = Math.round((Math.round(score * 2) + me.kills * 5 + (won ? 50 : 0)) * (eventOn('double') ? 2 : 1) * gameDiff.coins);
   addCoins(earned);
   const fresh = [...run.trophies, ...checkAchievements(runSnapshot())];
@@ -127,7 +130,7 @@ function finishRun(won, score) {
   const missionCoins = missionsDone.reduce((a, m) => a + m.reward, 0);
   const seasonRewards = addSeasonXp(xpGain);
   save('color-claim-stats', JSON.stringify(stats));
-  return { earned, fresh, xpGain, levelsUp, levelCoins, missionsDone, missionCoins, seasonRewards };
+  return { earned, fresh, xpGain, levelsUp, levelCoins, missionsDone, missionCoins, seasonRewards, ranked };
 }
 
 // ---------- Player level ----------
@@ -156,6 +159,107 @@ function renderLevel() {
   $('menu-level').textContent = `Lv ${lv.lvl}`;
   $('menu-xp').style.width = `${(lv.into / lv.need) * 100}%`;
   $('level-badge').title = `${lv.into} / ${lv.need} XP to level ${lv.lvl + 1}`;
+}
+
+// ---------- Ranked ladder ----------
+// Solo games against bots move you up (or down) the ladder, depending on where you finish.
+// Each tier has 3 divisions of 100 points (III, II, I); Champion is the top.
+const RANKS = [
+  { name: 'Bronze', at: 0, color: '#c98a5a', reward: 0 },
+  { name: 'Silver', at: 300, color: '#9aa7bd', reward: 100 },
+  { name: 'Gold', at: 600, color: '#f5b400', reward: 200 },
+  { name: 'Platinum', at: 900, color: '#2ec4b6', reward: 300 },
+  { name: 'Diamond', at: 1200, color: '#4f8cff', reward: 400 },
+  { name: 'Champion', at: 1500, color: '#b06bff', reward: 600 },
+];
+const RANKED_MODES = ['classic', 'timed', 'daily', 'marathon'];
+const RP_PLACE = [30, 20, 12, 6, -2, -6, -10, -14];
+let rp = Math.max(0, Number(load('color-claim-rp', 0)) || 0);
+let rankBest = Number(load('color-claim-rank-best', 0)) || 0; // highest tier ever reached (its reward is paid once)
+
+function rankInfo(points) {
+  let tier = 0;
+  while (tier + 1 < RANKS.length && points >= RANKS[tier + 1].at) tier++;
+  const r = RANKS[tier], champ = tier === RANKS.length - 1, into = points - r.at;
+  const div = champ ? '' : ['III', 'II', 'I'][Math.min(2, Math.floor(into / 100))];
+  return { tier, name: r.name, color: r.color, div, label: champ ? r.name : `${r.name} ${div}`, into: champ ? 100 : into % 100, champ };
+}
+
+const isRanked = () => RANKED_MODES.includes(gameModeId) && !challenge && !gameMapId.startsWith('custom');
+
+// Where you finished: 1st if you won; otherwise by land against everyone still standing
+// (if you were knocked out, the biggest you got counts)
+function finishPlace(won) {
+  if (won) return 1;
+  const field = players.filter(p => p && p !== me && !p.isBoss && p.alive);
+  return 1 + field.filter(p => (me.alive ? counts[p.id] > counts[me.id] : pct(p) > peakPct)).length;
+}
+
+function rankGameResult(won) {
+  const place = finishPlace(won);
+  const before = rankInfo(rp);
+  const knocked = !won && !me.alive;
+  let gain = (RP_PLACE[place - 1] ?? -14) + (won ? 10 : 0) + Math.min(10, me.kills * 2) - (knocked ? 4 : 0);
+  gain *= gain > 0 ? { easy: 0.5, normal: 1, hard: 1.5 }[gameDiffId] : { easy: 1, normal: 1, hard: 0.75 }[gameDiffId] * (1 + before.tier * 0.15);
+  // You can drop a division, but never out of a tier you've reached
+  const next = Math.max(RANKS[before.tier].at, rp + Math.round(gain));
+  gain = next - rp;
+  rp = next;
+  save('color-claim-rp', rp);
+  const after = rankInfo(rp);
+  let rewardCoins = 0;
+  for (let t = rankBest + 1; t <= after.tier; t++) rewardCoins += RANKS[t].reward;
+  if (after.tier > rankBest) {
+    rankBest = after.tier;
+    save('color-claim-rank-best', rankBest);
+    addCoins(rewardCoins);
+  }
+  stats.bestRp = Math.max(stats.bestRp || 0, rp);
+  renderRankNav();
+  return { place, gain, before, after, promoted: after.tier > before.tier, rewardCoins };
+}
+
+// A shield in the tier's colour, with a star
+function rankIcon(tier, size = 22) {
+  const c = RANKS[tier].color;
+  return `<svg class="rank-icon" width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z" fill="${c}" stroke="${shade(c, -0.3)}" stroke-width="1.5"/><path d="M12 7l1.5 3.1 3.3.5-2.4 2.3.6 3.3-3-1.6-3 1.6.6-3.3-2.4-2.3 3.3-.5z" fill="#fff" opacity="0.92"/></svg>`;
+}
+
+function renderRankNav() {
+  const r = rankInfo(rp);
+  $('rank-nav-icon').innerHTML = rankIcon(r.tier, 18);
+  $('rank-nav-label').textContent = r.label;
+}
+
+const ordinal = n => n + (['th', 'st', 'nd', 'rd'][(n % 100 > 10 && n % 100 < 14) || n % 10 > 3 ? 0 : n % 10]);
+
+function showRankResult(res) {
+  const box = $('over-rank');
+  box.classList.toggle('hidden', !res);
+  if (!res) return;
+  const r = res.after;
+  const sign = res.gain > 0 ? '+' : res.gain < 0 ? '−' : '±';
+  const promo = res.promoted ? `<b class="promo">Promoted to ${r.name}!${res.rewardCoins ? ` +${res.rewardCoins} coins` : ''}</b>` : '';
+  box.innerHTML = `${rankIcon(r.tier, 26)}<span><b style="color:${shade(r.color, -0.25)}">${r.label}</b> · ${sign}${Math.abs(res.gain)} RP <small>(${ordinal(res.place)} place)</small></span>`
+    + `<span class="xpbar"><span style="width:${r.into}%;background:${r.color}"></span></span>${promo}`;
+  if (res.promoted) {
+    Sfx.play('rankup');
+    toast(`Promoted to ${r.name}!`);
+  }
+}
+
+function buildRank() {
+  const r = rankInfo(rp);
+  const nextTier = RANKS[r.tier + 1];
+  const nextAt = r.champ ? null : r.div === 'I' ? nextTier.at : RANKS[r.tier].at + (Math.floor((rp - RANKS[r.tier].at) / 100) + 1) * 100;
+  $('rank-card').innerHTML = `${rankIcon(r.tier, 64)}<b style="color:${shade(r.color, -0.25)}">${r.label}</b><span>${rp} RP</span>`
+    + `<span class="xpbar wide"><span style="width:${r.into}%;background:${r.color}"></span></span>`
+    + `<small>${r.champ ? 'Top of the ladder!' : `${nextAt - rp} RP to ${rankInfo(nextAt).label}`}</small>`;
+  $('rank-ladder').innerHTML = RANKS.map((t, i) => {
+    const cls = i === r.tier ? 'here' : i < r.tier ? 'done' : '';
+    const reward = i === 0 ? '' : i <= rankBest ? `✓ +${t.reward}` : `+${t.reward} <span class="coin"></span>`;
+    return `<li class="${cls}">${rankIcon(i, 26)}<b>${t.name}</b><span>${t.at} RP</span><small>${reward}</small></li>`;
+  }).reverse().join('');
 }
 
 // ---------- Daily missions ----------
@@ -393,7 +497,7 @@ $('editor-save').addEventListener('click', () => {
 // A code holds a game's seed, mode, map, bot difficulty and score, plus a check letter to catch typos.
 // Your friend gets the same starting map and bots and tries to beat your score.
 const CODE_MODES = ['classic', 'timed', 'marathon', 'team'];
-const CODE_MAPS = ['square', 'round', 'pillars', 'maze', 'islands'];
+const CODE_MAPS = ['square', 'round', 'pillars', 'maze', 'islands', 'saws', 'storm'];
 const CODE_DIFFS = ['easy', 'normal', 'hard'];
 let lastChallenge = null;
 
@@ -492,6 +596,7 @@ function openScreen(id) {
   if (id === 'stats') buildStats();
   if (id === 'missions') buildMissions();
   if (id === 'season') buildSeason();
+  if (id === 'rank') buildRank();
   if (id === 'editor') editorLoadSlot(editor.slot);
   showScreen(id);
 }
@@ -635,6 +740,8 @@ function buildStats() {
     ['Coins earned', s.coinsEarned || 0],
     ['Trophies', `${ACHIEVEMENTS.filter(a => achieved[a.id]).length} / ${ACHIEVEMENTS.length}`],
     ['Giants beaten', s.giants || 0],
+    ['Rank', rankInfo(rp).label],
+    ['Most RP', s.bestRp || 0],
   ];
   const modes = ['classic', 'timed', 'marathon', 'team', 'daily'].map(m => [m === 'daily' ? "Today's Daily" : `${MODES[m].name} best`, `${bestFor(m).toFixed(1)}%`]);
   $('stats-grid').innerHTML = [...tiles, ...modes].map(([k, v]) => `<div class="tile"><b>${v}</b><span>${k}</span></div>`).join('');
@@ -647,6 +754,7 @@ function buildSettings() {
     { label: 'Music', value: Music.enabled, options: [[true, 'On'], [false, 'Off']], set: v => { if (v !== Music.enabled) toggleMusic(); } },
     { label: 'Vibration', value: settings.vibrate, options: [[true, 'On'], [false, 'Off']], set: v => { settings.vibrate = v; buzz(30); } },
     { label: 'Colorblind patterns', value: settings.patterns, options: [[true, 'On'], [false, 'Off']], set: v => { settings.patterns = v; } },
+    { label: 'Bot emotes', value: settings.emotes, options: [[true, 'On'], [false, 'Off']], set: v => { settings.emotes = v; } },
     { label: 'Screen shake', value: settings.shake, options: [[true, 'On'], [false, 'Off']], set: v => { settings.shake = v; } },
     { label: 'Touch controls', value: settings.controls, options: [['joystick', 'Joystick'], ['turn', 'Tap to turn']], set: v => { settings.controls = v; } },
     { label: 'Joystick size', value: settings.stickSize, options: [['normal', 'Normal'], ['large', 'Large']], set: v => { settings.stickSize = v; } },
@@ -702,5 +810,6 @@ renderCoins();
 renderLevel();
 renderMissionBadge();
 renderEvent();
+renderRankNav();
 showScreen('menu');
 requestAnimationFrame(frame);

@@ -73,6 +73,8 @@ const Sfx = (() => {
     ghost: { gap: 0.3, fn: () => tone({ freq: 700, to: 250, dur: 0.5, type: 'sine', vol: 0.07 }) },
     paint: { gap: 0.3, fn: () => { noise({ dur: 0.25, vol: 0.12 }); arp([392, 523, 659], 0.05, { type: 'triangle', vol: 0.07 }); } },
     win: { gap: 1, fn: () => arp([523, 659, 784, 1047, 1319, 1568], 0.09, { type: 'triangle', vol: 0.09 }) },
+    emote: { gap: 0.15, fn: () => tone({ freq: 660, to: 990, dur: 0.09, type: 'triangle', vol: 0.05 }) },
+    rankup: { gap: 1, fn: () => arp([392, 523, 659, 784, 1047], 0.08, { type: 'square', vol: 0.05 }) },
   };
 
   function rand(a, b) { return a + Math.random() * (b - a); }

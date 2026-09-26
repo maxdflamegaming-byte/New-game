@@ -27,6 +27,11 @@ A territory game inspired by Paper.io.
 - **Bot difficulty:** Easy, Normal or Hard (Hard bots are faster and hunt harder, and pay 1.5× coins).
 - **Challenge a friend:** after a game, get a short code. Your friend enters it to play the exact same starting map and bots and try to beat your score.
 - **Maps:** Square, Round arena, Pillars, Maze and Islands (walls you slide along, water you can't cross), plus up to 3 of your own from the **map editor** (paint walls with mirroring, the middle stays clear for your start).
+- **Hazard maps:**
+  - **Saw Mill:** spinning saws run along tracks and cut any trail they touch (a Shield keeps you safe).
+  - **Storm:** from 0:40 the arena shrinks every 25 seconds, with a warning ring first. Land, trails and players caught outside are lost.
+- **Ranked ladder:** Classic, Timed, Daily and Marathon games earn or lose rank points (RP) by where you finish. Tiers: Bronze, Silver, Gold, Platinum, Diamond and Champion, each with 3 divisions, and a coin reward the first time you reach each tier. You can drop a division but never a tier.
+- **Emotes:** press 1-6 or the smiley button to pop up Hi, LOL, Grr, Cool, Love or GG over your square. Nearby bots answer back, cheer their knockouts and say GG when you win (bot emotes can be turned off in Settings).
 - **Season pass:** each month is a season with 20 tiers filled by XP. Every tier pays coins, and tiers 10 and 20 give that season's trail effect and skin (Lightning/Crystal or Snowflakes/Tiger).
 - **Power-ups:** Speed (1.6× faster), Shield (nobody can cut or bump you), Freeze (everyone else at half speed), Ghost (cross your own trail safely) and Paint Bomb (instantly claim a circle of land). Bots use them too.
 - **Gold coins** appear on the map. Grab them before the bots do.
@@ -36,9 +41,9 @@ A territory game inspired by Paper.io.
 - **Daily missions:** 3 new missions every day with coin rewards.
 - **Player level:** every game earns XP, and each level-up pays a coin bonus.
 - **Coins and the Locker:** earn coins every game (2 per % claimed, 5 per knockout, 50 for a win, 25 per trophy). Unlock 8 skins by playing or buy them, and buy trail effects (Sparkles, Bubbles, Hearts, Fire, Stars, Rainbow).
-- **18 trophies** (wear one as a **badge** next to your name) and a **stats** page (wins, best claim, knockouts, time played and best score per mode).
+- **19 trophies** (wear one as a **badge** next to your name) and a **stats** page (wins, best claim, knockouts, time played and best score per mode).
 - **Tutorial:** a 5-step guided level (leave land, loop home, grab a power-up, cut a practice bot, claim 15%) that pays 50 coins the first time. It's offered on the how-to-play screen.
-- **Instant replay:** after a game, watch the last 10 seconds again.
+- **Instant replay:** after a game, watch the last 10 seconds again, or turn it into a looping **GIF** to download or share.
 - A how-to-play guide on your first game, background music made in code, a kill feed, a leaderboard with a crown and a minimap.
 - **On phones:** install it to your home screen and play offline. It vibrates on knockouts and hits, and has bigger buttons plus a choice of controls: drag joystick (normal or large) or one-thumb **tap to turn** (hold the left or right half of the screen).
 - **Controls:** mouse, WASD / arrow keys, or touch. **P** or the pause button pauses, **M** mutes sound, **N** toggles music.
