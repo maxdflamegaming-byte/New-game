@@ -22,7 +22,10 @@ A territory game inspired by Paper.io.
   | Marathon | A 120×120 map (claim 60%) |
 
 - **Maps:** Square, Round arena and Pillars (walls you slide along).
-- **Power-ups:** Speed (1.6× faster), Shield (nobody can cut or bump you) and Freeze (everyone else at half speed). Bots use them too.
+- **Power-ups:** Speed (1.6× faster), Shield (nobody can cut or bump you), Freeze (everyone else at half speed), Ghost (cross your own trail safely) and Paint Bomb (instantly claim a circle of land). Bots use them too.
+- **Gold coins** appear on the map. Grab them before the bots do.
+- **Daily missions:** 3 new missions every day with coin rewards.
+- **Player level:** every game earns XP, and each level-up pays a coin bonus.
 - **Coins and the Locker:** earn coins every game (2 per % claimed, 5 per knockout, 50 for a win, 25 per trophy). Unlock 8 skins by playing or buy them, and buy trail effects (Sparkles, Bubbles, Hearts, Fire, Stars, Rainbow).
 - **14 trophies** and a **stats** page (wins, best claim, knockouts, time played and best score per mode).
 - A how-to-play guide on your first game, background music made in code, a kill feed, a leaderboard with a crown and a minimap.

@@ -39,6 +39,7 @@
 
   <div id="menu" class="screen show">
     <div class="wallet"><span class="coin"></span> <span class="coin-count">0</span></div>
+    <div id="level-badge" class="level-badge"><b id="menu-level">Lv 1</b><span class="xpbar"><span id="menu-xp"></span></span></div>
     <h1>Color Claim</h1>
     <p>Loop back to your land to claim everything inside. Cut other trails, and protect yours!</p>
     <div class="custom">
@@ -53,6 +54,7 @@
     <button id="play-btn">Play</button>
     <p class="small"><b id="menu-best"></b></p>
     <nav class="menu-nav">
+      <button class="nav-btn" data-open="missions">Missions <span id="mission-badge" class="badge">0/3</span></button>
       <button class="nav-btn" data-open="locker">Locker</button>
       <button class="nav-btn" data-open="trophies">Trophies</button>
       <button class="nav-btn" data-open="stats">Stats</button>
@@ -72,6 +74,13 @@
       <button class="seg-btn tab" data-tab="trails">Trail effects</button>
     </div>
     <div id="locker-items"></div>
+    <button class="secondary" data-back>Back</button>
+  </div>
+
+  <div id="missions" class="screen">
+    <h2>Daily missions</h2>
+    <p class="small">New missions every day. Rewards are paid out as soon as you finish one.</p>
+    <ul id="mission-list"></ul>
     <button class="secondary" data-back>Back</button>
   </div>
 
@@ -118,6 +127,8 @@
     <p id="over-stats"></p>
     <p id="over-best" class="small"></p>
     <p id="over-coins" class="coins-earned"></p>
+    <p id="over-xp" class="xp-earned"></p>
+    <ul id="over-missions" class="hidden"></ul>
     <p id="over-unlock" class="unlock hidden"></p>
     <ul id="over-ach" class="hidden"></ul>
     <div class="row">

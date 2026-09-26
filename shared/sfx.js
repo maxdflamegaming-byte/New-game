@@ -70,6 +70,8 @@ const Sfx = (() => {
     go: { gap: 0.3, fn: () => arp([784, 1175], 0.07, { type: 'square', vol: 0.07 }) },
     coin: { gap: 0.05, fn: () => arp([988, 1319], 0.05, { type: 'square', vol: 0.05 }) },
     trophy: { gap: 0.5, fn: () => arp([784, 988, 1175, 1568], 0.08, { type: 'triangle', vol: 0.09 }) },
+    ghost: { gap: 0.3, fn: () => tone({ freq: 700, to: 250, dur: 0.5, type: 'sine', vol: 0.07 }) },
+    paint: { gap: 0.3, fn: () => { noise({ dur: 0.25, vol: 0.12 }); arp([392, 523, 659], 0.05, { type: 'triangle', vol: 0.07 }); } },
     win: { gap: 1, fn: () => arp([523, 659, 784, 1047, 1319, 1568], 0.09, { type: 'triangle', vol: 0.09 }) },
   };
 

@@ -111,8 +111,107 @@ function finishRun(won, score) {
   const earned = Math.round(score * 2) + me.kills * 5 + (won ? 50 : 0);
   addCoins(earned);
   const fresh = [...run.trophies, ...checkAchievements(runSnapshot())];
+  const xpGain = Math.round(score * 10 + me.kills * 30 + (won ? 150 : 0) + playTime / 2);
+  const { levelsUp, levelCoins } = addXp(xpGain);
+  const missionsDone = updateMissions({
+    ...runSnapshot(), powerups: run.powerups, coinsPicked: run.coinsPicked, mode: gameModeId, map: gameMapId, won,
+  });
+  const missionCoins = missionsDone.reduce((a, m) => a + m.reward, 0);
   save('color-claim-stats', JSON.stringify(stats));
-  return { earned, fresh };
+  return { earned, fresh, xpGain, levelsUp, levelCoins, missionsDone, missionCoins };
+}
+
+// ---------- Player level ----------
+// Every game gives XP. Each level needs 50 more XP than the last, and pays a coin bonus.
+let xp = Number(load('color-claim-xp', 0)) || 0;
+
+function levelInfo(total) {
+  let lvl = 1, need = 100, rem = total;
+  while (rem >= need) { rem -= need; lvl++; need = 100 + (lvl - 1) * 50; }
+  return { lvl, into: rem, need };
+}
+
+function addXp(n) {
+  const before = levelInfo(xp).lvl;
+  xp += n;
+  save('color-claim-xp', xp);
+  const after = levelInfo(xp).lvl;
+  let reward = 0;
+  for (let L = before + 1; L <= after; L++) reward += 20 + L * 5;
+  addCoins(reward);
+  return { levelsUp: after - before, levelCoins: reward };
+}
+
+function renderLevel() {
+  const lv = levelInfo(xp);
+  $('menu-level').textContent = `Lv ${lv.lvl}`;
+  $('menu-xp').style.width = `${(lv.into / lv.need) * 100}%`;
+  $('level-badge').title = `${lv.into} / ${lv.need} XP to level ${lv.lvl + 1}`;
+}
+
+// ---------- Daily missions ----------
+// Three missions a day, the same for everyone (picked from the date). Rewards pay out automatically.
+const MISSION_POOL = [
+  { id: 'play3', text: 'Play 3 games', goal: 3, reward: 25, add: () => 1 },
+  { id: 'ko3', text: 'Knock out 3 players', goal: 3, reward: 40, add: r => r.kills },
+  { id: 'power5', text: 'Grab 5 power-ups', goal: 5, reward: 30, add: r => r.powerups },
+  { id: 'coins10', text: 'Pick up 10 coins on the map', goal: 10, reward: 30, add: r => r.coinsPicked },
+  { id: 'claim15', text: 'Claim 15% in one game', goal: 1, reward: 40, add: r => (r.peak >= 15 ? 1 : 0) },
+  { id: 'loop3', text: 'Claim 3% with a single loop', goal: 1, reward: 35, add: r => (r.bigLoop >= 3 ? 1 : 0) },
+  { id: 'survive3', text: 'Survive 3 minutes in one game', goal: 1, reward: 35, add: r => (r.time >= 180 ? 1 : 0) },
+  { id: 'timed', text: 'Play a Timed game', goal: 1, reward: 25, add: r => (r.mode === 'timed' ? 1 : 0) },
+  { id: 'daily', text: 'Play the Daily map', goal: 1, reward: 30, add: r => (r.mode === 'daily' ? 1 : 0) },
+  { id: 'round', text: 'Play a game on the Round map', goal: 1, reward: 25, add: r => (r.map === 'round' ? 1 : 0) },
+  { id: 'pillars', text: 'Play a game on the Pillars map', goal: 1, reward: 25, add: r => (r.map === 'pillars' ? 1 : 0) },
+  { id: 'win', text: 'Win a game', goal: 1, reward: 60, add: r => (r.won ? 1 : 0) },
+];
+
+function todaysMissions() {
+  const rng = mulberry32(hashStr('color-claim-missions-' + todayKey()));
+  const pool = MISSION_POOL.slice();
+  const picked = [];
+  while (picked.length < 3) picked.push(pool.splice(Math.floor(rng() * pool.length), 1)[0]);
+  return picked;
+}
+
+let missionState = loadJSON('color-claim-missions', {});
+function freshMissionState() {
+  if (missionState.date !== todayKey()) missionState = { date: todayKey(), progress: {}, done: {} };
+  return missionState;
+}
+
+function updateMissions(r) {
+  const st = freshMissionState();
+  const completed = [];
+  for (const m of todaysMissions()) {
+    if (st.done[m.id]) continue;
+    st.progress[m.id] = Math.min(m.goal, (st.progress[m.id] || 0) + m.add(r));
+    if (st.progress[m.id] >= m.goal) {
+      st.done[m.id] = true;
+      addCoins(m.reward);
+      completed.push(m);
+    }
+  }
+  save('color-claim-missions', JSON.stringify(st));
+  renderMissionBadge();
+  return completed;
+}
+
+function renderMissionBadge() {
+  const st = freshMissionState();
+  const done = todaysMissions().filter(m => st.done[m.id]).length;
+  $('mission-badge').textContent = `${done}/3`;
+  $('mission-badge').classList.toggle('all', done === 3);
+}
+
+function buildMissions() {
+  const st = freshMissionState();
+  $('mission-list').innerHTML = todaysMissions().map(m => {
+    const n = st.progress[m.id] || 0, done = !!st.done[m.id];
+    return `<li class="${done ? 'done' : ''}"><span class="check">${done ? '✓' : ''}</span><span class="t"><b>${m.text}</b>
+      <span class="bar"><span style="width:${(n / m.goal) * 100}%"></span></span><span class="prog">${n} / ${m.goal}</span></span>
+      <span class="reward">+${m.reward} <span class="coin"></span></span></li>`;
+  }).join('');
 }
 
 // ---------- Menu navigation ----------
@@ -121,6 +220,7 @@ function openScreen(id) {
   if (id === 'settings') buildSettings();
   if (id === 'trophies') buildTrophies();
   if (id === 'stats') buildStats();
+  if (id === 'missions') buildMissions();
   showScreen(id);
 }
 document.querySelectorAll('[data-open]').forEach(b => b.addEventListener('click', () => openScreen(b.dataset.open)));
@@ -308,5 +408,7 @@ allocWorld(80);
 buildSwatches();
 buildPickers();
 renderCoins();
+renderLevel();
+renderMissionBadge();
 showScreen('menu');
 requestAnimationFrame(frame);

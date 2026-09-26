@@ -147,6 +147,8 @@ const POWERUPS = {
   speed: { name: 'Speed', color: '#ffb84d', time: 4 },
   shield: { name: 'Shield', color: '#4f8cff', time: 6 },
   freeze: { name: 'Freeze', color: '#3fc7f5', time: 4 },
+  ghost: { name: 'Ghost', color: '#8d7bd6', time: 5 },      // cross your own trail safely
+  paint: { name: 'Paint Bomb', color: '#ff5d9e', time: 0 }, // instant: claims a circle of land
 };
 const SPAWN_SHIELD = 3; // seconds of protection after (re)spawning
 
@@ -185,11 +187,12 @@ function buzz(pattern) {
     try { navigator.vibrate(pattern); } catch { /* not allowed */ }
   }
 }
-let run = { powerups: 0, bigLoop: 0, freezeKO: false, trophies: [] }; // this game's numbers, for achievements
+let run = { powerups: 0, bigLoop: 0, freezeKO: false, trophies: [], coinsPicked: 0 }; // this game's numbers
 let fxParts = [], fxTimer = 0, achTimer = 1;
 let mySkin = load('color-claim-skin', 'classic');
 if (!SKINS.some(sk => sk.id === mySkin && isUnlocked(sk))) mySkin = 'classic';
 let powerups = [], powerTimer = 5, freezer = null;
+let mapCoins = [], coinTimer = 3; // gold coins lying on the map
 let particles = [], flashes = [], fades = [], floats = [], feed = [];
 let peakPct = 0, minimapTimer = 0, time = 0, shake = 0, danger = 0, wasInDanger = false;
 let countdown = 0, goFlash = 0, threats = [];
@@ -214,7 +217,7 @@ function setOwner(i, id) {
 function makePlayer(id, name, color, isBot, skin) {
   return {
     id, name, color, isBot, skin, hueOff: rand(0, 360),
-    fx: { speed: 0, shield: 0, freeze: 0 },
+    fx: { speed: 0, shield: 0, freeze: 0, ghost: 0 },
     dark: shade(color, -0.28),
     trailColor: alpha(color, 0.45),
     x: 0, y: 0, cx: 0, cy: 0, angle: 0, desired: 0,
@@ -270,7 +273,7 @@ function spawn(p, fx, fy) {
   p.think = rand(0.2, 1);
   p.route = null;
   p.squash = 1;
-  p.fx = { speed: 0, shield: SPAWN_SHIELD, freeze: 0 };
+  p.fx = { speed: 0, shield: SPAWN_SHIELD, freeze: 0, ghost: 0 };
   return true;
 }
 
@@ -378,7 +381,11 @@ function visit(p, x, y) {
   const t = trail[i];
   if (t) {
     const other = players[t];
-    if (other === p) { kill(p, p); return; }
+    if (other === p) {
+      if (p.fx.ghost > 0) return; // Ghost: pass over your own trail
+      kill(p, p);
+      return;
+    }
     kill(other, p);
   }
   if (owner[i] === p.id) {
@@ -433,18 +440,83 @@ function spawnPowerup() {
   }
 }
 
+const POWERUP_TOASTS = {
+  speed: 'Speed boost!',
+  shield: 'Shield! Nobody can cut your trail',
+  freeze: 'Freeze! Everyone else slows down',
+  ghost: 'Ghost! You can cross your own trail',
+  paint: 'Paint bomb!',
+};
+
 function grabPowerup(p, pu) {
   const def = POWERUPS[pu.kind];
-  p.fx[pu.kind] = def.time;
+  if (def.time) p.fx[pu.kind] = def.time;
   if (p === me) { run.powerups++; buzz(15); }
   burst(pu.x, pu.y, def.color, 16, 8);
+  if (pu.kind === 'paint') paintBomb(p);
   if (p === me) {
-    toast(pu.kind === 'speed' ? 'Speed boost!' : pu.kind === 'shield' ? 'Shield! Nobody can cut your trail' : 'Freeze! Everyone else slows down');
+    toast(POWERUP_TOASTS[pu.kind]);
     Sfx.play(pu.kind);
   } else if (pu.kind === 'freeze' && me.alive && dist(p, me) < 40) {
     toast(`${p.name} froze everyone!`);
     Sfx.play('freeze');
   }
+}
+
+// Paint Bomb: instantly claims a circle of land around you, even other players' land
+function paintBomb(p) {
+  const cells = [];
+  for (let dy = -5; dy <= 5; dy++) {
+    for (let dx = -5; dx <= 5; dx++) {
+      const x = p.cx + dx, y = p.cy + dy;
+      if (dx * dx + dy * dy > 20 || x < 0 || y < 0 || x >= N || y >= N) continue;
+      const i = y * N + x;
+      if (wall[i] || owner[i] === p.id || trail[i] === p.id) continue; // your own trail is claimed when you get home
+      setOwner(i, p.id);
+      cells.push(i);
+    }
+  }
+  flashes.push({ cells, life: 0.45 });
+  burst(p.x, p.y, POWERUPS.paint.color, 30, 12);
+  for (const o of players) if (o && o !== p && o.alive && counts[o.id] === 0) kill(o, p, 'swallow');
+  if (p === me && cells.length) {
+    const gain = (cells.length / playCells) * 100;
+    floats.push({ x: p.x, y: p.y - 3, text: `+${gain.toFixed(1)}%`, life: 1.2, big: false });
+    buzz(25);
+  }
+}
+
+// Gold coins appear around the map. Walk over one to pick it up (bots can grab them too).
+const COIN_VALUE = 2;
+function updateMapCoins(dt) {
+  coinTimer -= dt;
+  const max = N > 100 ? 10 : 6;
+  if (coinTimer <= 0) {
+    coinTimer = rand(3, 6);
+    if (mapCoins.length < max) {
+      for (let t = 0; t < 20; t++) {
+        const x = randInt(2, N - 3), y = randInt(2, N - 3);
+        if (wall[y * N + x]) continue;
+        mapCoins.push({ x: x + 0.5, y: y + 0.5, age: 0, life: 25 });
+        break;
+      }
+    }
+  }
+  for (const c of mapCoins) {
+    c.age += dt;
+    c.life -= dt;
+    for (const p of players) {
+      if (!p || !p.alive || c.taken || Math.hypot(p.x - c.x, p.y - c.y) > 1.1) continue;
+      c.taken = true;
+      if (p === me) {
+        run.coinsPicked += COIN_VALUE;
+        addCoins(COIN_VALUE);
+        floats.push({ x: c.x, y: c.y - 1, text: `+${COIN_VALUE}`, life: 0.8, gold: true });
+        Sfx.play('coin');
+      }
+    }
+  }
+  mapCoins = mapCoins.filter(c => !c.taken && c.life > 0);
 }
 
 function updatePowerups(dt) {
@@ -847,12 +919,14 @@ function startGame() {
   names.forEach((name, i) => players.push(makePlayer(i + 2, name, botColors[i], true, SKINS[randInt(0, SKINS.length - 1)].id)));
   powerups = [];
   powerTimer = 3;
+  mapCoins = [];
+  coinTimer = 3;
   freezer = null;
   spawn(me, N / 2, N / 2);
   for (const p of players) if (p && p.isBot) spawn(p);
   random = Math.random;
   playTime = 0;
-  run = { powerups: 0, bigLoop: 0, freezeKO: false, trophies: [] };
+  run = { powerups: 0, bigLoop: 0, freezeKO: false, trophies: [], coinsPicked: 0 };
   fxParts = [];
   achTimer = 1;
   cam.x = me.x;
@@ -906,13 +980,19 @@ function endGame(won, reason) {
 
   // Update lifetime stats and announce any skins that just unlocked
   const before = SKINS.filter(isUnlocked);
-  const { earned, fresh: trophies } = finishRun(won, score);
+  const { earned, fresh: trophies, xpGain, levelsUp, levelCoins, missionsDone, missionCoins } = finishRun(won, score);
   const fresh = SKINS.filter(sk => isUnlocked(sk) && !before.includes(sk));
   $('over-unlock').textContent = fresh.length ? `🎁 New skin unlocked: ${fresh.map(sk => sk.name).join(', ')}! Find it in the Locker.` : '';
   $('over-unlock').classList.toggle('hidden', !fresh.length);
   if (fresh.length || trophies.length) Sfx.play('trophy');
   const bonus = trophies.length * ACH_REWARD;
-  $('over-coins').innerHTML = `+${earned} <span class="coin"></span> coins${bonus ? ` <small>(+${bonus} from trophies)</small>` : ''}`;
+  const extras = [bonus && `+${bonus} from trophies`, run.coinsPicked && `+${run.coinsPicked} picked up`, missionCoins && `+${missionCoins} from missions`, levelCoins && `+${levelCoins} level bonus`].filter(Boolean);
+  $('over-coins').innerHTML = `+${earned} <span class="coin"></span> coins${extras.length ? ` <small>(${extras.join(' · ')})</small>` : ''}`;
+  const lv = levelInfo(xp);
+  $('over-xp').innerHTML = `+${xpGain} XP · Level ${lv.lvl}${levelsUp ? ' <b>Level up!</b>' : ''}<span class="xpbar"><span style="width:${(lv.into / lv.need) * 100}%"></span></span>`;
+  $('over-missions').innerHTML = missionsDone.map(m => `<li>✓ Mission done: ${m.text} <small>+${m.reward}</small></li>`).join('');
+  $('over-missions').classList.toggle('hidden', !missionsDone.length);
+  renderLevel();
   $('over-ach').innerHTML = trophies.map(a => `<li>${Icons.trophy}${a.name} <small>+${ACH_REWARD}</small></li>`).join('');
   $('over-ach').classList.toggle('hidden', !trophies.length);
   refreshLocker();
@@ -1047,6 +1127,7 @@ function update(dt) {
   }
   checkBumps();
   updatePowerups(dt);
+  updateMapCoins(dt);
 
   // Danger: is an enemy close to your exposed trail? Close ones also get marked.
   danger = 0;
@@ -1378,6 +1459,28 @@ function drawPowerupIcon(kind, x, y, r) {
     ctx.quadraticCurveTo(x - u * 0.7, y + u * 0.6, x - u * 0.8, y - u * 0.6);
     ctx.closePath();
     ctx.fill();
+  } else if (kind === 'ghost') {
+    ctx.moveTo(x - u * 0.7, y + u * 0.8);
+    ctx.lineTo(x - u * 0.7, y - u * 0.1);
+    ctx.arc(x, y - u * 0.1, u * 0.7, Math.PI, 0);
+    ctx.lineTo(x + u * 0.7, y + u * 0.8);
+    for (let k = 0; k < 3; k++) ctx.lineTo(x + u * (0.47 - k * 0.47), y + u * (k % 2 ? 0.8 : 0.5));
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(x - u * 0.25, y - u * 0.1, u * 0.15, 0, TAU);
+    ctx.arc(x + u * 0.25, y - u * 0.1, u * 0.15, 0, TAU);
+    ctx.fill();
+  } else if (kind === 'paint') {
+    for (let k = 0; k < 7; k++) {
+      const a = (k / 7) * TAU, rr = k % 2 ? u * 0.45 : u * 0.8;
+      ctx.moveTo(x + Math.cos(a) * rr + u * 0.2, y + Math.sin(a) * rr);
+      ctx.arc(x + Math.cos(a) * rr, y + Math.sin(a) * rr, u * 0.2, 0, TAU);
+    }
+    ctx.moveTo(x + u * 0.55, y);
+    ctx.arc(x, y, u * 0.55, 0, TAU);
+    ctx.fill();
   } else {
     ctx.lineWidth = r * 0.14;
     ctx.lineCap = 'round';
@@ -1422,7 +1525,9 @@ function drawHead(p, x0, y0, leaderId) {
   ctx.translate(hx, hy + bob);
   ctx.rotate(p.angle);
   ctx.scale(1 + p.squash * 0.15, 1 - p.squash * 0.15);
+  if (p.fx.ghost > 0) ctx.globalAlpha = 0.45 + 0.15 * Math.sin(time * 10);
   drawBody(ctx, p, s, time);
+  ctx.globalAlpha = 1;
   // Frozen: icy tint
   if (freezer && freezer !== p) {
     ctx.fillStyle = 'rgba(160, 225, 255, 0.55)';
@@ -1538,6 +1643,24 @@ function draw(dt) {
     });
   }
 
+  // Gold coins spin (and blink before they vanish)
+  for (const c of mapCoins) {
+    const px = c.x * CELL - x0, py = c.y * CELL - y0 + Math.sin(time * 3 + c.x) * CELL * 0.1;
+    if (px < -30 || py < -30 || px > W + 30 || py > H + 30) continue;
+    if (c.life < 3 && Math.floor(c.life * 8) % 2) continue;
+    const r = CELL * 0.45 * Math.min(1, c.age * 4), w = Math.max(0.15, Math.abs(Math.cos(time * 4 + c.x)));
+    ctx.fillStyle = '#c98a00';
+    ctx.beginPath();
+    ctx.ellipse(px, py + r * 0.15, r * w, r, 0, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = '#ffc93c';
+    ctx.beginPath();
+    ctx.ellipse(px, py, r * w, r, 0, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    ctx.fillRect(px - r * w * 0.35, py - r * 0.5, Math.max(1, r * w * 0.25), r * 0.5);
+  }
+
   // Power-ups bob and pop in
   for (const pu of powerups) {
     const px = pu.x * CELL - x0, py = pu.y * CELL - y0 + Math.sin(time * 4 + pu.x) * CELL * 0.15;
@@ -1587,9 +1710,9 @@ function draw(dt) {
     ctx.globalAlpha = Math.min(1, f.life * 2);
     ctx.font = `900 ${Math.round(CELL * (f.big ? 1.8 : 1.3) * pop)}px system-ui, sans-serif`;
     ctx.lineWidth = 4;
-    ctx.strokeStyle = me.dark;
+    ctx.strokeStyle = f.gold ? '#9a6a00' : me.dark;
     ctx.strokeText(f.text, f.x * CELL - x0, f.y * CELL - y0);
-    ctx.fillStyle = '#fff';
+    ctx.fillStyle = f.gold ? '#ffd23f' : '#fff';
     ctx.fillText(f.text, f.x * CELL - x0, f.y * CELL - y0);
   }
   ctx.globalAlpha = 1;
@@ -1792,7 +1915,7 @@ function updateHud() {
     $('goal-fill').style.width = `${Math.min(100, (pct(me) / gameMode.win) * 100)}%`;
   }
   $('goal-fill').style.background = me.color;
-  const fx = Object.keys(POWERUPS).filter(k => me.alive && me.fx[k] > 0)
+  const fx = Object.keys(POWERUPS).filter(k => POWERUPS[k].time && me.alive && me.fx[k] > 0)
     .map(k => `<span class="fx" style="--c:${POWERUPS[k].color}">${POWERUPS[k].name} ${Math.ceil(me.fx[k])}s</span>`);
   if (freezer && freezer !== me && me.alive) fx.push('<span class="fx" style="--c:#3fc7f5">Frozen!</span>');
   const fxHtml = fx.join('');
