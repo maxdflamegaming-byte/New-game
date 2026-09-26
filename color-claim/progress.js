@@ -70,6 +70,8 @@ const ACHIEVEMENTS = [
   { id: 'power10', name: 'Powered Up', desc: 'Grab 10 power-ups', test: (r, s) => (s.powerups || 0) >= 10, progress: s => [s.powerups || 0, 10] },
   { id: 'giant', name: 'Giant Slayer', desc: 'Knock out the Giant', test: r => r.giantKO },
   { id: 'team', name: 'Team Player', desc: 'Win a Teams game', test: (r, s) => (s.teamWins || 0) >= 1 },
+  { id: 'champion', name: 'Champion', desc: 'Win the Cup', test: (r, s) => (s.cups || 0) >= 1 },
+  { id: 'challenger', name: 'Challenger', desc: "Beat a friend's challenge", test: (r, s) => (s.challenges || 0) >= 1 },
   { id: 'collector', name: 'Collector', desc: 'Own 5 skins', test: () => SKINS.filter(isUnlocked).length >= 5, progress: () => [SKINS.filter(isUnlocked).length, 5] },
   { id: 'regular', name: 'Regular', desc: 'Play 25 games', test: (r, s) => s.games >= 25, progress: s => [s.games, 25] },
 ];
@@ -114,13 +116,13 @@ function finishRun(won, score) {
   if (gameModeId === 'team' && won) stats.teamWins = (stats.teamWins || 0) + 1;
   if (run.giantKO) stats.giants = (stats.giants || 0) + 1;
 
-  const earned = (Math.round(score * 2) + me.kills * 5 + (won ? 50 : 0)) * (eventOn('double') ? 2 : 1);
+  const earned = Math.round((Math.round(score * 2) + me.kills * 5 + (won ? 50 : 0)) * (eventOn('double') ? 2 : 1) * gameDiff.coins);
   addCoins(earned);
   const fresh = [...run.trophies, ...checkAchievements(runSnapshot())];
   const xpGain = Math.round((score * 10 + me.kills * 30 + (won ? 150 : 0) + playTime / 2) * (eventOn('xp') ? 1.5 : 1));
   const { levelsUp, levelCoins } = addXp(xpGain);
   const missionsDone = updateMissions({
-    ...runSnapshot(), powerups: run.powerups, coinsPicked: run.coinsPicked, mode: gameModeId, map: gameMapId, won,
+    ...runSnapshot(), powerups: run.powerups, coinsPicked: run.coinsPicked, mode: gameModeId, map: gameMapId, diff: gameDiffId, won,
   });
   const missionCoins = missionsDone.reduce((a, m) => a + m.reward, 0);
   const seasonRewards = addSeasonXp(xpGain);
@@ -172,6 +174,9 @@ const MISSION_POOL = [
   { id: 'pillars', text: 'Play a game on the Pillars map', goal: 1, reward: 25, add: r => (r.map === 'pillars' ? 1 : 0) },
   { id: 'win', text: 'Win a game', goal: 1, reward: 60, add: r => (r.won ? 1 : 0) },
   { id: 'teams', text: 'Play a Teams game', goal: 1, reward: 30, add: r => (r.mode === 'team' ? 1 : 0) },
+  { id: 'cup', text: 'Play a Cup round', goal: 1, reward: 30, add: r => (r.mode === 'cup' ? 1 : 0) },
+  { id: 'hard', text: 'Play a game with Hard bots', goal: 1, reward: 40, add: r => (r.diff === 'hard' ? 1 : 0) },
+  { id: 'maze', text: 'Play a game on the Maze map', goal: 1, reward: 25, add: r => (r.map === 'maze' ? 1 : 0) },
 ];
 
 function todaysMissions() {
@@ -383,6 +388,101 @@ $('editor-save').addEventListener('click', () => {
   showScreen('menu');
   toast(`Saved My map ${editor.slot + 1}. It's picked on the menu.`);
 });
+
+// ---------- Challenge codes ----------
+// A code holds a game's seed, mode, map, bot difficulty and score, plus a check letter to catch typos.
+// Your friend gets the same starting map and bots and tries to beat your score.
+const CODE_MODES = ['classic', 'timed', 'marathon', 'team'];
+const CODE_MAPS = ['square', 'round', 'pillars', 'maze', 'islands'];
+const CODE_DIFFS = ['easy', 'normal', 'hard'];
+let lastChallenge = null;
+
+function makeCode(c) {
+  const body = [c.seed.toString(36), `${CODE_MODES.indexOf(c.mode)}${CODE_MAPS.indexOf(c.map)}${CODE_DIFFS.indexOf(c.diff)}`, Math.round(c.score * 10).toString(36)].join('-');
+  return (body + '-' + (hashStr(body) % 36).toString(36)).toUpperCase();
+}
+
+function readCode(text) {
+  const parts = text.trim().toLowerCase().replace(/\s+/g, '').split('-');
+  if (parts.length !== 4) return null;
+  const body = parts.slice(0, 3).join('-');
+  if ((hashStr(body) % 36).toString(36) !== parts[3] || parts[1].length !== 3) return null;
+  const [m, mp, d] = parts[1].split('').map(Number);
+  const c = { seed: parseInt(parts[0], 36) >>> 0, mode: CODE_MODES[m], map: CODE_MAPS[mp], diff: CODE_DIFFS[d], score: parseInt(parts[2], 36) / 10 };
+  return c.mode && c.map && c.diff && Number.isFinite(c.seed) && Number.isFinite(c.score) ? c : null;
+}
+
+function describeChallenge(c) {
+  return `${MODES[c.mode].name} · ${MAPS[c.map].name} map · ${DIFFICULTY[c.diff].name} bots · beat ${c.score.toFixed(1)}%`;
+}
+
+function challengeBeaten() {
+  stats.challenges = (stats.challenges || 0) + 1;
+  save('color-claim-stats', JSON.stringify(stats));
+  for (const a of checkAchievements(runSnapshot())) { toast(`🏆 ${a.name}! +${ACH_REWARD} coins`); Sfx.play('trophy'); }
+}
+
+$('challenge-make').addEventListener('click', () => {
+  if (!lastChallenge) return;
+  const code = makeCode(lastChallenge);
+  $('challenge-code').classList.remove('hidden');
+  $('challenge-code-text').value = code;
+  $('challenge-code-text').select();
+});
+$('challenge-copy').addEventListener('click', async () => {
+  const input = $('challenge-code-text');
+  try {
+    await navigator.clipboard.writeText(input.value);
+    $('challenge-copy').textContent = 'Copied!';
+  } catch {
+    input.select(); // copying isn't allowed here: the code is selected so it can be copied by hand
+    $('challenge-copy').textContent = 'Select & copy';
+  }
+  setTimeout(() => { $('challenge-copy').textContent = 'Copy'; }, 1500);
+});
+$('challenge-input').addEventListener('input', () => {
+  const c = readCode($('challenge-input').value);
+  $('challenge-info').textContent = c ? describeChallenge(c) : $('challenge-input').value.trim() ? "That code doesn't look right. Check it and try again." : '';
+  $('challenge-info').className = 'small ' + (c ? 'ok' : 'bad');
+  $('challenge-play').disabled = !c;
+});
+$('challenge-play').addEventListener('click', () => {
+  const c = readCode($('challenge-input').value);
+  if (!c) return;
+  challenge = c;
+  startGame();
+});
+
+// ---------- Cup ----------
+function showCup(roundCoins) {
+  const done = cup.round > 3;
+  const rows = Object.entries(cup.points).sort((a, b) => b[1] - a[1]);
+  const place = rows.findIndex(([n]) => n === cup.meName) + 1;
+  $('cup-title').textContent = done ? (place === 1 ? '🏆 You won the Cup!' : `Cup over: you finished #${place}`) : `Round ${cup.round - 1} of 3 done`;
+  $('cup-table').innerHTML = rows.map(([name, pts], i) =>
+    `<tr class="${name === cup.meName ? 'me' : ''}"><td>${i + 1}</td><td>${escapeHtml(name)}</td><td>+${cup.last[name] || 0}</td><td><b>${pts}</b></td></tr>`
+  ).join('');
+  let prize = 0;
+  if (done) {
+    prize = [150, 75, 40][place - 1] || 0;
+    addCoins(prize);
+    if (place === 1) {
+      stats.cups = (stats.cups || 0) + 1;
+      save('color-claim-stats', JSON.stringify(stats));
+      for (const a of checkAchievements(runSnapshot())) toast(`🏆 ${a.name}! +${ACH_REWARD} coins`);
+      Sfx.play('win');
+    }
+  }
+  $('cup-note').innerHTML = `+${roundCoins} <span class="coin"></span> this round` + (done && prize ? ` · <b>+${prize} cup prize</b>` : '')
+    + (done ? '' : ` · Next map: ${MAPS[cup.maps[cup.round - 1]].name}`);
+  $('cup-next').textContent = done ? 'Back to menu' : `Play round ${cup.round}`;
+  showScreen('cup');
+}
+$('cup-next').addEventListener('click', () => {
+  if (cup && cup.round <= 3) startGame();
+  else { cup = null; state = 'menu'; me = null; showScreen('menu'); }
+});
+$('cup-quit').addEventListener('click', () => { cup = null; state = 'menu'; me = null; showScreen('menu'); });
 
 // ---------- Menu navigation ----------
 function openScreen(id) {

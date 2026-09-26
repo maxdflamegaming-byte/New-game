@@ -50,6 +50,7 @@
     <div class="pickers">
       <div class="seg" id="modes" aria-label="Game mode"></div>
       <div class="seg" id="maps" aria-label="Map"></div>
+      <div class="diff-row"><span class="small">Bots</span><div class="seg" id="diffs" aria-label="Bot difficulty"></div></div>
       <p id="mode-desc" class="small"></p>
     </div>
     <div id="event-banner" class="event-banner"></div>
@@ -57,6 +58,7 @@
     <p class="small"><b id="menu-best"></b></p>
     <nav class="menu-nav">
       <button class="nav-btn" data-open="missions">Missions <span id="mission-badge" class="badge">0/3</span></button>
+      <button class="nav-btn" data-open="challenge">Challenge</button>
       <button class="nav-btn" data-open="season">Season</button>
       <button class="nav-btn" data-open="locker">Locker</button>
       <button class="nav-btn" data-open="trophies">Trophies</button>
@@ -86,6 +88,28 @@
     <p class="small">New missions every day. Rewards are paid out as soon as you finish one.</p>
     <ul id="mission-list"></ul>
     <button class="secondary" data-back>Back</button>
+  </div>
+
+  <div id="challenge" class="screen">
+    <h2>Play a challenge</h2>
+    <p class="small">Got a code from a friend? Enter it to play their exact starting map and bots, and try to beat their score.</p>
+    <input id="challenge-input" class="code-input" maxlength="24" placeholder="e.g. 1A2B3C4-021-5Y-7" autocomplete="off" spellcheck="false">
+    <p id="challenge-info" class="small"></p>
+    <div class="row">
+      <button id="challenge-play" disabled>Play challenge</button>
+      <button class="secondary" data-back>Back</button>
+    </div>
+    <p class="small">To make your own, finish a game and press <b>Challenge a friend</b>.</p>
+  </div>
+
+  <div id="cup" class="screen">
+    <h2 id="cup-title">Cup</h2>
+    <table class="cup-table"><thead><tr><th>#</th><th>Player</th><th>Round</th><th>Total</th></tr></thead><tbody id="cup-table"></tbody></table>
+    <p id="cup-note" class="coins-earned"></p>
+    <div class="row">
+      <button id="cup-next">Next round</button>
+      <button id="cup-quit" class="secondary">Quit cup</button>
+    </div>
   </div>
 
   <div id="season" class="screen">
@@ -155,12 +179,20 @@
     <p id="over-reason"></p>
     <p id="over-stats"></p>
     <p id="over-best" class="small"></p>
+    <p id="challenge-result" class="challenge-result hidden"></p>
     <p id="over-coins" class="coins-earned"></p>
     <p id="over-xp" class="xp-earned"></p>
     <ul id="over-missions" class="hidden"></ul>
     <ul id="over-season" class="hidden"></ul>
     <p id="over-unlock" class="unlock hidden"></p>
     <ul id="over-ach" class="hidden"></ul>
+    <div id="challenge-share" class="hidden">
+      <button id="challenge-make" class="nav-btn">Challenge a friend</button>
+      <div id="challenge-code" class="hidden code-box">
+        <input id="challenge-code-text" class="code-input" readonly>
+        <button id="challenge-copy" class="nav-btn">Copy</button>
+      </div>
+    </div>
     <div class="row">
       <button id="again-btn">Play again</button>
       <button id="menu-btn" class="secondary">Menu</button>

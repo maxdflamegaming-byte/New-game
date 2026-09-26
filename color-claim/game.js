@@ -96,6 +96,7 @@ const MODES = {
   timed: { name: 'Timed', desc: 'Biggest player after 3:00 wins', size: 80, win: 0, time: 180, powerups: 5 },
   daily: { name: 'Daily', desc: 'Same starting map for everyone today · claim 50%', size: 80, win: 50, powerups: 4, daily: true },
   marathon: { name: 'Marathon', desc: 'A huge map · claim 60% to win', size: 120, win: 60, powerups: 7 },
+  cup: { name: 'Cup', desc: '3 two-minute rounds on different maps · most points wins the cup', size: 80, win: 0, time: 120, powerups: 5, cup: true },
   duo: { name: '2 Players', desc: 'Same keyboard: Player 1 uses WASD, Player 2 the arrow keys · first to 40% (or last one standing) wins', size: 80, win: 40, powerups: 5, duo: true },
   team: { name: 'Teams', desc: 'You + 3 bots vs 4 bots · first team to 50% wins', size: 80, win: 50, powerups: 5, teams: true },
 };
@@ -104,6 +105,8 @@ const MAPS = {
   square: { name: 'Square' },
   round: { name: 'Round' },
   pillars: { name: 'Pillars' },
+  maze: { name: 'Maze' },
+  islands: { name: 'Islands' },
 };
 
 // Custom maps are saved as a bit string of wall cells (80 x 80), base64 encoded
@@ -139,6 +142,41 @@ function buildMap(id) {
   } else if (id === 'round') {
     const c = (N - 1) / 2, r = N / 2 - 1;
     for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (Math.hypot(x - c, y - c) > r) wall[y * N + x] = 2;
+  } else if (id === 'maze') {
+    // Blocks with a wall on their top or left edge (a "binary tree" maze), each with a gap
+    const g = Math.round(N / 8), c = N / 2;
+    for (let by = 0; by < N; by += g) {
+      for (let bx = 0; bx < N; bx += g) {
+        const top = random() < 0.5;
+        if ((top && by === 0) || (!top && bx === 0)) continue; // leave the outer edge open
+        const gap = 2 + Math.floor(random() * (g - 6));
+        for (let k = 0; k < g; k++) {
+          if (k >= gap && k < gap + 4) continue;
+          const x = top ? bx + k : bx, y = top ? by : by + k;
+          if (x < N && y < N && Math.hypot(x - c, y - c) > 8) wall[y * N + x] = 1;
+        }
+      }
+    }
+  } else if (id === 'islands') {
+    // A central island and a ring of six, joined by bridges, with water (outside) between
+    wall.fill(2);
+    const c = N / 2, isles = [[c, c, N * 0.16]];
+    for (let k = 0; k < 6; k++) {
+      const a = (k / 6) * TAU + 0.3;
+      isles.push([c + Math.cos(a) * N * 0.33, c + Math.sin(a) * N * 0.33, N * 0.13]);
+    }
+    const bridges = [];
+    for (let k = 1; k <= 6; k++) bridges.push([isles[0], isles[k]], [isles[k], isles[(k % 6) + 1]]);
+    const nearSeg = (x, y, [ax, ay], [bx, by]) => {
+      const dx = bx - ax, dy = by - ay, t = clamp(((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy), 0, 1);
+      return Math.hypot(x - (ax + dx * t), y - (ay + dy * t));
+    };
+    for (let y = 0; y < N; y++) {
+      for (let x = 0; x < N; x++) {
+        const land = isles.some(([ix, iy, r]) => Math.hypot(x - ix, y - iy) <= r) || bridges.some(([a, b]) => nearSeg(x, y, a, b) <= 2.2);
+        if (land) wall[y * N + x] = 0;
+      }
+    }
   } else if (id === 'pillars') {
     const s = Math.round(N * 0.07);
     for (const fx of [0.22, 0.5, 0.78]) {
@@ -152,6 +190,14 @@ function buildMap(id) {
   playCells = 0;
   for (let i = 0; i < N * N; i++) if (!wall[i]) playCells++;
 }
+
+// Bot difficulty (picked on the menu). Harder bots also pay more coins.
+const DIFFICULTY = {
+  easy: { name: 'Easy', speed: 0.9, aggro: 0.4, range: -4, think: 0.45, coins: 0.75 },
+  normal: { name: 'Normal', speed: 1, aggro: 1, range: 0, think: 0.25, coins: 1 },
+  hard: { name: 'Hard', speed: 1.06, aggro: 1.7, range: 6, think: 0.15, coins: 1.5 },
+};
+let gameDiff = DIFFICULTY.normal, gameDiffId = 'normal';
 
 // Weekly events: one runs each week (Monday to Sunday), picked from the week number
 const EVENTS = [
@@ -215,6 +261,11 @@ let state = 'menu';
 let best = Number(load('color-claim-best', 0)) || 0; // Classic best (older saves use this key)
 let myMode = load('color-claim-mode', 'classic');
 if (!MODES[myMode]) myMode = 'classic';
+let myDiff = load('color-claim-diff', 'normal');
+if (!DIFFICULTY[myDiff]) myDiff = 'normal';
+let challenge = null; // a friend's challenge being played: { seed, mode, map, diff, score }
+let cup = null;       // the Cup in progress: { round, seed, maps, points }
+let gameSeed = 0;
 let myMap = load('color-claim-map', 'square');
 if (!MAPS[myMap] && !(myMap.startsWith('custom') && load('color-claim-maps', '').length)) myMap = 'square';
 let gameMode = MODES.classic, gameModeId = 'classic', gameMapId = 'square', playTime = 0;
@@ -444,6 +495,7 @@ function capture(p) {
 function speedOf(p) {
   let v = SPEED;
   if (p.isBoss) v *= 1.12;
+  else if (p.isBot) v *= gameDiff.speed;
   if (eventOn('speed')) v *= 1.2;
   if (p.fx.speed > 0) v *= 1.6;
   if (freezer && freezer !== p) v *= 0.5;
@@ -626,7 +678,7 @@ function updatePowerups(dt) {
 // The Giant: a big, fast boss bot that arrives once you're doing well, and hunts your trail
 let giant = null;
 function giantDue() {
-  if (giant || !me.alive || gameMode.duo) return false;
+  if (giant || !me.alive || gameMode.duo || gameMode.cup) return false;
   if (gameMode.time) return playTime >= 90;
   return pct(me) >= (N > 100 ? 15 : 20);
 }
@@ -721,15 +773,23 @@ function safeSteps(p, desired, steps = 10, dt = 0.05) {
   for (let k = 0; k < steps; k++) {
     let diff = Math.atan2(Math.sin(desired - a), Math.cos(desired - a));
     a += clamp(diff, -TURN * dt, TURN * dt);
-    x = clamp(x + Math.cos(a) * v * dt, 0.01, N - 0.01);
-    y = clamp(y + Math.sin(a) * v * dt, 0.01, N - 0.01);
-    const nx = Math.floor(x), ny = Math.floor(y);
-    if (nx === cx && ny === cy) continue;
-    if (nx !== cx && ny !== cy && trail[cy * N + nx] === p.id) return k;
-    if (trail[ny * N + nx] === p.id || wall[ny * N + nx]) return k;
-    if (owner[ny * N + nx] === p.id) return steps; // made it home
-    cx = nx;
-    cy = ny;
+    let nx = clamp(x + Math.cos(a) * v * dt, 0.01, N - 0.01);
+    let ny = clamp(y + Math.sin(a) * v * dt, 0.01, N - 0.01);
+    // Walls aren't deadly: slide along them exactly like move() does
+    if (isWallAt(nx, ny)) {
+      if (!isWallAt(x, ny)) nx = x;
+      else if (!isWallAt(nx, y)) ny = y;
+      else { nx = x; ny = y; }
+    }
+    x = nx;
+    y = ny;
+    const fx = Math.floor(x), fy = Math.floor(y);
+    if (fx === cx && fy === cy) continue;
+    if (fx !== cx && fy !== cy && trail[cy * N + fx] === p.id && !wall[cy * N + fx]) return k;
+    if (trail[fy * N + fx] === p.id) return k;
+    if (owner[fy * N + fx] === p.id) return steps; // made it home
+    cx = fx;
+    cy = fy;
   }
   return steps;
 }
@@ -747,20 +807,36 @@ function nearestOwn(p) {
   return { x: p.x, y: p.y };
 }
 
+// Is the straight line between two points free of walls (and water)?
+function clearLine(ax, ay, bx, by) {
+  const steps = Math.ceil(Math.hypot(bx - ax, by - ay) * 2);
+  for (let k = 0; k <= steps; k++) {
+    const t = k / (steps || 1);
+    if (isWallAt(ax + (bx - ax) * t, ay + (by - ay) * t)) return false;
+  }
+  return true;
+}
+
 function planLoop(p) {
-  const a = Math.random() * TAU;
-  const len = rand(5, 11 + Math.min(10, counts[p.id] / 60)) * p.loopScale;
-  const wid = rand(4, 10) * p.loopScale * (Math.random() < 0.5 ? -1 : 1);
-  const ax = p.x + Math.cos(a) * len, ay = p.y + Math.sin(a) * len;
-  const bx = ax + Math.cos(a + Math.PI / 2) * wid, by = ay + Math.sin(a + Math.PI / 2) * wid;
+  const tight = gameMapId === 'islands' ? 0.55 : 1; // small islands: small loops
   const c = v => clamp(v, 1.5, N - 1.5);
-  // Pull waypoints back toward the bot until they're off any wall
-  const free = pt => {
-    for (let k = 0; k < 30 && isWallAt(pt.x, pt.y); k++) { pt.x += (p.x - pt.x) * 0.15; pt.y += (p.y - pt.y) * 0.15; }
-    return pt;
-  };
-  p.wp = [free({ x: c(ax), y: c(ay) }), free({ x: c(bx), y: c(by) })];
-  p.mode = 'loop';
+  // Try a few random loops and keep the first whose three sides don't hit a wall
+  for (let tries = 0; tries < 10; tries++) {
+    const shrink = tries < 6 ? 1 : 0.5;
+    const a = Math.random() * TAU;
+    const len = rand(5, 11 + Math.min(10, counts[p.id] / 60)) * p.loopScale * tight * shrink;
+    const wid = rand(4, 10) * p.loopScale * tight * shrink * (Math.random() < 0.5 ? -1 : 1);
+    const A = { x: c(p.x + Math.cos(a) * len), y: c(p.y + Math.sin(a) * len) };
+    const B = { x: c(A.x + Math.cos(a + Math.PI / 2) * wid), y: c(A.y + Math.sin(a + Math.PI / 2) * wid) };
+    if (clearLine(p.x, p.y, A.x, A.y) && clearLine(A.x, A.y, B.x, B.y) && clearLine(B.x, B.y, p.x, p.y)) {
+      p.wp = [A, B];
+      p.mode = 'loop';
+      return;
+    }
+  }
+  // Nowhere good to go right now: wander a little inside our own land and try again soon
+  p.wp = [nearestOwn(p)];
+  p.mode = 'idle';
 }
 
 function think(p) {
@@ -769,7 +845,7 @@ function think(p) {
   // Head home if an enemy gets close while our trail is exposed, or if we got greedy
   if (outside && p.mode !== 'home') {
     const threat = p.mode !== 'hunt' && !p.isBoss && players.some(o => o && !allies(o, p) && o.alive && dist(o, p) < 5);
-    if (threat || p.trail.length > p.greed) {
+    if (threat || p.trail.length > (gameMapId === 'islands' ? Math.min(p.greed, 22) : p.greed)) {
       goHome(p);
       return;
     }
@@ -788,7 +864,7 @@ function think(p) {
     for (const o of players) {
       if (!o || allies(o, p) || !o.alive || o.trail.length < 4 || o.fx.shield > 0) continue;
       const bold = o === me ? growth : 0;
-      if (dist(o, p) < 14 + bold * 12 && Math.random() < p.aggro + bold * 0.4) {
+      if (dist(o, p) < 14 + bold * 12 + gameDiff.range && Math.random() < (p.aggro + bold * 0.4) * gameDiff.aggro) {
         p.wp = [closestTrailPoint(p, o)];
         p.mode = 'hunt';
         return;
@@ -828,11 +904,13 @@ function goHome(p) {
 function steerBot(p, dt) {
   p.think -= dt;
   if (p.think <= 0) {
-    p.think = 0.25;
+    p.think = gameDiff.think;
     think(p);
   }
   while (p.wp.length && dist(p, p.wp[0]) < 0.8) p.wp.shift();
-  if (p.blocked && p.wp.length) p.wp.shift(); // stuck against a wall: skip this waypoint
+  // Stuck against a wall, or the next waypoint is behind one: head home the safe way
+  if (p.trail.length && p.mode !== 'home' && (p.blocked || (p.wp.length && !clearLine(p.x, p.y, p.wp[0].x, p.wp[0].y)))) goHome(p);
+  else if (p.blocked && p.wp.length) p.wp.shift();
   if (!p.wp.length && p.trail.length && p.mode !== 'home') goHome(p);
 
   let target = p.wp[0];
@@ -1006,11 +1084,13 @@ function buildPickers() {
   };
   const daily = MODES[myMode].daily;
   seg('modes', MODES, myMode, id => { myMode = id; save('color-claim-mode', id); buildPickers(); });
+  seg('diffs', DIFFICULTY, myDiff, id => { myDiff = id; save('color-claim-diff', id); buildPickers(); });
   const allMaps = { ...MAPS };
   loadCustomMaps().forEach((m, i) => { if (m) allMaps['custom' + i] = { name: m.name }; });
   if (!allMaps[myMap]) myMap = 'square';
-  seg('maps', allMaps, daily ? dailyMap() : myMap, id => { myMap = id; save('color-claim-map', id); buildPickers(); }, daily);
+  seg('maps', allMaps, daily ? dailyMap() : myMap, id => { myMap = id; save('color-claim-map', id); buildPickers(); }, daily || MODES[myMode].cup);
   $('mode-desc').textContent = MODES[myMode].desc + (daily ? ` · Today's map: ${MAPS[dailyMap()].name}` : '')
+    + (myDiff !== 'normal' ? ` · ${DIFFICULTY[myDiff].name} bots pay ×${DIFFICULTY[myDiff].coins} coins` : '')
     + (!daily && myMap.startsWith('custom') && MODES[myMode].size !== CUSTOM_SIZE ? ' · Custom maps are always normal size' : '');
   updateMenuBest();
 }
@@ -1024,11 +1104,20 @@ $('name-input').addEventListener('input', e => {
 // ---------- Game flow ----------
 function startGame() {
   gameCounter++;
-  gameModeId = myMode;
-  gameMode = MODES[myMode];
-  gameMapId = gameMode.daily ? dailyMap() : myMap;
-  // Daily: the same seed all day, so everyone gets the same starting map
-  random = gameMode.daily ? mulberry32(hashStr('color-claim-' + todayKey())) : Math.random;
+  // Every game's starting layout comes from a seed, so it can be shared as a challenge.
+  // Daily uses the date as its seed; a challenge uses its friend's seed.
+  const cfg = challenge || { mode: myMode, map: myMap, diff: myDiff };
+  gameModeId = cfg.mode;
+  gameMode = MODES[cfg.mode];
+  gameDiffId = cfg.diff;
+  gameDiff = DIFFICULTY[cfg.diff];
+  if (gameMode.cup && (!cup || cup.round > 3)) cup = newCup();
+  gameMapId = gameMode.daily ? dailyMap() : gameMode.cup ? cup.maps[cup.round - 1] : cfg.map;
+  gameSeed = challenge ? challenge.seed
+    : gameMode.daily ? hashStr('color-claim-' + todayKey())
+    : gameMode.cup ? cup.seed
+    : (Math.random() * 4294967296) >>> 0;
+  random = mulberry32(gameSeed);
   // Custom maps are always 80 x 80
   allocWorld(gameMapId.startsWith('custom') ? CUSTOM_SIZE : gameMode.size);
   buildMap(gameMapId);
@@ -1152,6 +1241,28 @@ function endGame(won, reason) {
   $('over-stats').textContent = `Best size: ${score.toFixed(1)}% · ${me.kills} knockouts`;
   const label = gameModeId === 'daily' ? "Today's best" : `${gameMode.name} best`;
   $('over-best').textContent = isBest ? `New ${label.toLowerCase()}!` : `${label}: ${prevBest.toFixed(1)}%`;
+
+  // Playing a friend's challenge: did you beat their score?
+  $('challenge-result').classList.toggle('hidden', !challenge);
+  if (challenge) {
+    const beat = score > challenge.score;
+    $('challenge-result').className = 'challenge-result ' + (beat ? 'good' : 'bad');
+    $('challenge-result').textContent = beat
+      ? `✓ Challenge beaten: ${score.toFixed(1)}% vs ${challenge.score.toFixed(1)}%!`
+      : `✗ Challenge not beaten: ${score.toFixed(1)}% vs ${challenge.score.toFixed(1)}%. Try again!`;
+    if (beat) challengeBeaten();
+  }
+  // Offer a challenge code for this game (not for 2 players, the Cup or custom maps)
+  const shareable = !gameMode.duo && !gameMode.cup && !gameMapId.startsWith('custom');
+  $('challenge-share').classList.toggle('hidden', !shareable);
+  $('challenge-code').classList.add('hidden');
+  lastChallenge = shareable ? { seed: gameSeed, mode: gameMode.daily ? 'classic' : gameModeId, map: gameMapId, diff: gameDiffId, score } : null;
+
+  if (gameMode.cup) {
+    scoreCupRound();
+    showCup(earned);
+    return;
+  }
   showScreen('over');
 }
 
@@ -1181,6 +1292,28 @@ function endDuo(winner, reason) {
   for (const id of ['over-coins', 'over-xp']) $(id).innerHTML = '';
   for (const id of ['over-missions', 'over-season', 'over-unlock', 'over-ach']) $(id).classList.add('hidden');
   showScreen('over');
+}
+
+// ---------- Cup ----------
+const CUP_POINTS = [10, 7, 5, 3, 2, 1, 1, 1];
+function newCup() {
+  const maps = ['square', 'round', 'pillars', 'maze', 'islands'].sort(() => Math.random() - 0.5).slice(0, 3);
+  return { round: 1, seed: (Math.random() * 4294967296) >>> 0, maps, points: {}, last: {} };
+}
+
+// Score a finished Cup round: everyone still standing by land, anyone knocked out after them
+function scoreCupRound() {
+  const field = players.filter(p => p && !p.isBoss);
+  const ranked = field.filter(p => p.alive).sort((a, b) => counts[b.id] - counts[a.id]).concat(field.filter(p => !p.alive));
+  cup.last = {};
+  ranked.forEach((p, i) => {
+    const pts = CUP_POINTS[i] || 1;
+    cup.last[p.name] = pts;
+    cup.points[p.name] = (cup.points[p.name] || 0) + pts;
+  });
+  cup.meName = me.name;
+  cup.round++;
+  return ranked.indexOf(me) + 1;
 }
 
 // Timed mode: when the clock runs out, the biggest player wins
@@ -1860,7 +1993,7 @@ function drawWorld(focus, c) {
   const x0 = c.x * CELL - W / 2 + rand(-sh, sh), y0 = c.y * CELL - H / 2 + rand(-sh, sh);
 
   // Map floor: a raised board with a soft checker pattern
-  if (gameMapId !== 'round') {
+  if (gameMapId !== 'round' && gameMapId !== 'islands') {
     ctx.fillStyle = '#aab4c8';
     ctx.fillRect(-x0 - 4, -y0 - 4 + CELL * 0.5, N * CELL + 8, N * CELL + 8);
   }
@@ -2239,8 +2372,10 @@ function updateHud() {
   if (freezer && freezer !== me && me.alive) fx.push('<span class="fx" style="--c:#3fc7f5">Frozen!</span>');
   const fxHtml = fx.join('');
   if ($('effects').innerHTML !== fxHtml) $('effects').innerHTML = fxHtml;
-  $('team-score').classList.toggle('hidden', !gameMode.teams && !gameMode.duo);
-  if (gameMode.duo) $('team-score').innerHTML = `<b class="us">P1 ${pct(me).toFixed(1)}%</b> <span>vs</span> <b class="them">P2 ${pct(p2).toFixed(1)}%</b>`;
+  $('team-score').classList.toggle('hidden', !gameMode.teams && !gameMode.duo && !challenge && !gameMode.cup);
+  if (challenge) $('team-score').innerHTML = `<b class="us">Beat ${challenge.score.toFixed(1)}%</b> <span>· ${pct(me) > challenge.score ? 'ahead!' : 'keep going'}</span>`;
+  else if (gameMode.cup) $('team-score').innerHTML = `<b class="us">Cup round ${cup.round} of 3</b>`;
+  else if (gameMode.duo) $('team-score').innerHTML = `<b class="us">P1 ${pct(me).toFixed(1)}%</b> <span>vs</span> <b class="them">P2 ${pct(p2).toFixed(1)}%</b>`;
   else if (gameMode.teams) $('team-score').innerHTML = `<b class="us">Your team ${teamPct(0).toFixed(1)}%</b> <span>vs</span> <b class="them">${teamPct(1).toFixed(1)}%</b>`;
   const ranked = players.filter(p => p && p.alive).sort((a, b) => counts[b.id] - counts[a.id]);
   const top = ranked.slice(0, 5);
@@ -2339,6 +2474,7 @@ $('play-btn').addEventListener('click', () => { if (state === 'menu') playFromMe
 $('again-btn').addEventListener('click', () => { if (state === 'over') startGame(); });
 $('menu-btn').addEventListener('click', () => {
   if (state !== 'over') return;
+  challenge = null;
   state = 'menu';
   me = null;
   showScreen('menu');
