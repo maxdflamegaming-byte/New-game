@@ -282,8 +282,8 @@ canvas { display: block; touch-action: none; }
 .badge { display: inline-block; margin-left: 4px; padding: 1px 6px; font-size: 11px; font-weight: 900; color: #fff; background: #ff5d73; border-radius: 8px; }
 .badge.all { background: #1f9d6b; }
 
-#mission-list { list-style: none; display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 480px; text-align: left; }
-#mission-list li {
+#mission-list, #quest-list { list-style: none; display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 480px; text-align: left; }
+#mission-list li, #quest-list li {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -292,14 +292,14 @@ canvas { display: block; touch-action: none; }
   border-radius: 12px;
   box-shadow: 0 3px 0 #c7cfe0;
 }
-#mission-list .check { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; border: 2px solid #c7cfe0; font-weight: 900; color: #fff; }
-#mission-list li.done .check { background: #1f9d6b; border-color: #1f9d6b; }
-#mission-list .t { flex: 1; display: flex; flex-direction: column; gap: 3px; font-size: 14px; }
-#mission-list .bar { display: block; height: 6px; border-radius: 3px; background: #e3e8f2; overflow: hidden; }
-#mission-list .bar span { display: block; height: 100%; background: #4f8cff; }
-#mission-list li.done .bar span { background: #1f9d6b; }
-#mission-list .prog { font-size: 11px; opacity: 0.7; }
-#mission-list .reward { flex: none; font-weight: 900; color: #c98a00; }
+#mission-list .check, #quest-list .check { flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; border: 2px solid #c7cfe0; font-weight: 900; color: #fff; }
+#mission-list li.done .check, #quest-list li.done .check { background: #1f9d6b; border-color: #1f9d6b; }
+#mission-list .t, #quest-list .t { flex: 1; display: flex; flex-direction: column; gap: 3px; font-size: 14px; }
+#mission-list .bar, #quest-list .bar { display: block; height: 6px; border-radius: 3px; background: #e3e8f2; overflow: hidden; }
+#mission-list .bar span, #quest-list .bar span { display: block; height: 100%; background: #4f8cff; }
+#mission-list li.done .bar span, #quest-list li.done .bar span { background: #1f9d6b; }
+#mission-list .prog, #quest-list .prog { font-size: 11px; opacity: 0.7; }
+#mission-list .reward, #quest-list .reward { flex: none; font-weight: 900; color: #c98a00; }
 
 .event-banner {
   display: flex;
@@ -606,3 +606,41 @@ a.nav-btn { text-decoration: none; }
 .map-code { width: min(320px, 70vw); font-size: 12px; }
 .boss-bar small { font-size: 11px; color: #4f8cff; letter-spacing: 1px; }
 body.boss-on #feed { padding-top: 78px; }
+
+/* ---------- Phase M: quests, clans, bosses, accessibility ---------- */
+#quest-list li.now { box-shadow: 0 0 0 2px #4f8cff, 0 3px 0 #c7cfe0; }
+#quest-list li.now .check { background: #4f8cff; border-color: #4f8cff; }
+#quest-list li.locked { opacity: 0.55; }
+#quest-list .check svg { width: 13px; height: 13px; color: #8d97ab; }
+#bosses svg, #quest-list svg { width: 12px; height: 12px; vertical-align: -1px; }
+.clan-nav { display: inline-flex; align-items: center; gap: 5px; font-weight: 800; }
+.emblem { flex: none; vertical-align: middle; }
+.clan-body { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; max-width: 440px; }
+.clan-body input { width: min(280px, 80vw); }
+#clan-emblems .seg-btn { padding: 6px 8px; }
+#clan-colors { gap: 6px; }
+.clan-card, .clan-war { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; padding: 14px 18px; background: #fff; border-radius: 16px; box-shadow: 0 4px 0 #c7cfe0; }
+.clan-card > b { font-size: 24px; font-weight: 900; }
+.clan-war .war-row { display: grid; grid-template-columns: 48px 1fr 44px; align-items: center; gap: 8px; width: 100%; font-weight: 800; }
+.clan-war .war-row .xpbar { width: 100%; }
+.clan-body .good { color: #1f9d6b; }
+.clan-earned { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px; margin: 0; font-weight: 800; color: #26304a; }
+
+/* Large text */
+body.big-text { font-size: 18px; }
+body.big-text .small, body.big-text #mode-desc, body.big-text .keys { font-size: 16px; }
+body.big-text .nav-btn, body.big-text .seg-btn { font-size: 16px; }
+body.big-text #pct { font-size: 40px; }
+body.big-text #kills, body.big-text #timer, body.big-text .storm-info, body.big-text #team-score { font-size: 17px; }
+body.big-text #board li, body.big-text #feed { font-size: 16px; }
+body.big-text #toast { font-size: 30px; }
+body.big-text #mission-list .t, body.big-text #quest-list .t { font-size: 17px; }
+
+/* High contrast */
+body.contrast { color: #000; }
+body.contrast #hud .left, body.contrast #board, body.contrast .icon-btn, body.contrast .boss-bar { background: #fff; box-shadow: 0 0 0 2px #000; color: #000; }
+body.contrast .screen { background: rgba(255, 255, 255, 0.96); }
+body.contrast .small, body.contrast #mode-desc, body.contrast .keys, body.contrast .seg-btn { color: #000; opacity: 1; }
+body.contrast .seg-btn.picked { background: #000; color: #fff; }
+body.contrast .nav-btn, body.contrast button.secondary { box-shadow: 0 0 0 2px #000; }
+body.contrast #toast { color: #000; text-shadow: 0 0 4px #fff, 0 0 8px #fff; }

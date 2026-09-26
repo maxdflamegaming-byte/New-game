@@ -68,6 +68,7 @@
       <div class="seg" id="modes" aria-label="Game mode"></div>
       <div class="seg" id="maps" aria-label="Map"></div>
       <div class="diff-row"><span class="small">Bots</span><div class="seg" id="diffs" aria-label="Bot difficulty"></div></div>
+      <div class="seg hidden" id="bosses" aria-label="Boss"></div>
       <p id="mode-desc" class="small"></p>
     </div>
     <div id="event-banner" class="event-banner"></div>
@@ -76,6 +77,7 @@
     <p id="streak-line" class="streak-line"></p>
     <nav class="menu-nav">
       <button class="nav-btn rank-nav" data-open="rank"><span id="rank-nav-icon"></span><span id="rank-nav-label">Rank</span></button>
+      <button class="nav-btn clan-nav" data-open="clan" id="clan-nav">Clan</button>
       <button class="nav-btn" data-open="missions">Missions <span id="mission-badge" class="badge">0/3</span></button>
       <button class="nav-btn" data-open="challenge">Challenge</button>
       <button class="nav-btn" data-open="season">Season</button>
@@ -107,6 +109,9 @@
     <h2>Daily missions</h2>
     <p class="small">New missions every day. Rewards are paid out as soon as you finish one.</p>
     <ul id="mission-list"></ul>
+    <h2>Weekly quest chain</h2>
+    <p id="quest-head" class="small"></p>
+    <ul id="quest-list" class="quest-list"></ul>
     <button class="secondary" data-back>Back</button>
   </div>
 
@@ -142,6 +147,12 @@
       <p>Winning +10 · each knockout +2 (up to +10) · getting knocked out −4. Hard bots give ×1.5 points, Easy bots ×0.5. Higher tiers lose a little more.</p>
       <p>You can drop a division, but never out of a tier you've reached.</p>
     </div>
+    <button class="secondary" data-back>Back</button>
+  </div>
+
+  <div id="clan" class="screen">
+    <h2>Clan</h2>
+    <div id="clan-body" class="clan-body"></div>
     <button class="secondary" data-back>Back</button>
   </div>
 
@@ -233,6 +244,7 @@
     <p id="over-xp" class="xp-earned"></p>
     <div id="over-rank" class="rank-earned hidden"></div>
     <p id="over-streak" class="streak-earned hidden"></p>
+    <p id="over-clan" class="clan-earned hidden"></p>
     <ul id="over-missions" class="hidden"></ul>
     <ul id="over-season" class="hidden"></ul>
     <p id="over-unlock" class="unlock hidden"></p>

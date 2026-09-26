@@ -85,6 +85,9 @@ const ACHIEVEMENTS = [
   { id: 'lumberjack', name: 'Saw Survivor', desc: 'Survive 3 minutes on the Saw Mill map', test: r => r.map === 'saws' && r.time >= 180, page: 2 },
   { id: 'petlover', name: 'Pet Lover', desc: 'Own 4 pets', test: () => PETS.filter(pt => pt.id !== 'none' && petOpen(pt)).length >= 4, progress: () => [PETS.filter(pt => pt.id !== 'none' && petOpen(pt)).length, 4], page: 2 },
   { id: 'chatty', name: 'Chatterbox', desc: 'Send 25 emotes', test: (r, s) => (s.emotes || 0) >= 25, progress: s => [s.emotes || 0, 25], page: 2 },
+  { id: 'bosshunter', name: 'Boss Hunter', desc: 'Beat the King, the Queen and the Wizard', test: (r, s) => ['king', 'queen', 'wizard'].every(b => ((s.bossBeaten || {})[b] || 0) > 0), progress: s => [['king', 'queen', 'wizard'].filter(b => ((s.bossBeaten || {})[b] || 0) > 0).length, 3], page: 2 },
+  { id: 'warwinner', name: 'War Winner', desc: 'Win a weekly clan war', test: (r, s) => (s.clanWars || 0) >= 1, page: 2 },
+  { id: 'questmaster', name: 'Questmaster', desc: 'Finish a whole weekly quest chain', test: (r, s) => (s.questChains || 0) >= 1, page: 2 },
 ];
 let achieved = loadJSON('color-claim-achievements', {});
 
@@ -131,10 +134,19 @@ function finishRun(won, score) {
   if (run.giantKO) stats.giants = (stats.giants || 0) + 1;
   stats.emotes = (stats.emotes || 0) + (run.emotes || 0);
   stats.teleports = (stats.teleports || 0) + (run.teleports || 0);
-  if (gameModeId === 'boss' && won) stats.bossWins = (stats.bossWins || 0) + 1;
+  if (gameModeId === 'boss' && won) {
+    stats.bossWins = (stats.bossWins || 0) + 1;
+    stats.bossBeaten = stats.bossBeaten || {};
+    const kind = king ? king.kind : 'king';
+    stats.bossBeaten[kind] = (stats.bossBeaten[kind] || 0) + 1;
+  }
 
   const ranked = isRanked() ? rankGameResult(won) : null;
   const streakDay = tickStreak();
+  const questsDone = updateQuests({
+    ...runSnapshot(won), powerups: run.powerups, coinsPicked: run.coinsPicked, diff: gameDiffId,
+  });
+  const clanResult = addClanPoints(score, won);
   const earned = Math.round((Math.round(score * 2) + me.kills * 5 + (won ? 50 : 0)) * (eventOn('double') ? 2 : 1) * gameDiff.coins);
   addCoins(earned);
   const fresh = [...run.trophies, ...checkAchievements(runSnapshot(won))];
@@ -146,7 +158,7 @@ function finishRun(won, score) {
   const missionCoins = missionsDone.reduce((a, m) => a + m.reward, 0);
   const seasonRewards = addSeasonXp(xpGain);
   save('color-claim-stats', JSON.stringify(stats));
-  return { earned, fresh, xpGain, levelsUp, levelCoins, missionsDone, missionCoins, seasonRewards, ranked, streakDay };
+  return { earned, fresh, xpGain, levelsUp, levelCoins, missionsDone, missionCoins, seasonRewards, ranked, streakDay, questsDone, clanResult };
 }
 
 // ---------- Player level ----------
@@ -315,6 +327,201 @@ function renderStreak() {
     : playedToday ? `<b>${n}-day streak!</b> Come back tomorrow for +${next}`
     : `<b>${n}-day streak</b> · play today to keep it (+${next})`;
   $('streak-line').innerHTML = `${FLAME}<span>${text}</span><span class="pips" title="Day 7 unlocks the Star Sprite pet">${pips}</span>`;
+}
+
+// ---------- Weekly quest chain ----------
+// Five quests a week, one after another, each paying more than the last. The chain is the
+// same for everyone that week (picked from the week number): 2 easy, 2 medium, 1 hard.
+const QUEST_POOL = {
+  easy: [
+    { id: 'play5', text: 'Play 5 games', goal: 5, add: () => 1 },
+    { id: 'claim30', text: 'Claim 30% in total', goal: 30, add: r => Math.floor(r.peak) },
+    { id: 'ko5', text: 'Knock out 5 players', goal: 5, add: r => r.kills },
+    { id: 'power6', text: 'Grab 6 power-ups', goal: 6, add: r => r.powerups },
+  ],
+  medium: [
+    { id: 'maps3', text: 'Play on 3 different maps', goal: 3, maps: true },
+    { id: 'win2', text: 'Win 2 games', goal: 2, add: r => (r.won ? 1 : 0) },
+    { id: 'one20', text: 'Claim 20% in one game', goal: 1, add: r => (r.peak >= 20 ? 1 : 0) },
+    { id: 'weekly2', text: 'Finish 2 Weekly games', goal: 2, add: r => (r.mode === 'weekly' ? 1 : 0) },
+    { id: 'coins15', text: 'Pick up 15 coins on the map', goal: 15, add: r => r.coinsPicked },
+  ],
+  hard: [
+    { id: 'boss', text: 'Beat a boss', goal: 1, add: r => (r.mode === 'boss' && r.won ? 1 : 0) },
+    { id: 'ko15', text: 'Knock out 15 players', goal: 15, add: r => r.kills },
+    { id: 'one30', text: 'Claim 30% in one game', goal: 1, add: r => (r.peak >= 30 ? 1 : 0) },
+    { id: 'hardwin', text: 'Win a game against Hard bots', goal: 1, add: r => (r.won && r.diff === 'hard' ? 1 : 0) },
+  ],
+};
+const QUEST_REWARDS = [50, 75, 100, 150, 300];
+
+function weeklyQuests() {
+  const rng = mulberry32(hashStr('color-claim-quests-' + weekInfo().week));
+  const pick = (list, n) => { const l = list.slice(), out = []; while (out.length < n) out.push(l.splice(Math.floor(rng() * l.length), 1)[0]); return out; };
+  return [...pick(QUEST_POOL.easy, 2), ...pick(QUEST_POOL.medium, 2), ...pick(QUEST_POOL.hard, 1)]
+    .map((q, i) => ({ ...q, reward: QUEST_REWARDS[i] }));
+}
+
+let questState = loadJSON('color-claim-quests', {});
+function freshQuestState() {
+  if (questState.week !== weekInfo().week) questState = { week: weekInfo().week, step: 0, progress: 0, maps: [] };
+  return questState;
+}
+
+// Moves the current quest along (one step per game at most)
+function updateQuests(r) {
+  const st = freshQuestState(), chain = weeklyQuests();
+  if (st.step >= chain.length) return [];
+  const q = chain[st.step];
+  if (q.maps) {
+    if (!st.maps.includes(r.map)) st.maps.push(r.map);
+    st.progress = st.maps.length;
+  } else st.progress = Math.min(q.goal, st.progress + q.add(r));
+  const done = [];
+  if (st.progress >= q.goal) {
+    addCoins(q.reward);
+    done.push({ ...q, step: st.step + 1 });
+    st.step++;
+    st.progress = 0;
+    st.maps = [];
+    if (st.step === chain.length) stats.questChains = (stats.questChains || 0) + 1;
+  }
+  save('color-claim-quests', JSON.stringify(st));
+  return done;
+}
+
+function buildQuests() {
+  const st = freshQuestState(), chain = weeklyQuests();
+  $('quest-list').innerHTML = chain.map((q, i) => {
+    const state = i < st.step ? 'done' : i === st.step ? 'now' : 'locked';
+    const n = i === st.step ? st.progress : i < st.step ? q.goal : 0;
+    const body = state === 'locked' ? `<b>Quest ${i + 1}</b><span class="prog">Finish quest ${i} to unlock</span>`
+      : `<b>${q.text}</b><span class="bar"><span style="width:${(n / q.goal) * 100}%"></span></span><span class="prog">${n} / ${q.goal}</span>`;
+    return `<li class="${state}"><span class="check">${state === 'done' ? '✓' : state === 'locked' ? Icons.lock : i + 1}</span><span class="t">${body}</span>`
+      + `<span class="reward">+${q.reward} <span class="coin"></span></span></li>`;
+  }).join('');
+  $('quest-head').textContent = st.step >= chain.length ? 'Chain complete! New quests on Monday.' : `Quest ${st.step + 1} of ${chain.length} · ${weekInfo().daysLeft} days left`;
+}
+
+// ---------- Clan ----------
+// Start a clan with a name, a short tag and an emblem. Every game earns clan points (CP),
+// which level your clan up, and each week your clan races a rival clan in a clan war.
+const CLAN_EMBLEMS = {
+  shield: 'M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z',
+  star: 'M12 2l2.9 6.3 6.9.7-5.2 4.6 1.5 6.8L12 17l-6.1 3.4 1.5-6.8L2.2 9l6.9-.7z',
+  crown: 'M3 8l4.5 4L12 5l4.5 7L21 8l-2 11H5z',
+  bolt: 'M13 2L4 14h6l-1 8 9-12h-6z',
+  heart: 'M12 21s-8-5.5-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 5.5-8 11-8 11z',
+};
+const RIVALS = [['Pixel Pirates', 'PXP'], ['Neon Ninjas', 'NEON'], ['Turbo Toads', 'TOAD'], ['Square Squad', 'SQD'], ['Loop Legends', 'LOOP'], ['Trail Blazers', 'BLZ']];
+const CLAN_LEVEL_CP = 300;
+let clan = loadJSON('color-claim-clan', null);
+
+function clanEmblem(emblem, color, size = 22) {
+  return `<svg class="emblem" width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true"><path d="${CLAN_EMBLEMS[emblem] || CLAN_EMBLEMS.shield}" fill="${color}" stroke="${shade(color, -0.3)}" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
+}
+
+// This week's rival clan, and how many points they will have scored by the end of the week
+function rivalClan(week = weekInfo().week) {
+  const h = hashStr('color-claim-rival-' + week);
+  const [name, tag] = RIVALS[h % RIVALS.length];
+  return { name, tag, target: 250 + (h % 400) };
+}
+function weekProgress() {
+  const d = new Date();
+  const monday = new Date(d.getFullYear(), d.getMonth(), d.getDate() - ((d.getDay() + 6) % 7));
+  return clamp((d - monday) / (7 * 86400000), 0, 1);
+}
+const rivalScoreNow = () => Math.round(rivalClan().target * weekProgress());
+const clanLevel = cp => Math.floor(cp / CLAN_LEVEL_CP) + 1;
+const saveClan = () => save('color-claim-clan', JSON.stringify(clan));
+
+// A new week: settle last week's war
+function settleClanWar() {
+  if (!clan || !clan.war || clan.war.week === weekInfo().week) return null;
+  const rival = rivalClan(clan.war.week), won = clan.war.cp > rival.target;
+  clan.lastWar = { rival: rival.name, you: clan.war.cp, them: rival.target, won };
+  if (won) {
+    addCoins(250);
+    stats.clanWars = (stats.clanWars || 0) + 1;
+    save('color-claim-stats', JSON.stringify(stats));
+  }
+  clan.war = { week: weekInfo().week, cp: 0 };
+  saveClan();
+  return clan.lastWar;
+}
+
+function addClanPoints(score, won) {
+  if (!clan || gameMode.duo) return null;
+  settleClanWar();
+  const gain = Math.round((Math.round(score) + (won ? 20 : 0) + me.kills * 3) * (gameMode.teams ? 1.5 : 1));
+  const before = clanLevel(clan.cp);
+  clan.cp += gain;
+  clan.war.cp += gain;
+  const after = clanLevel(clan.cp);
+  if (after > before) addCoins((after - before) * 50);
+  saveClan();
+  return { gain, level: after, levelUp: after > before };
+}
+
+function createClan(name, tag, color, emblem) {
+  clan = { ...(clan || { cp: 0, war: { week: weekInfo().week, cp: 0 } }), name, tag, color, emblem };
+  saveClan();
+  renderClanNav();
+}
+
+function renderClanNav() {
+  $('clan-nav').innerHTML = clan ? `${clanEmblem(clan.emblem, COLORS[clan.color], 18)} [${escapeHtml(clan.tag)}]` : 'Clan';
+}
+
+let clanForm = null; // { name, tag, color, emblem } while creating or editing
+function buildClan() {
+  const box = $('clan-body');
+  if (!clan || clanForm) {
+    const f = clanForm || (clanForm = { name: '', tag: '', color: myColor, emblem: 'shield' });
+    box.innerHTML = `<p class="small">${clan ? 'Change your clan:' : "You're not in a clan yet. Start one! Every game earns clan points, and each week your clan takes on a rival clan."}</p>
+      <input id="clan-name" maxlength="16" placeholder="Clan name" value="${escapeHtml(f.name)}" autocomplete="off" spellcheck="false">
+      <input id="clan-tag" class="code-input" maxlength="4" placeholder="TAG" value="${escapeHtml(f.tag)}" autocomplete="off" spellcheck="false">
+      <div class="seg" id="clan-emblems">${Object.keys(CLAN_EMBLEMS).map(e => `<button class="seg-btn${e === f.emblem ? ' picked' : ''}" data-emblem="${e}" aria-label="${e}">${clanEmblem(e, COLORS[f.color], 24)}</button>`).join('')}</div>
+      <div class="seg" id="clan-colors">${COLORS.map((c, i) => `<button class="swatch${i === f.color ? ' picked' : ''}" style="background:${c}" data-color="${i}" aria-label="Color ${i + 1}"></button>`).join('')}</div>
+      <p id="clan-error" class="small"></p>
+      <div class="row"><button id="clan-save">${clan ? 'Save' : 'Start clan'}</button>${clan ? '<button id="clan-cancel" class="secondary">Cancel</button>' : ''}</div>`;
+    $('clan-name').addEventListener('input', e => { f.name = e.target.value; });
+    $('clan-tag').addEventListener('input', e => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); f.tag = e.target.value; });
+    box.querySelectorAll('[data-emblem]').forEach(b => b.addEventListener('click', () => { f.emblem = b.dataset.emblem; buildClan(); }));
+    box.querySelectorAll('[data-color]').forEach(b => b.addEventListener('click', () => { f.color = Number(b.dataset.color); buildClan(); }));
+    $('clan-save').addEventListener('click', () => {
+      const name = f.name.trim().slice(0, 16), tag = f.tag.trim();
+      if (!name || tag.length < 2) { $('clan-error').textContent = 'Give your clan a name and a tag of 2 to 4 letters.'; return; }
+      createClan(name, tag, f.color, f.emblem);
+      clanForm = null;
+      toast(`Welcome to ${name}!`);
+      Sfx.play('trophy');
+      buildClan();
+    });
+    if (clan) $('clan-cancel').addEventListener('click', () => { clanForm = null; buildClan(); });
+    return;
+  }
+  settleClanWar();
+  const color = COLORS[clan.color], lvl = clanLevel(clan.cp), into = clan.cp % CLAN_LEVEL_CP;
+  const rival = rivalClan(), them = rivalScoreNow(), you = clan.war.cp, top = Math.max(you, them, 1);
+  const last = clan.lastWar ? `<p class="small">Last week: ${clan.lastWar.won ? `<b class="good">won</b> against ${clan.lastWar.rival} (${clan.lastWar.you} vs ${clan.lastWar.them}) +250 coins` : `lost to ${clan.lastWar.rival} (${clan.lastWar.you} vs ${clan.lastWar.them})`}</p>` : '';
+  box.innerHTML = `<div class="clan-card">${clanEmblem(clan.emblem, color, 56)}<b style="color:${shade(color, -0.2)}">${escapeHtml(clan.name)}</b><span>[${escapeHtml(clan.tag)}] · Level ${lvl} · ${clan.cp} CP</span>
+      <span class="xpbar wide"><span style="width:${(into / CLAN_LEVEL_CP) * 100}%;background:${color}"></span></span><small>${CLAN_LEVEL_CP - into} CP to level ${lvl + 1} (+50 coins)</small></div>
+    <div class="clan-war"><b>Clan war vs ${rival.name} [${rival.tag}]</b><small>${weekInfo().daysLeft} days left · the winner at the end of the week gets 250 coins</small>
+      <div class="war-row"><span>${escapeHtml(clan.tag)}</span><span class="xpbar wide"><span style="width:${(you / top) * 100}%;background:${color}"></span></span><b>${you}</b></div>
+      <div class="war-row"><span>${rival.tag}</span><span class="xpbar wide"><span style="width:${(them / top) * 100}%;background:#8d97ab"></span></span><b>${them}</b></div>
+      <small>${you > them ? "You're ahead. Keep it up!" : 'Play games to earn clan points (Teams games earn 1.5×).'}</small></div>
+    ${last}
+    <div class="row"><button id="clan-edit" class="nav-btn">Edit clan</button><button id="clan-leave" class="nav-btn">Leave clan</button></div>`;
+  $('clan-edit').addEventListener('click', () => { clanForm = { name: clan.name, tag: clan.tag, color: clan.color, emblem: clan.emblem }; buildClan(); });
+  $('clan-leave').addEventListener('click', () => {
+    if ($('clan-leave').dataset.sure !== '1') { $('clan-leave').dataset.sure = '1'; $('clan-leave').textContent = 'Tap again: you lose your CP'; return; }
+    clan = null;
+    save('color-claim-clan', 'null');
+    renderClanNav();
+    buildClan();
+  });
 }
 
 // ---------- Daily missions ----------
@@ -710,6 +917,8 @@ function openScreen(id) {
   if (id === 'missions') buildMissions();
   if (id === 'season') buildSeason();
   if (id === 'rank') buildRank();
+  if (id === 'clan') { clanForm = null; buildClan(); }
+  if (id === 'missions') buildQuests();
   if (id === 'editor') editorLoadSlot(editor.slot);
   showScreen(id);
 }
@@ -894,6 +1103,8 @@ function buildStats() {
     ['Giants beaten', s.giants || 0],
     ['Rank', rankInfo(rp).label],
     ['Day streak', streakNow()],
+    ['Bosses beaten', Object.values(s.bossBeaten || {}).reduce((a, b) => a + b, 0)],
+    ['Clan points', clan ? clan.cp : '–'],
     ['Best streak', streak.best || 0],
     ['Most RP', s.bestRp || 0],
   ];
@@ -913,6 +1124,9 @@ function buildSettings() {
     { label: 'Touch controls', value: settings.controls, options: [['joystick', 'Joystick'], ['turn', 'Tap to turn']], set: v => { settings.controls = v; } },
     { label: 'Joystick size', value: settings.stickSize, options: [['normal', 'Normal'], ['large', 'Large']], set: v => { settings.stickSize = v; } },
     { label: 'Music style', value: settings.track, options: [['sunny', 'Sunny'], ['night', 'Night']], set: v => { settings.track = v; Music.track = v; } },
+    { label: 'Text size', value: settings.bigText, options: [[false, 'Normal'], [true, 'Large']], set: v => { settings.bigText = v; applyA11y(); } },
+    { label: 'High contrast', value: settings.contrast, options: [[false, 'Off'], [true, 'On']], set: v => { settings.contrast = v; applyA11y(); } },
+    { label: 'Game speed', value: settings.speed, options: [['normal', 'Normal'], ['slow', 'Slower']], set: v => { settings.speed = v; } },
   ];
   const box = $('settings-list');
   box.innerHTML = '';
@@ -967,5 +1181,11 @@ renderMissionBadge();
 renderEvent();
 renderRankNav();
 renderStreak();
+renderClanNav();
+applyA11y();
+{
+  const war = settleClanWar();
+  if (war) later(800, () => toast(war.won ? `Your clan won the war against ${war.rival}! +250 coins` : `Your clan lost the war against ${war.rival}. New war this week!`));
+}
 showScreen('menu');
 requestAnimationFrame(frame);
