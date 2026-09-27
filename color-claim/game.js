@@ -757,7 +757,7 @@ function buzz(pattern) {
     try { navigator.vibrate(pattern); } catch { /* not allowed */ }
   }
 }
-let run = { powerups: 0, bigLoop: 0, freezeKO: false, trophies: [], coinsPicked: 0, giantKO: false, teleports: 0, bossHits: 0, beatGhost: false }; // this game's numbers
+let run = { powerups: 0, bigLoop: 0, freezeKO: false, trophies: [], coinsPicked: 0, giantKO: false, teleports: 0, bossHits: 0, beatGhost: false, hypeCoins: 0, bestCombo: 0 }; // this game's numbers
 let fxParts = [], fxTimer = 0, achTimer = 1;
 let mySkin = load('color-claim-skin', 'classic');
 let myPet = load('color-claim-pet', 'chick');
@@ -815,8 +815,26 @@ function freeStartCells(x, y) {
 
 // Returns false if there was no free space; the bot then tries again a moment later.
 // Spawning only ever claims empty cells, so it can never eat into someone else's land.
+// The nearest spot to (x, y) that is open ground with room for a starting patch
+function openSpotNear(x, y) {
+  x = Math.round(x);
+  y = Math.round(y);
+  for (let r = 0; r < 20; r++) {
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        const cx = x + dx, cy = y + dy;
+        if (cx < 4 || cy < 4 || cx > N - 5 || cy > N - 5 || wall[cy * N + cx]) continue;
+        if (freeStartCells(cx, cy).length >= 13) return { x: cx, y: cy };
+      }
+    }
+  }
+  return { x, y };
+}
+
 function spawn(p, fx, fy) {
   let bx = fx, by = fy;
+  if (bx !== undefined) ({ x: bx, y: by } = openSpotNear(bx, by));
   if (bx === undefined) {
     let bestScore = -Infinity;
     for (let t = 0; t < 60; t++) {
@@ -856,6 +874,9 @@ function spawn(p, fx, fy) {
 
 function kill(victim, killer, how = 'cut') {
   if (!victim.alive) return;
+  const wasLeader = victim === gangLeader || (victim !== me && pct(victim) >= 10 && players.every(o => !o || !o.alive || o === victim || counts[o.id] <= counts[victim.id]));
+  // Once you've won, the celebration can't be spoiled
+  if (state === 'won' && (victim === me || victim === p2) && !gameMode.tutorial) return;
   // A shield stops other players cutting or bumping you. Your own mistakes still count,
   // and so does losing all your land. Nothing protects you from the storm.
   if (victim.fx.shield > 0 && killer !== victim && how !== 'swallow' && how !== 'storm') return;
@@ -867,6 +888,11 @@ function kill(victim, killer, how = 'cut') {
   for (let i = 0; i < N * N; i++) if (owner[i] === victim.id) { setOwner(i, 0); lost.push(i); }
   fades.push({ cells: lost, color: victim.color, life: 0.7 });
   burst(victim.x, victim.y, victim.color, 40, 12);
+  // Their land shatters into tiles that jump and fall
+  for (let k = 0; k < Math.min(50, lost.length); k++) {
+    const i = lost[Math.floor(Math.random() * lost.length)];
+    particles.push({ x: (i % N) + 0.5, y: Math.floor(i / N) + 0.5, vx: rand(-3, 3), vy: rand(-9, -3), life: rand(0.6, 1.1), rot: rand(0, TAU), spin: rand(-8, 8), size: rand(0.5, 0.9), color: Math.random() < 0.5 ? victim.color : victim.dark });
+  }
   victim.respawn = victim.isBoss ? Infinity : 3; // the Giant doesn't come back
 
   if (killer && killer !== victim) killer.kills++;
@@ -925,7 +951,7 @@ function kill(victim, killer, how = 'cut') {
     for (let k = 0; k < 6; k++) burst(victim.x + rand(-3, 3), victim.y + rand(-3, 3), COLORS[k], 30, 14);
     toast(`The ${victim.name} is defeated!`);
     traps = [];
-    later(900, () => { if (state === 'play') win(`You defeated the ${victim.name}!`); });
+    if (state === 'play') win(`You defeated the ${victim.name}!`);
   } else if (killer === me && victim.isBoss) {
     run.giantKO = true;
     addCoins(100);
@@ -940,6 +966,9 @@ function kill(victim, killer, how = 'cut') {
     buzz([30, 40, 30]);
     shake = 0.4;
   }
+  if (killer === me && victim !== me) hypeKnockout(victim, wasLeader);
+  // Remember who got you, for revenge next game
+  if (victim === me && !gameMode.tutorial && !gameMode.duo) save('color-claim-last-killer', killer && killer !== me && killer.isBot && !killer.isBoss ? killer.name : '');
 }
 
 // ---------- Capturing land ----------
@@ -991,6 +1020,7 @@ function capture(p) {
     if (gainPct >= 0.1) floats.push({ x: p.x, y: p.y - 3, text: `+${gainPct.toFixed(1)}%`, life: 1.2, big: gainPct > 3 });
     burst(p.x, p.y, p.color, Math.min(40, 8 + gained.length / 10), 8);
     Sfx.play('capture');
+    hypeCapture(gainPct);
   }
   p.wp = [];
   p.mode = 'idle';
@@ -1020,6 +1050,7 @@ function visit(p, x, y) {
     }
     if (allies(p, other)) return; // a teammate's trail is safe (and stays theirs)
     kill(other, p);
+    if (other.alive) return; // their shield held: the cell stays part of their trail
   }
   if (owner[i] === p.id) {
     if (p.trail.length) capture(p);
@@ -2013,9 +2044,10 @@ function startGame() {
   if (p2) { cam2.x = p2.x; cam2.y = p2.y; cam2.zoom = 0.8; }
   random = Math.random;
   playTime = 0;
-  run = { powerups: 0, bigLoop: 0, freezeKO: false, trophies: [], coinsPicked: 0, giantKO: false, teleports: 0, bossHits: 0, beatGhost: false };
+  run = { powerups: 0, bigLoop: 0, freezeKO: false, trophies: [], coinsPicked: 0, giantKO: false, teleports: 0, bossHits: 0, beatGhost: false, hypeCoins: 0, bestCombo: 0 };
   replayFrames = [];
   replayTimer = 0;
+  resetHype();
   startGhost();
   emoteCooldown = 0;
   $('emote-tray').classList.add('hidden');
@@ -2092,7 +2124,7 @@ function endGame(won, reason) {
   $('over-unlock').classList.toggle('hidden', !fresh.length);
   if (fresh.length || trophies.length) Sfx.play('trophy');
   const bonus = trophies.length * ACH_REWARD;
-  const extras = [bonus && `+${bonus} from trophies`, run.coinsPicked && `+${run.coinsPicked} picked up`, missionCoins && `+${missionCoins} from missions`, levelCoins && `+${levelCoins} level bonus`].filter(Boolean);
+  const extras = [bonus && `+${bonus} from trophies`, run.hypeCoins && `+${run.hypeCoins} combos & bonuses`, run.coinsPicked && `+${run.coinsPicked} picked up`, missionCoins && `+${missionCoins} from missions`, levelCoins && `+${levelCoins} level bonus`].filter(Boolean);
   $('over-coins').innerHTML = `+${earned} <span class="coin"></span> coins${extras.length ? ` <small>(${extras.join(' · ')})</small>` : ''}`;
   const lv = levelInfo(xp);
   $('over-xp').innerHTML = `+${xpGain} XP · Level ${lv.lvl}${levelsUp ? ' <b>Level up!</b>' : ''}<span class="xpbar"><span style="width:${(lv.into / lv.need) * 100}%"></span></span>`;
@@ -2142,11 +2174,50 @@ function endGame(won, reason) {
   }
   $('replay-btn').classList.toggle('hidden', replayFrames.length < 5);
   $('gif-box').classList.toggle('hidden', replayFrames.length < 5);
+  showPodium();
+  showNudge(score, prevBest, isBest);
   showScreen('over');
+}
+
+// Final standings: the top three on a podium, and your place if you're not on it
+function showPodium() {
+  const box = $('over-podium');
+  const show = !gameMode.duo && !gameMode.boss && !puzzle && !gameMode.teams;
+  box.classList.toggle('hidden', !show);
+  if (!show) return;
+  const field = players.filter(p => p && !p.isBoss);
+  const score = p => (p === me ? Math.max(pct(me), me.alive ? 0 : peakPct) : p.alive ? pct(p) : 0);
+  const ranked = field.slice().sort((a, b) => score(b) - score(a));
+  const place = ranked.indexOf(me) + 1;
+  const step = (p, n) => p ? `<div class="podium-step p${n}${p === me ? ' you' : ''}"><i style="background:${p.color}"></i><b>${escapeHtml(p === me ? 'You' : p.name)}</b><span>${score(p).toFixed(1)}%</span><div class="block">${n}</div></div>` : '<div class="podium-step empty"></div>';
+  box.innerHTML = `<div class="podium">${step(ranked[1], 2)}${step(ranked[0], 1)}${step(ranked[2], 3)}</div>`
+    + (place > 3 ? `<p class="small">You finished <b>#${place}</b> of ${ranked.length}</p>` : '');
+}
+
+// A reason to play one more: close to your best, a mission nearly done, or a rank close by
+function showNudge(score, prevBest, isBest) {
+  const lines = [];
+  if (!gameMode.duo) {
+    if (!isBest && prevBest > 0 && score >= prevBest * 0.75) lines.push(`So close! Just ${(prevBest - score).toFixed(1)}% short of your best.`);
+    if (typeof todaysMissions === 'function') {
+      const st = freshMissionState();
+      const m = todaysMissions().find(m => !st.done[m.id] && (st.progress[m.id] || 0) / m.goal >= 0.5);
+      if (m) lines.push(`Almost there: ${m.text} (${st.progress[m.id]}/${m.goal}) for +${m.reward} coins.`);
+    }
+    if (run.bestCombo >= 3) lines.push(`Best combo this game: ×${run.bestCombo}!`);
+    const killer = load('color-claim-last-killer', '');
+    if (!me.alive && killer) lines.push(`${killer} got you. They'll be marked for revenge next game!`);
+  }
+  $('over-nudge').innerHTML = lines.slice(0, 2).map(l => `<span>${escapeHtml(l)}</span>`).join('');
+  $('over-nudge').classList.toggle('hidden', !lines.length);
+  $('again-btn').classList.toggle('pulse', lines.length > 0);
 }
 
 function win(reason = `You claimed ${gameMode.win}% of the map!`) {
   state = 'won';
+  slowmo = 1.4;
+  screenFlash = 1;
+  callout('VICTORY!', '#ffd23f', reason);
   players.filter(p => p && p.isBot && p.alive && !p.isBoss).sort((a, b) => dist(a, me) - dist(b, me)).slice(0, 2)
     .forEach((p, i) => later(300 + i * 400, () => botEmote(p, 'gg')));
   Sfx.play('win');
@@ -2171,7 +2242,7 @@ function endDuo(winner, reason) {
   $('over-stats').textContent = `${me.name} ${pct(me).toFixed(1)}% · ${p2.name} ${pct(p2).toFixed(1)}%`;
   $('over-best').textContent = "2-player games are just for fun: they don't give coins, XP or trophies.";
   for (const id of ['over-coins', 'over-xp']) $(id).innerHTML = '';
-  for (const id of ['over-missions', 'over-season', 'over-unlock', 'over-ach', 'over-rank', 'over-streak', 'over-clan']) $(id).classList.add('hidden');
+  for (const id of ['over-missions', 'over-season', 'over-unlock', 'over-ach', 'over-rank', 'over-streak', 'over-clan', 'over-podium', 'over-nudge']) $(id).classList.add('hidden');
   $('replay-btn').classList.toggle('hidden', replayFrames.length < 5);
   $('gif-box').classList.toggle('hidden', replayFrames.length < 5);
   showScreen('over');
@@ -2446,6 +2517,112 @@ function drawPet(g, id, x, y, s, t, face = 1) {
     eye(0.18, 0, 0.1);
   }
   g.restore();
+}
+
+// ---------- Hype: announcer callouts, combos, close calls, revenge ----------
+// Big moments get a callout; quick back-to-back loops build a combo that pays bonus coins.
+const hype = { queue: [], showing: 0, kos: [], combo: 0, comboTimer: 0, marks: {}, wasLow: false, top: false, nearMiss: 0, revenge: null, rankTimer: 0, rank: 0, tick: 0 };
+let slowmo = 0, screenFlash = 0;
+const hypeOn = () => !gameMode.duo && !gameMode.tutorial;
+
+function resetHype() {
+  Object.assign(hype, { queue: [], showing: 0, kos: [], combo: 0, comboTimer: 0, marks: {}, wasLow: false, top: false, nearMiss: 0, rankTimer: 0, rank: 0, tick: 0 });
+  const last = load('color-claim-last-killer', '');
+  hype.revenge = hypeOn() && last ? players.find(p => p && p.isBot && !p.isBoss && p.name === last) || null : null;
+  slowmo = 0;
+  screenFlash = 0;
+  $('callout').className = 'callout';
+  $('combo').classList.add('hidden');
+}
+
+function callout(text, color = '#ffd23f', sub = '') {
+  if (!hypeOn()) return;
+  hype.queue.push({ text, color, sub });
+  if (hype.queue.length > 3) hype.queue.shift();
+}
+
+function showCallout(c) {
+  const el = $('callout');
+  el.innerHTML = `<b style="--c:${c.color}">${c.text}</b>${c.sub ? `<small>${c.sub}</small>` : ''}`;
+  el.className = 'callout';
+  void el.offsetWidth; // restart the animation
+  el.className = 'callout pop';
+  Sfx.play('hype');
+}
+
+// A little bonus for the hype moments, shown as floating gold text
+function hypeBonus(n, x = me.x, y = me.y - 4) {
+  addCoins(n);
+  run.hypeCoins = (run.hypeCoins || 0) + n;
+  floats.push({ x, y, text: `+${n}`, life: 1, gold: true });
+}
+
+function updateHype(dt, realDt) {
+  hype.showing -= realDt;
+  if (hype.showing <= 0 && hype.queue.length) {
+    showCallout(hype.queue.shift());
+    hype.showing = 1.15;
+  }
+  if (hype.comboTimer > 0) {
+    hype.comboTimer -= dt;
+    if (hype.comboTimer <= 0) hype.combo = 0;
+  }
+  const comboEl = $('combo');
+  comboEl.classList.toggle('hidden', hype.combo < 2);
+  if (hype.combo >= 2) comboEl.innerHTML = `Combo ×${hype.combo}<span><i style="width:${(hype.comboTimer / 6) * 100}%"></i></span>`;
+  if (!hypeOn() || state !== 'play' || !me.alive) return;
+  // Your trail nearly got cut: if you make it home, that's a close call
+  if (me.trail.length && danger > 0.75) hype.nearMiss = 2.5;
+  else hype.nearMiss = Math.max(0, hype.nearMiss - dt);
+  const p = pct(me);
+  for (const [m, text, color] of [[10, '10% CLAIMED', '#4f8cff'], [25, 'DOMINATING!', '#b06bff'], [40, 'UNSTOPPABLE!', '#ff5d73']]) {
+    if (p >= m && !hype.marks[m] && (!gameMode.win || m < gameMode.win)) { hype.marks[m] = true; callout(text, color); }
+  }
+  if (gameMode.win >= 25 && p >= gameMode.win - 8 && !hype.marks.almost) { hype.marks.almost = true; callout('ALMOST THERE!', '#2ec4b6', `${gameMode.win}% wins`); }
+  // Rank changes: climbing from the bottom to the top is a comeback
+  hype.rankTimer -= dt;
+  if (hype.rankTimer <= 0) {
+    hype.rankTimer = 0.5;
+    const rank = 1 + players.filter(o => o && o !== me && o.alive && !o.isBoss && !allies(o, me) && counts[o.id] > counts[me.id]).length;
+    if (rank >= 4 && playTime > 15) hype.wasLow = true;
+    if (rank === 1 && p >= 3 && !hype.top) { hype.top = true; callout(hype.wasLow ? 'COMEBACK!' : 'TOP SPOT!', '#ffd23f', hype.wasLow ? 'From the bottom to the top' : "You're in the lead"); }
+    hype.rank = rank;
+  }
+  // The last 10 seconds of a timed game tick down
+  if (gameMode.time && !puzzle) {
+    const left = gameMode.time - playTime;
+    if (left <= 10 && left > 0 && Math.ceil(left) !== hype.tick) {
+      hype.tick = Math.ceil(left);
+      if (hype.tick === 10) callout('10 SECONDS!', '#ff5d73');
+      Sfx.play('beep');
+    }
+  }
+}
+
+// Called from capture() when you close a loop
+function hypeCapture(gainPct) {
+  if (!hypeOn()) return;
+  if (hype.nearMiss > 0) { hype.nearMiss = 0; callout('CLOSE CALL!', '#3fc7f5', '+3 coins'); hypeBonus(3); }
+  if (gainPct >= 10) { callout('GIGA LOOP!', '#ff5d73'); screenFlash = 1; } else if (gainPct >= 5) { callout('MEGA LOOP!', '#ff8c42'); screenFlash = 0.6; }
+  if (gainPct < 0.3) return;
+  hype.combo = hype.comboTimer > 0 ? hype.combo + 1 : 1;
+  hype.comboTimer = 6;
+  run.bestCombo = Math.max(run.bestCombo || 0, hype.combo);
+  if (hype.combo >= 2) hypeBonus(hype.combo * 2);
+  if (hype.combo === 3 || hype.combo === 5 || hype.combo === 8) callout(`COMBO ×${hype.combo}!`, '#8bd346', 'Keep looping!');
+}
+
+// Called from kill() when you knock someone out
+function hypeKnockout(victim, wasLeader) {
+  if (!hypeOn()) return;
+  hype.kos = hype.kos.filter(t => time - t < 4);
+  hype.kos.push(time);
+  const n = hype.kos.length;
+  if (n >= 4) callout('RAMPAGE!', '#ff3c50', `${n} knockouts in a row`);
+  else if (n === 3) callout('TRIPLE KO!', '#ff5d73');
+  else if (n === 2) callout('DOUBLE KO!', '#ff8c42');
+  if (victim === hype.revenge) { hype.revenge = null; callout('REVENGE!', '#b06bff', '+10 coins'); hypeBonus(10, victim.x, victim.y); }
+  else if (wasLeader) { callout('SHUTDOWN!', '#ffd23f', 'You took out the leader · +5 coins'); hypeBonus(5, victim.x, victim.y); }
 }
 
 // ---------- Weekly ghost ----------
@@ -2724,6 +2901,8 @@ function timeUp() {
   const ranked = players.filter(p => p && p.alive).sort((a, b) => counts[b.id] - counts[a.id]);
   const rank = ranked.indexOf(me) + 1;
   if (rank === 1) {
+    slowmo = 1.2;
+    callout('VICTORY!', '#ffd23f', "Time's up and you're on top");
     Sfx.play('win');
     for (let i = 0; i < 6; i++) burst(me.x + rand(-8, 8), me.y + rand(-6, 6), COLORS[i], 30, 14);
   }
@@ -2732,6 +2911,11 @@ function timeUp() {
 }
 
 function showScreen(id) {
+  // Any menu or results screen clears waiting callouts
+  if (id && typeof hype !== 'undefined') {
+    hype.queue = [];
+    $('callout').className = 'callout';
+  }
   for (const el of document.querySelectorAll('.screen')) el.classList.toggle('show', el.id === id);
   $('hud').classList.toggle('hidden', state === 'menu' || state === 'over' || state === 'replay' || state === 'photo');
   if (state === 'menu' || state === 'over' || state === 'replay' || state === 'photo') $('boss-bar').classList.add('hidden');
@@ -3074,6 +3258,33 @@ function drawWater(x0, y0) {
       if (c < N - 1 && !wall[r * N + c + 1]) ctx.fillRect(x + cs - f, y, f, cs);
     }
   }
+}
+
+// A 2 x 2 checker at 32 px per cell, scaled to the current cell size
+const floorPatterns = {};
+function floorPattern(check, floor, x0, y0) {
+  const key = check + floor;
+  if (!floorPatterns[key] || floorPatterns[key].ctx !== ctx) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 64;
+    const g = c.getContext('2d');
+    g.fillStyle = floor;
+    g.fillRect(0, 0, 64, 64);
+    g.fillStyle = check;
+    g.fillRect(32, 0, 32, 32);
+    g.fillRect(0, 32, 32, 32);
+    floorPatterns[key] = { ctx, pat: ctx.createPattern(c, 'repeat') };
+  }
+  const pat = floorPatterns[key].pat;
+  pat.setTransform(new DOMMatrix().translateSelf(-x0, -y0).scaleSelf(CELL / 32));
+  return pat;
+}
+
+let vignetteOn = null;
+function setVignette(on) {
+  if (on === vignetteOn) return;
+  vignetteOn = on;
+  $('vignette').classList.toggle('on', on);
 }
 
 // A soft dark edge around the screen (cached for each screen size)
@@ -3601,15 +3812,16 @@ function drawHead(p, x0, y0, leaderId) {
   if (p.id === leaderId || p.isKing) drawCrown(hx, hy - s * 1.75 + bob + Math.sin(time * 4) * 2, CELL * 0.9);
 
   // Under the square: a bot's personality, or the badge you're wearing
-  const tag = p.isBot && !p.isBoss && p.persona ? PERSONALITIES[p.persona].name : p === me ? badgeName() : '';
+  const revenge = p === hype.revenge && p.alive;
+  const tag = revenge ? 'Revenge!' : p.isBot && !p.isBoss && p.persona ? PERSONALITIES[p.persona].name : p === me ? badgeName() : '';
   if (tag) {
     ctx.font = `bold ${Math.round(CELL * 0.6 * TXT())}px Fredoka, system-ui, sans-serif`;
     const tw = ctx.measureText(tag).width + CELL * 0.8, ty = hy + s * 0.95 + bob;
-    ctx.fillStyle = p === me ? '#ffc93c' : 'rgba(255, 255, 255, 0.8)';
+    ctx.fillStyle = revenge ? '#ff3c50' : p === me ? '#ffc93c' : 'rgba(255, 255, 255, 0.8)';
     ctx.beginPath();
     ctx.roundRect(hx - tw / 2, ty - CELL * 0.5, tw, CELL, CELL * 0.5);
     ctx.fill();
-    ctx.fillStyle = p === me ? '#5a3f00' : 'rgba(38, 48, 74, 0.8)';
+    ctx.fillStyle = revenge ? '#fff' : p === me ? '#5a3f00' : 'rgba(38, 48, 74, 0.8)';
     ctx.textBaseline = 'middle';
     ctx.fillText(tag, hx, ty + 1);
     ctx.textBaseline = 'alphabetic';
@@ -3622,6 +3834,7 @@ function draw(dt) {
   ctx.fillRect(0, 0, W, H);
 
   if (!me) {
+    setVignette(false);
     drawMenuBackdrop(dt);
     if (typeof drawHero === 'function') drawHero();
     return;
@@ -3677,25 +3890,21 @@ function drawWorld(focus, c) {
   if (gameMapId !== 'round' && gameMapId !== 'islands') {
     ctx.fillStyle = T.edge;
     if (hiGfx() && !drawingGif) {
-      ctx.save();
-      ctx.shadowColor = 'rgba(20, 25, 45, 0.28)';
-      ctx.shadowBlur = CELL * 1.6;
-      ctx.shadowOffsetY = CELL * 0.5;
-      ctx.fillRect(-x0 - 4, -y0 - 4 + CELL * 0.5, N * CELL + 8, N * CELL + 8);
-      ctx.restore();
+      // A soft shadow under the board: a few see-through layers (much cheaper than a blur)
+      for (let k = 4; k >= 1; k--) {
+        const g = CELL * 0.35 * k;
+        ctx.fillStyle = `rgba(20, 25, 45, ${0.045})`;
+        ctx.fillRect(-x0 - 4 - g, -y0 - 4 + CELL * 0.5 + g * 0.6, N * CELL + 8 + g * 2, N * CELL + 8 + g);
+      }
+      ctx.fillStyle = T.edge;
     }
     ctx.fillRect(-x0 - 4, -y0 - 4 + CELL * 0.5, N * CELL + 8, N * CELL + 8);
   }
-  ctx.fillStyle = T.floor;
-  ctx.fillRect(-x0, -y0, N * CELL, N * CELL);
   const c0 = clamp(Math.floor(x0 / CELL), 0, N - 1), c1 = clamp(Math.floor((x0 + W) / CELL), 0, N - 1);
   const r0 = clamp(Math.floor(y0 / CELL), 0, N - 1), r1 = clamp(Math.floor((y0 + H) / CELL), 0, N - 1);
-  ctx.fillStyle = settings.contrast ? T.floor : T.check;
-  for (let r = r0; r <= r1; r++) {
-    for (let c = c0 + ((r + c0) % 2); c <= c1; c += 2) {
-      ctx.fillRect(Math.floor(c * CELL - x0), Math.floor(r * CELL - y0), Math.ceil(CELL), Math.ceil(CELL));
-    }
-  }
+  // The checkered floor is one pattern fill (a few thousand little squares would be slow)
+  ctx.fillStyle = floorPattern(settings.contrast ? T.floor : T.check, T.floor, x0, y0);
+  ctx.fillRect(Math.max(-x0, 0), Math.max(-y0, 0), Math.min(N * CELL - x0, W) - Math.max(-x0, 0), Math.min(N * CELL - y0, H) - Math.max(-y0, 0));
 
   // Outside the round arena, and pillars (drawn as raised blocks)
   const wallColor = [null, null, gameMapId === 'islands' ? T.water : T.bg];
@@ -4024,7 +4233,15 @@ function drawWorld(focus, c) {
   }
 
   drawWeather();
-  if (hiGfx() && !drawingGif) drawVignette();
+  if (screenFlash > 0 && !drawingGif) {
+    ctx.fillStyle = `rgba(255, 255, 255, ${screenFlash * 0.28})`;
+    ctx.fillRect(0, 0, W, H);
+    if (state !== 'photo') screenFlash = Math.max(0, screenFlash - 0.05);
+  }
+  // The vignette is a CSS layer over the canvas (the browser draws it for free); it's only
+  // painted into the canvas for photos
+  if (hiGfx() && state === 'photo') drawVignette();
+  setVignette(hiGfx() && !drawingGif && state !== 'menu');
 
   // Minimap
   if (drawingGif || state === 'photo') return;
@@ -4329,6 +4546,7 @@ function updateHud() {
   else if (gameMode.duo) $('team-score').innerHTML = `<b class="us">P1 ${pct(me).toFixed(1)}%</b> <span>vs</span> <b class="them">P2 ${pct(p2).toFixed(1)}%</b>`;
   else if (gameMode.teams) $('team-score').innerHTML = `<b class="us">Your team ${teamPct(0).toFixed(1)}%</b> <span>vs</span> <b class="them">${teamPct(1).toFixed(1)}%</b>`;
   const ranked = players.filter(p => p && p.alive).sort((a, b) => counts[b.id] - counts[a.id]);
+  if (me.alive && !gameMode.duo) $('kills').textContent = `#${ranked.indexOf(me) + 1} of ${ranked.length} · ${me.kills} knockout${me.kills === 1 ? '' : 's'}`;
   const top = ranked.slice(0, 5);
   if (me.alive && !top.includes(me)) top.push(me);
   $('board').innerHTML = top.map(p => {
@@ -4670,8 +4888,12 @@ function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   if (state === 'play' || state === 'won') {
-    update(dt * gameSpeed());
-    replayTimer -= dt * gameSpeed();
+    // The winning moment plays out in slow motion
+    const k = gameSpeed() * (slowmo > 0 ? 0.35 : 1);
+    slowmo = Math.max(0, slowmo - dt);
+    update(dt * k);
+    if (me) updateHype(dt * k, dt);
+    replayTimer -= dt * k;
     if (replayTimer <= 0) { replayTimer = 0.1; recordFrame(); }
   }
   if (state === 'replay') { playReplay(dt); requestAnimationFrame(frame); return; }

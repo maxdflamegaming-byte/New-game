@@ -81,6 +81,7 @@ const Sfx = (() => {
     roar: { gap: 1, fn: () => { tone({ freq: 160, to: 60, dur: 0.6, type: 'sawtooth', vol: 0.09 }); tone({ freq: 240, to: 90, dur: 0.5, type: 'square', vol: 0.03, delay: 0.05 }); noise({ dur: 0.4, vol: 0.05 }); } },
     bosshit: { gap: 0.2, fn: () => { tone({ freq: 520, to: 130, dur: 0.25, type: 'square', vol: 0.07 }); noise({ dur: 0.2, vol: 0.08 }); } },
     bossdown: { gap: 1, fn: () => { noise({ dur: 0.9, vol: 0.14 }); arp([196, 262, 330, 392, 523], 0.1, { type: 'triangle', vol: 0.09 }); } },
+    hype: { gap: 0.25, fn: () => arp([659, 880, 1175], 0.05, { type: 'square', vol: 0.045 }) },
     rankup: { gap: 1, fn: () => arp([392, 523, 659, 784, 1047], 0.08, { type: 'square', vol: 0.05 }) },
   };
 

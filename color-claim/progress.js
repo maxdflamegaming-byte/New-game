@@ -136,6 +136,7 @@ function finishRun(won, score) {
   if (run.giantKO) stats.giants = (stats.giants || 0) + 1;
   stats.emotes = (stats.emotes || 0) + (run.emotes || 0);
   stats.teleports = (stats.teleports || 0) + (run.teleports || 0);
+  stats.bestCombo = Math.max(stats.bestCombo || 0, run.bestCombo || 0);
   if (gameModeId === 'boss' && won) {
     stats.bossWins = (stats.bossWins || 0) + 1;
     stats.bossBeaten = stats.bossBeaten || {};
@@ -1372,6 +1373,7 @@ function buildStats() {
     ['Bosses beaten', Object.values(s.bossBeaten || {}).reduce((a, b) => a + b, 0)],
     ['Clan points', clan ? clan.cp : '–'],
     ['Puzzles solved', s.puzzles || 0],
+    ['Best combo', s.bestCombo ? `×${s.bestCombo}` : '–'],
     ['Best streak', streak.best || 0],
     ['Most RP', s.bestRp || 0],
   ];

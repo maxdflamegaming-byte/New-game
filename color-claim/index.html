@@ -18,6 +18,7 @@
 </head>
 <body>
   <canvas id="game"></canvas>
+  <div id="vignette" aria-hidden="true"></div>
 
   <div id="hud" class="hidden">
     <div class="left">
@@ -26,6 +27,7 @@
       <div id="timer" class="hidden"></div>
       <div id="team-score" class="hidden"></div>
       <div id="kills">0 knockouts</div>
+      <div id="combo" class="combo hidden"></div>
       <div id="storm-info" class="storm-info hidden"></div>
       <div id="effects"></div>
     </div>
@@ -74,6 +76,7 @@
   </div>
 
   <div id="toast"></div>
+  <div id="callout" class="callout" aria-live="polite"></div>
 
   <div id="tutorial-panel" class="tutorial-panel hidden">
     <small id="tutorial-step">Step 1 of 5</small>
@@ -326,6 +329,7 @@
       <h2 id="over-title">Game Over</h2>
       <p id="over-reason"></p>
       <p id="over-stats"></p>
+      <div id="over-podium" class="over-podium hidden"></div>
       <p id="over-best" class="small"></p>
       <p id="challenge-result" class="challenge-result hidden"></p>
       <p id="over-coins" class="coins-earned"></p>
@@ -344,6 +348,7 @@
           <button id="challenge-copy" class="nav-btn">Copy</button>
         </div>
       </div>
+      <p id="over-nudge" class="over-nudge hidden"></p>
       <div class="row">
         <button id="again-btn">Play again</button>
         <button id="replay-btn" class="secondary">Watch replay</button>
