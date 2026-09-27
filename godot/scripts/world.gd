@@ -9,6 +9,8 @@ signal spawned(p: Player)
 signal picked(p: Player, kind: String, at: Vector2)
 signal painted(p: Player, cells: PackedInt32Array)
 signal coin_taken(p: Player, at: Vector2)
+signal boss_hit(king: Player, by: Player)
+signal guards_called(king: Player)
 
 const N := 80
 const SPEED := 7.5 # cells per second
@@ -21,6 +23,16 @@ const COLORS: Array[Color] = [
 	Color("#b06bff"), Color("#ff7ac6"), Color("#8bd346"), Color("#ff8c42"),
 ]
 const BOT_NAMES := ["Mango", "Zigzag", "Pixel", "Turbo", "Luna", "Nacho", "Bloop"]
+
+const MODES := {
+	"classic": {"name": "Classic", "desc": "Claim 50% of the map to win", "win": 50.0},
+	"timed": {"name": "Timed", "desc": "Be the biggest when the 3:00 clock runs out", "time": 180.0},
+	"daily": {"name": "Daily", "desc": "Today's map and start, the same for everyone · claim 50%", "win": 50.0, "daily": true},
+	"teams": {"name": "Teams", "desc": "You + 3 bots vs 4 bots · first team to 50% wins", "win": 50.0, "teams": true},
+	"boss": {"name": "Boss", "desc": "Cut the King's trail to knock off his hearts · you have 3 lives", "boss": true},
+	"duo": {"name": "2 Players", "desc": "Two players on one screen · first to 40% wins", "win": 40.0, "duo": true},
+}
+const KING_HEARTS := 5
 
 const MAPS := {
 	"square": "Square", "round": "Round", "pillars": "Pillars", "maze": "Maze", "islands": "Islands",
@@ -39,6 +51,10 @@ const MAX_COINS := 6
 const COIN_VALUE := 2
 
 var map_id := "square"
+var mode_id := "classic"
+var mode: Dictionary = MODES.classic
+var p2: Player # the second human in 2 Players
+var king: Player # the Boss Battle's King
 var land := PackedByteArray() # who owns each cell (0 = nobody)
 var trail := PackedByteArray() # whose trail is on each cell (0 = none)
 var wall := PackedByteArray() # 0 floor, 1 pillar or wall, 2 outside the arena or water
@@ -57,6 +73,7 @@ var coins: Array = [] # {pos, age, life}
 var freezer: Player = null # whoever has Freeze running
 var coins_picked := 0 # by you, this game
 
+var _setting_up := false # no spawn events while a game is being set up
 var _power_timer := 3.0
 var _coin_timer := 3.0
 var _seen := PackedByteArray()
@@ -73,9 +90,23 @@ func _init() -> void:
 	counts.resize(16)
 
 
-## A new game on map `map`: you (a bot too if demo is true) and 7 bots with personalities
-func setup(my_color: int, my_name: String, demo := false, map := "square") -> void:
+## Today's date, which picks the Daily map and start
+static func today() -> String:
+	return Time.get_date_string_from_system()
+
+
+## A new game of mode `mode_name` on map `map`: you (a bot too if demo is true) and bots
+## with personalities
+func setup(my_color: int, my_name: String, demo := false, map := "square", mode_name := "classic") -> void:
+	_setting_up = true
+	mode_id = mode_name if MODES.has(mode_name) else "classic"
+	mode = MODES[mode_id]
 	map_id = map if MAPS.has(map) else "square"
+	# Daily: the date picks the map and seeds the start, so it's the same for everyone today
+	if mode.get("daily", false):
+		var h := today().hash()
+		seed(h)
+		map_id = MAPS.keys()[absi(h) % MAPS.size()]
 	land.fill(0)
 	trail.fill(0)
 	counts.fill(0)
@@ -90,30 +121,72 @@ func setup(my_color: int, my_name: String, demo := false, map := "square") -> vo
 	_power_timer = 3.0
 	_coin_timer = 3.0
 	players = [null]
-	me = Player.new(1, my_name if my_name != "" else "You", COLORS[my_color], demo)
+	p2 = null
+	king = null
+	var duo: bool = mode.get("duo", false)
+	me = Player.new(1, (my_name if my_name != "" else "You") if not duo else "Player 1", COLORS[my_color], demo)
 	players.append(me)
+	var taken := [my_color]
+	if duo:
+		var c2 := (my_color + 4) % COLORS.size()
+		taken.append(c2)
+		p2 = Player.new(2, "Player 2", COLORS[c2], false)
+		players.append(p2)
 	var names := BOT_NAMES.duplicate()
 	names.shuffle()
 	var others: Array[Color] = []
 	for i in COLORS.size():
-		if i != my_color:
+		if not taken.has(i):
 			others.append(COLORS[i])
 	var mix: Array = bots.PERSONA_MIX.duplicate()
 	mix.shuffle()
-	for i in 7:
-		var b := Player.new(i + 2, names[i], others[i], true)
+	var bot_count := 0 if mode.get("boss", false) else 8 - players.size() + 1
+	for i in bot_count:
+		var b := Player.new(players.size(), names[i], others[i], true)
 		bots.give_personality(b, mix[i])
 		players.append(b)
 	if demo:
 		bots.give_personality(me, "wildcard")
-	spawn(me, N / 2, N / 2)
+	# Teams: you and the first 3 bots against the other 4
 	for p in players:
-		if p and p != me:
+		if p:
+			p.team = (0 if p.id <= 4 else 1) if mode.get("teams", false) else p.id
+	if duo:
+		spawn(me, roundi(N * 0.3), N / 2)
+		spawn(p2, roundi(N * 0.7), N / 2)
+	else:
+		spawn(me, N / 2, N / 2)
+	for p in players:
+		if p and p.is_bot and p != me:
 			spawn(p)
+	if mode.get("boss", false):
+		me.lives = 3
+		_spawn_king()
+	_setting_up = false
+	if mode.get("daily", false):
+		randomize() # only the start is the same for everyone
 
 
 func pct(p: Player) -> float:
 	return counts[p.id] * 100.0 / play_cells
+
+
+## In Teams, teammates can't cut, bump or steal from each other
+func allies(a: Player, b: Player) -> bool:
+	return a == b or (mode.get("teams", false) and a.team == b.team)
+
+
+func team_pct(team: int) -> float:
+	var total := 0
+	for p in players:
+		if p and p.team == team:
+			total += counts[p.id]
+	return total * 100.0 / play_cells
+
+
+## The humans in this game (you, and Player 2 in 2 Players)
+func humans() -> Array:
+	return [me, p2] if p2 else [me]
 
 
 func set_land(i: int, id: int) -> void:
@@ -283,8 +356,10 @@ func spawn(p: Player, fx := -1, fy := -1) -> bool:
 	p.route = null
 	p.shield = SPAWN_SHIELD
 	p.fx = {"speed": 0.0, "freeze": 0.0, "ghost": 0.0}
+	p.rage = false if not p.is_boss else p.rage
 	p.squash = 1.0
-	spawned.emit(p)
+	if not _setting_up:
+		spawned.emit(p)
 	return true
 
 
@@ -294,10 +369,13 @@ func kill(victim: Player, killer: Player, how := "cut") -> void:
 	if not victim.alive:
 		return
 	# Once you've won, the celebration can't be spoiled
-	if won and victim == me:
+	if won and not victim.is_bot:
 		return
 	# A shield stops other players, but not your own mistakes or losing all your land
 	if victim.shield > 0 and killer != victim and how != "swallow":
+		return
+	if victim.is_boss and victim.hp > 1:
+		_hurt_king(victim, killer, how)
 		return
 	victim.alive = false
 	var lost := PackedInt32Array()
@@ -312,7 +390,9 @@ func kill(victim: Player, killer: Player, how := "cut") -> void:
 			set_land(i, 0)
 			lost.append(i)
 	land_version += 1
-	victim.respawn = 3.0
+	victim.respawn = INF if victim.is_boss else 3.0
+	if victim.is_boss:
+		victim.hp = 0
 	if killer and killer != victim:
 		killer.kills += 1
 	knocked_out.emit(victim, killer, how, lost)
@@ -362,7 +442,7 @@ func capture(p: Player) -> void:
 			_stack[top] = i + N
 			top += 1
 	for i in N * N:
-		if _seen[i] == 0 and land[i] != p.id and wall[i] == 0:
+		if _seen[i] == 0 and land[i] != p.id and wall[i] == 0 and not (land[i] and allies(players[land[i]], p)):
 			set_land(i, p.id)
 			gained.append(i)
 	land_version += 1
@@ -465,6 +545,8 @@ func _paint_bomb(p: Player) -> void:
 			var i := y * N + x
 			if wall[i] or land[i] == p.id or trail[i] == p.id:
 				continue # your own trail becomes land when you get home
+			if land[i] and allies(players[land[i]], p):
+				continue # never paint over a teammate
 			set_land(i, p.id)
 			cells.append(i)
 	land_version += 1
@@ -476,6 +558,8 @@ func _paint_bomb(p: Player) -> void:
 
 func speed_of(p: Player) -> float:
 	var v := SPEED
+	if p.is_boss:
+		v *= 1.28 if p.rage else 1.12
 	if p.fx.speed > 0:
 		v *= 1.6
 	if freezer and freezer != p:
@@ -495,6 +579,8 @@ func visit(p: Player, x: int, y: int) -> void:
 				return # Ghost: pass over your own trail
 			kill(p, p)
 			return
+		if allies(p, other):
+			return # a teammate's trail is safe (and stays theirs)
 		kill(other, p)
 		if other.alive:
 			return # their shield held: the cell stays part of their trail
@@ -559,7 +645,9 @@ func check_bumps() -> void:
 		for b in range(a + 1, players.size()):
 			var p: Player = players[a]
 			var q: Player = players[b]
-			if not p.alive or not q.alive or p.pos.distance_to(q.pos) > 0.9:
+			if not p.alive or not q.alive or allies(p, q):
+				continue
+			if p.pos.distance_to(q.pos) > (1.5 if p.is_boss or q.is_boss else 0.9):
 				continue
 			var p_safe := land[p.cell.y * N + p.cell.x] == p.id
 			var q_safe := land[q.cell.y * N + q.cell.x] == q.id
@@ -590,6 +678,7 @@ func update(dt: float) -> void:
 					spawn(p)
 			continue
 		p.shield = maxf(0.0, p.shield - dt)
+		p.hit_flash = maxf(0.0, p.hit_flash - dt * 2.0)
 		p.squash = move_toward(p.squash, 0.0, dt * 3.0)
 		p.blink -= dt
 		if p.blink < -0.12:
@@ -599,6 +688,86 @@ func update(dt: float) -> void:
 		move(p, dt)
 	check_bumps()
 	_update_items(dt)
+
+
+# ---------- Boss Battle: the King ----------
+# A big, fast bot with hearts. Cutting his trail (or him crossing it) takes a heart instead of
+# knocking him out. At half health he calls two guards; on his last heart he gets faster.
+
+func _spawn_king() -> void:
+	var k := Player.new(players.size(), "King", Color("#3b3f58"), true)
+	bots.give_personality(k, "hunter")
+	k.is_boss = true
+	k.size = 1.7
+	k.hp = KING_HEARTS
+	k.max_hp = KING_HEARTS
+	k.greed = 55
+	k.aggro = 0.7
+	k.loop_scale = 1.7
+	k.flee = 0
+	k.team = k.id
+	players.append(k)
+	king = k
+	if spawn(k):
+		_grow_kingdom(k)
+
+
+## The King starts with a bigger home than everyone else
+func _grow_kingdom(k: Player) -> void:
+	for dy in range(-5, 6):
+		for dx in range(-5, 6):
+			var x := k.cell.x + dx
+			var y := k.cell.y + dy
+			if x < 0 or y < 0 or x >= N or y >= N or dx * dx + dy * dy > 26:
+				continue
+			var i := y * N + x
+			if land[i] == 0 and trail[i] == 0 and wall[i] == 0:
+				set_land(i, k.id)
+	land_version += 1
+
+
+func _hurt_king(k: Player, by: Player, how: String) -> void:
+	k.hp -= 1
+	# His trail breaks, and he gets a moment to recover
+	for i in k.trail:
+		if trail[i] == k.id:
+			trail[i] = 0
+	k.trail = PackedInt32Array()
+	k.path.clear()
+	k.shield = 2.5
+	k.wp.clear()
+	k.mode = "idle"
+	k.route = null
+	k.hit_flash = 1.0
+	# Swallowed: he escapes to a new home
+	if how == "swallow" or counts[k.id] == 0:
+		k.alive = false
+		if spawn(k):
+			_grow_kingdom(k)
+			k.shield = 2.5
+	if k.hp == 1:
+		k.rage = true
+	boss_hit.emit(k, by)
+	if k.hp == ceili(k.max_hp / 2.0):
+		_call_guards(k)
+
+
+func _call_guards(k: Player) -> void:
+	var used := []
+	for p in players:
+		if p:
+			used.append(p.color)
+	var spare: Array[Color] = []
+	for c in COLORS:
+		if not used.has(c):
+			spare.append(c)
+	for name in ["Guard", "Knight"]:
+		var g := Player.new(players.size(), name, spare.pop_front() if spare.size() else Color("#8d97ab"), true)
+		bots.give_personality(g, "hunter")
+		g.team = g.id
+		players.append(g)
+		spawn(g)
+	guards_called.emit(k)
 
 
 ## Place (1 = biggest) among players still in the game

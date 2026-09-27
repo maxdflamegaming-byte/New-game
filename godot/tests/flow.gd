@@ -22,7 +22,8 @@ func _wait(sec: float) -> void:
 	await create_timer(sec).timeout
 
 
-func _play() -> void:
+func _play(mode := "classic") -> void:
+	main.mode_id = mode
 	main.start_game()
 	main.countdown = 0.0
 	await process_frame
@@ -90,7 +91,7 @@ func _run() -> void:
 	ok("A win pays at least 50 coins, including the ones picked up", main.wallet >= wallet_before + 50 + w.COIN_VALUE, "%d -> %d" % [wallet_before, main.wallet])
 	var cfg := ConfigFile.new()
 	cfg.load(main.SAVE_PATH)
-	ok("Coins and best are saved", cfg.get_value("player", "coins", -1) == main.wallet and cfg.get_value("stats", "best", 0.0) >= 50.0)
+	ok("Coins and best are saved", cfg.get_value("player", "coins", -1) == main.wallet and cfg.get_value("stats", "bests", {}).get("classic", 0.0) >= 50.0)
 
 	# Pause and the back button
 	await _play()
@@ -106,10 +107,88 @@ func _run() -> void:
 	var bad := []
 	for m in w.MAPS:
 		main.map_id = m
-		await _play()
+		await _play("classic")
 		if w.map_id != m or not w.me.alive or w.wall[w.me.cell.y * w.N + w.me.cell.x] != 0:
 			bad.append(m)
 	ok("Every map starts with you on open ground", bad.is_empty(), str(bad))
+
+	# Timed: when the clock runs out the biggest player wins
+	await _play("timed")
+	main.play_time = 179.99
+	await _wait(0.3)
+	ok("Timed ends when the clock runs out", main.state == "won" or main.state == "over", main.state)
+	await _wait(1.8)
+	ok("Timed shows the results with your place", main.state == "over" and ("Time's up" in main.over_reason.text), main.over_reason.text)
+
+	# Teams: teammates can't hurt each other, and the team's land counts together
+	await _play("teams")
+	me = w.me
+	var mate: Player = w.players[2]
+	var foe: Player = w.players[6]
+	ok("Teams: you and 3 bots against 4", w.allies(me, mate) and not w.allies(me, foe) and w.players.size() == 9)
+	me.shield = 0.0
+	mate.shield = 0.0
+	var tcell: Vector2i = mate.cell + Vector2i(0, 5)
+	var ti: int = tcell.y * w.N + tcell.x
+	w.trail[ti] = mate.id
+	mate.trail.append(ti)
+	w.visit(me, tcell.x, tcell.y)
+	ok("Crossing a teammate's trail doesn't hurt them", mate.alive)
+	for k in w.N * w.N:
+		if w.wall[k] == 0 and w.land[k] == 0 and w.team_pct(0) < 51:
+			w.set_land(k, [me.id, mate.id][k % 2])
+	await _wait(0.2)
+	ok("Your team claiming 50% together wins", main.state == "won", main.state)
+
+	# Boss Battle: the King loses hearts, calls guards and you have 3 lives
+	await _play("boss")
+	var king: Player = w.king
+	ok("Boss Battle: just you and the King, you with 3 lives", king != null and king.is_boss and w.me.lives == 3 and w.players.size() == 3)
+	var hearts: int = king.hp
+	king.shield = 0.0
+	w.kill(king, w.me)
+	ok("Cutting the King takes a heart", king.alive and king.hp == hearts - 1)
+	king.shield = 0.0
+	w.kill(king, w.me)
+	ok("At half health he calls 2 guards", w.players.size() == 5, str(w.players.size()))
+	await process_frame
+	ok("The guards get drawn too", main.view.views.has(w.players[4].id))
+	w.me.shield = 0.0
+	w.kill(w.me, king)
+	await _wait(1.4)
+	ok("Losing a life brings you back", w.me.alive and w.me.lives == 2 and main.state == "play", "%s %d %s" % [w.me.alive, w.me.lives, main.state])
+	while king.hp > 1:
+		king.shield = 0.0
+		w.kill(king, w.me)
+	king.shield = 0.0
+	w.kill(king, w.me)
+	await _wait(0.2)
+	ok("Taking his last heart wins", not king.alive and main.state == "won", main.state)
+	await _wait(1.8)
+	ok("Beating the King pays a bonus", main.over_coins.text != "" and int(main.over_coins.text.split(" ")[0]) >= 150, main.over_coins.text)
+
+	# Daily: the same map and start for everyone today
+	var starts := []
+	for k in 2:
+		main.mode_id = "daily"
+		main.start_game() # compare where everyone starts, before anyone moves
+		var at := [w.map_id]
+		for q in w.players:
+			if q:
+				at.append(q.pos)
+		starts.append(at)
+		await _wait(0.3)
+	ok("Daily starts the same way every time today", starts[0] == starts[1], str(starts[0].slice(0, 3)))
+
+	# 2 Players: split screen, and the first human knocked out loses
+	await _play("duo")
+	ok("2 Players: two humans and 6 bots, on a split screen", w.p2 != null and not w.p2.is_bot and w.players.size() == 9 and main.split.visible)
+	w.p2.shield = 0.0
+	w.kill(w.p2, w.players[4])
+	await _wait(1.3)
+	ok("When Player 2 is knocked out, Player 1 wins", main.state == "over" and w.me.name in main.over_title.text, main.over_title.text)
+	main._to_menu()
+	ok("The split screen goes away on the menu", not main.split.visible)
 
 	# Music is synthesized on a thread and ends up playable
 	for t in 40:

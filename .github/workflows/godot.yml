@@ -1,5 +1,6 @@
-# Builds the Godot version of Color Claim ("Color Claim HD") as an Android APK and puts it on
-# the repo's Releases page. Runs on every push that changes godot/, or by hand from Actions.
+# Checks the Godot version of Color Claim ("Color Claim HD") on every push that changes
+# godot/. The Android APK is only built (and put on the Releases page) when the workflow is
+# run by hand from the Actions tab ("Run workflow").
 name: Build Color Claim HD (Godot)
 
 on:
@@ -31,12 +32,24 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Get Godot and its Android export templates
+      - name: Get Godot
         run: |
           base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
           wget -q "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
           unzip -q "Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
           mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" "$HOME/godot"
+
+      - name: Import the project and check the rules
+        run: |
+          "$HOME/godot" --headless --path godot --import || true
+          "$HOME/godot" --headless --path godot -s tests/sim.gd
+          "$HOME/godot" --headless --path godot -s tests/flow.gd
+
+      # Everything below only runs when the workflow is started by hand
+      - name: Get the Android export templates
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
           wget -q "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
           dir="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
           mkdir -p "$dir"
@@ -45,6 +58,7 @@ jobs:
           ls "$dir"
 
       - name: Tell Godot where the Android SDK and Java are
+        if: github.event_name == 'workflow_dispatch'
         run: |
           mkdir -p "$HOME/.config/godot"
           for f in editor_settings-4.tres editor_settings-4.4.tres; do
@@ -52,13 +66,8 @@ jobs:
               "$ANDROID_SDK_ROOT" "$JAVA_HOME" > "$HOME/.config/godot/$f"
           done
 
-      - name: Import the project and check the rules
-        run: |
-          "$HOME/godot" --headless --path godot --import || true
-          "$HOME/godot" --headless --path godot -s tests/sim.gd
-          "$HOME/godot" --headless --path godot -s tests/flow.gd
-
       - name: Export the APK
+        if: github.event_name == 'workflow_dispatch'
         env:
           GODOT_ANDROID_KEYSTORE_RELEASE_PATH: ${{ github.workspace }}/android/app/color-claim.keystore
           GODOT_ANDROID_KEYSTORE_RELEASE_USER: colorclaim
@@ -72,11 +81,13 @@ jobs:
           test -s "build/ColorClaimHD-0.${{ github.run_number }}.apk"
 
       - uses: actions/upload-artifact@v4
+        if: github.event_name == 'workflow_dispatch'
         with:
           name: ColorClaimHD-apk
           path: build/*.apk
 
       - name: Put it on the Releases page
+        if: github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

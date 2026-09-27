@@ -1,6 +1,7 @@
 extends SceneTree
 ## Screenshots of the real game (run with a display, e.g. under xvfb-run):
-##   godot --path godot --rendering-driver opengl3 -s tests/shots.gd -- OUT_DIR WIDTH HEIGHT [MAPS]
+##   godot --path godot --rendering-driver opengl3 -s tests/shots.gd -- OUT_DIR WIDTH HEIGHT [GAMES]
+## GAMES is a comma-separated list of maps, or of mode:map pairs (e.g. boss:square,duo:round)
 
 var main
 var out := "/tmp"
@@ -34,11 +35,14 @@ func _run() -> void:
 	await _wait(2.5)
 	await _shot("0-menu")
 	for m in maps:
-		main.map_id = m
+		var parts: PackedStringArray = m.split(":")
+		main.mode_id = parts[0] if parts.size() > 1 else "classic"
+		main.map_id = parts[-1]
 		main.start_game()
 		var w = main.world
-		w.me.is_bot = true # let the game play itself
-		w.bots.give_personality(w.me, "explorer")
+		for h in w.humans():
+			h.is_bot = true # let the game play itself
+			w.bots.give_personality(h, "explorer")
 		await _wait(8.0)
 		w.me.shield = 30.0
 		# Put some power-ups and coins near you, and show a few effects
@@ -54,5 +58,5 @@ func _run() -> void:
 				w.coins.append({"pos": q, "age": 1.0, "life": 20.0})
 		w.me.fx.speed = 5.0
 		await _wait(0.7)
-		await _shot("map-" + m)
+		await _shot("map-" + m.replace(":", "-"))
 	quit()

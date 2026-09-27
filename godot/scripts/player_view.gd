@@ -16,7 +16,7 @@ var _shadow: Texture2D
 var _crown: Texture2D
 
 
-func setup(player: Player, tex_px: int, font: Font) -> void:
+func setup(player: Player, tex_px: int, font: Font, world = null) -> void:
 	p = player
 	_body = Art.tex(Art.BODY, tex_px)
 	_side = Art.tex(Art.SIDE, tex_px)
@@ -33,9 +33,17 @@ func setup(player: Player, tex_px: int, font: Font) -> void:
 	ls.outline_color = Color(1, 1, 1, 0.9)
 	label.label_settings = ls
 	label.text = p.name
+	# Teams: your teammates' names are blue with a star, the other team's red
+	if world and world.mode.get("teams", false) and p != world.me:
+		var mate: bool = world.allies(p, world.me)
+		label.text = ("* " if mate else "") + p.name
+		ls.font_color = Color("#1f5fd6") if mate else Color("#d6304a")
+	if p.is_boss:
+		ls.font_color = Color("#d6304a")
+		ls.font_size = 34
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.size = Vector2(240, 34)
-	label.position = Vector2(-120, -CELL * 2.25)
+	label.size = Vector2(240, 44)
+	label.position = Vector2(-120, -CELL * (1.6 + 0.65 * p.size))
 	add_child(label)
 
 
@@ -49,7 +57,7 @@ func _process(_dt: float) -> void:
 
 func _draw() -> void:
 	var t := Time.get_ticks_msec() / 1000.0
-	var s := CELL * 1.4
+	var s := CELL * 1.4 * p.size
 	var bob := sin(t * 12.0 + p.id) * CELL * 0.05
 	# Soft shadow on the ground
 	draw_texture_rect(_shadow, Rect2(-s * 0.75, s * 0.3, s * 1.5, s * 0.55), false)
@@ -78,6 +86,8 @@ func _draw() -> void:
 	draw_texture_rect(_gloss, Rect2(-s / 2, -s / 2, s, s), false)
 	if frozen:
 		draw_texture_rect(_side, Rect2(-s / 2, -s / 2, s, s), false, Color(0.63, 0.88, 1.0, 0.55))
+	if p.hit_flash > 0:
+		draw_texture_rect(_side, Rect2(-s / 2, -s / 2, s, s), false, Color(1, 1, 1, p.hit_flash * 0.8))
 	# Eyes look the way it's heading
 	var look := Vector2.from_angle(p.angle)
 	for side in [-1, 1]:
@@ -89,9 +99,9 @@ func _draw() -> void:
 			draw_circle(e + look * s * 0.06, s * 0.07, Color("#26304a"), true, -1, true)
 			draw_circle(e + look * s * 0.06 + Vector2(-s * 0.025, -s * 0.03), s * 0.025, Color.WHITE, true, -1, true)
 	draw_set_transform(Vector2.ZERO)
-	if leader:
-		var w := CELL * 1.0
-		draw_texture_rect(_crown, Rect2(-w / 2, -CELL * 2.9 + sin(t * 4.0) * 2.0, w, w), false)
+	if leader or p.is_boss:
+		var w := CELL * (1.0 if not p.is_boss else 1.4)
+		draw_texture_rect(_crown, Rect2(-w / 2, -CELL * (2.3 + 0.6 * p.size) + sin(t * 4.0) * 2.0, w, w), false)
 	if threat:
 		var pulse := 1.0 + 0.15 * sin(t * 14.0)
 		var c := Vector2(CELL * 1.3, -CELL * 1.3)

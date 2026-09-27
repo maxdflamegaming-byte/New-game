@@ -23,6 +23,16 @@ var fx := {"speed": 0.0, "freeze": 0.0, "ghost": 0.0} # seconds left on each pow
 var blocked := false
 var squash := 0.0
 var blink := 2.0
+var team := 0 # in Teams, 0 is yours; otherwise everyone is on their own
+var lives := 1 # Boss Battle gives you 3
+
+# The Boss Battle's King
+var is_boss := false
+var hp := 0
+var max_hp := 0
+var rage := false
+var hit_flash := 0.0
+var size := 1.0 # drawn size (the King is bigger)
 
 # Bot brain
 var persona := "wildcard"

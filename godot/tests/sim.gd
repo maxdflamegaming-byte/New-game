@@ -12,14 +12,21 @@ func _init() -> void:
 	var frames := 0
 	var picked := {}
 	w.picked.connect(func(_p, kind, _at): picked[kind] = picked.get(kind, 0) + 1)
-	for game in 5:
+	var modes: Array = w.MODES.keys()
+	var boss_hits := [0]
+	w.boss_hit.connect(func(_k, _by): boss_hits[0] += 1)
+	for game in modes.size() + 2:
 		var map: String = w.MAPS.keys()[game % w.MAPS.size()]
-		w.setup(game, "", true, map)
+		w.setup(game % 8, "", true, map, modes[game % modes.size()])
+		if w.p2:
+			w.p2.is_bot = true
+			w.bots.give_personality(w.p2, "explorer")
 		for f in 60 * 60:
 			w.update(1.0 / 60)
 			frames += 1
-			if not w.me.alive:
-				w.spawn(w.me)
+			for h in w.humans():
+				if not h.alive:
+					w.spawn(h)
 			if f % 30:
 				continue
 			var played := 0
@@ -44,6 +51,8 @@ func _init() -> void:
 					issues["counts mismatch"] = issues.get("counts mismatch", 0) + 1
 				if p.alive and w.wall[p.cell.y * w.N + p.cell.x] != 0:
 					issues["inside a wall"] = issues.get("inside a wall", 0) + 1
+				if p.is_boss and (p.hp < 0 or p.hp > p.max_hp):
+					issues["King hearts out of range"] = issues.get("King hearts out of range", 0) + 1
 				if p.alive and w.counts[p.id] == 0:
 					issues["alive with no land"] = issues.get("alive with no land", 0) + 1
 				if p.alive:
@@ -57,7 +66,7 @@ func _init() -> void:
 			sizes.append("%s %.1f%%" % [p.name, w.pct(p)])
 	print("frames=%d time=%dms (%.2f ms/frame) knockouts=%s" % [frames, ms, float(ms) / frames, knockouts])
 	print("sizes: ", ", ".join(sizes))
-	print("power-ups grabbed: ", picked, "  coins left: ", w.coins.size())
+	print("power-ups grabbed: ", picked, "  coins left: ", w.coins.size(), "  King hit: ", boss_hits[0])
 	print("ISSUES: ", issues if issues else "none")
 	w.free()
 	quit(1 if issues else 0)

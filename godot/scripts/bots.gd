@@ -217,21 +217,25 @@ func think(p: Player) -> void:
 		var threat := false
 		if p.mode != "hunt":
 			for o in w.players:
-				if o and o != p and o.alive and o.pos.distance_to(p.pos) < p.flee:
+				if o and not w.allies(o, p) and o.alive and o.pos.distance_to(p.pos) < p.flee:
 					threat = true
 					break
 		var greed := minf(p.greed, 22) if w.map_id == "islands" else p.greed
 		if threat or p.trail.size() > greed:
 			go_home(p)
 			return
+	# The King only has eyes for you
+	if p.is_boss and p.mode != "home" and w.me.alive and w.me.trail.size() >= 3 and w.me.shield <= 0 and w.me.pos.distance_to(p.pos) < 30:
+		p.wp = [_closest_trail_point(p, w.me)]
+		p.mode = "hunt"
+		return
 	# Hunt: go for the closest part of a nearby trail. The bigger you get, the further bots
 	# look for your trail and the more often they come for it.
 	if p.mode != "home" and p.mode != "hunt" and p.trail.size() < 25:
-		var growth := clampf(w.pct(w.me) / 30.0, 0, 1) if w.me.alive and not w.me.is_bot else 0.0
 		for o in w.players:
-			if o == null or o == p or not o.alive or o.trail.size() < 4 or o.shield > 0:
+			if o == null or w.allies(o, p) or not o.alive or o.trail.size() < 4 or o.shield > 0:
 				continue
-			var bold := growth if o == w.me else 0.0
+			var bold := clampf(w.pct(o) / 30.0, 0, 1) if not o.is_bot else 0.0
 			if o.pos.distance_to(p.pos) < 14 + bold * 12 and randf() < p.aggro + bold * 0.4:
 				p.wp = [_closest_trail_point(p, o)]
 				p.mode = "hunt"

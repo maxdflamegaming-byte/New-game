@@ -87,8 +87,17 @@ func rebuild() -> void:
 	_fades.clear()
 	_rings.clear()
 	_land_version = -1
+	_ensure_views()
+	# You're drawn last, so you're always on top
+	if w.me:
+		_actors.move_child(views[w.me.id], -1)
+	_floor.queue_redraw()
+
+
+## A trail rope and a view for every player (the King's guards join mid-game)
+func _ensure_views() -> void:
 	for p in w.players:
-		if p == null:
+		if p == null or views.has(p.id):
 			continue
 		var ropes := []
 		for k in 3:
@@ -97,23 +106,23 @@ func rebuild() -> void:
 			l.begin_cap_mode = Line2D.LINE_CAP_ROUND
 			l.end_cap_mode = Line2D.LINE_CAP_ROUND
 			l.antialiased = true
-			l.width = CELL * [1.35, 0.8, 0.2][k]
+			l.width = CELL * [1.35, 0.8, 0.2][k] * p.size
 			_trails.add_child(l)
 			ropes.append(l)
 		lines[p.id] = ropes
 		var v := preload("res://scripts/player_view.gd").new()
-		v.setup(p, tex_px, font)
+		v.setup(p, tex_px, font, w)
 		_actors.add_child(v)
 		views[p.id] = v
-	# You're drawn last, so you're always on top
-	if w.me:
-		_actors.move_child(views[w.me.id], -1)
-	_floor.queue_redraw()
+		if w.me and views.has(w.me.id):
+			_actors.move_child(views[w.me.id], -1)
 
 
 func _process(dt: float) -> void:
 	if w == null or w.players.is_empty():
 		return
+	if views.size() < w.players.size() - 1:
+		_ensure_views()
 	if w.map_version != _map_version:
 		_map_version = w.map_version
 		_find_waves()

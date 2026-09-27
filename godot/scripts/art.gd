@@ -94,6 +94,10 @@ const COIN := """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
 <ellipse cx="22" cy="18" rx="8" ry="4" fill="#ffffff" fill-opacity="0.6" transform="rotate(-35 22 18)"/>
 </svg>"""
 
+const HEART := """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+<path d="M32 56 C8 40 4 28 4 20 C4 10 12 4 20 4 C26 4 30 8 32 12 C34 8 38 4 44 4 C52 4 60 10 60 20 C60 28 56 40 32 56 Z" fill="#ffffff"/>
+</svg>"""
+
 static var _cache := {}
 
 

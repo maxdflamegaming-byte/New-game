@@ -20,8 +20,9 @@ var font_med: Font
 var state := "menu" # menu, countdown, play, won, paused, over
 var my_color := 0
 var map_id := "square"
+var mode_id := "classic"
 var wallet := 0 # coins you've saved up
-var best := 0.0
+var bests := {} # best claim per mode (the Daily's is per day)
 var games := 0
 var wins := 0
 var countdown := 0.0
@@ -36,6 +37,13 @@ var _marks := {}
 var _hud_timer := 0.0
 var _mm_timer := 0.0
 var _last_count := 0
+var _tick := 0
+var split = null # the split screen in 2 Players
+
+# Player 2's touch joystick (the other half of the screen)
+var _stick2_index := -1
+var _stick2_origin := Vector2.ZERO
+var _stick2_pos := Vector2.ZERO
 
 # Touch joystick: put a finger down anywhere and drag
 var _stick_index := -1
@@ -50,6 +58,12 @@ var goal_bar: Control
 var status_label: Label
 var coin_label: Label
 var fx_row: HBoxContainer
+var mode_pill: PanelContainer
+var mode_row: HBoxContainer
+var left_card: Control
+var right_card: Control
+var mm_card: Control
+var duo_labels: Array = []
 var board_rows: Array = []
 var minimap: TextureRect
 var mm_dot: Control
@@ -71,6 +85,8 @@ var over_best: Label
 var over_coins: Label
 var wallet_label: Label
 var maps_row: HBoxContainer
+var modes_row: HFlowContainer
+var mode_desc: Label
 var music_btn: Button
 var best_label: Label
 var swatches: HBoxContainer
@@ -100,6 +116,8 @@ func _ready() -> void:
 	world.knocked_out.connect(_on_knocked_out)
 	world.picked.connect(_on_picked)
 	world.coin_taken.connect(_on_coin)
+	world.boss_hit.connect(_on_boss_hit)
+	world.guards_called.connect(_on_guards)
 	_build_ui()
 	_start_demo()
 
@@ -109,6 +127,7 @@ func _ready() -> void:
 func _start_demo() -> void:
 	_game_id += 1
 	state = "menu"
+	_split_off()
 	world.setup(my_color, "You", true, map_id)
 	view.rebuild()
 	_snap_camera()
@@ -118,8 +137,12 @@ func _start_demo() -> void:
 
 func start_game() -> void:
 	_game_id += 1
-	world.setup(my_color, "You", false, map_id)
+	world.setup(my_color, "You", false, map_id, mode_id)
 	view.rebuild()
+	if world.p2:
+		_split_on()
+	else:
+		_split_off()
 	_snap_camera()
 	state = "countdown"
 	countdown = 3.0
@@ -147,6 +170,8 @@ func _process(delta: float) -> void:
 			countdown -= dt
 			_steer()
 			me.angle = me.desired
+			if world.p2:
+				world.p2.angle = world.p2.desired
 			var c := int(ceil(countdown))
 			if c != _last_count and c > 0:
 				_last_count = c
@@ -160,16 +185,17 @@ func _process(delta: float) -> void:
 		"play", "won":
 			var k := 0.35 if slowmo > 0 else 1.0
 			slowmo = maxf(0.0, slowmo - dt)
-			if me.alive and state == "play":
+			if state == "play":
 				_steer()
 			world.update(dt * k)
 			play_time += dt * k
 			if me.alive:
 				peak = maxf(peak, world.pct(me))
-				if state == "play" and world.pct(me) >= world.WIN_PCT:
-					_win()
+			if state == "play":
+				_check_end()
 			_check_danger()
-			_milestones()
+			if not world.p2:
+				_milestones()
 	_update_camera(dt)
 	_hud_timer -= dt
 	if hud.visible and _hud_timer <= 0:
@@ -182,41 +208,104 @@ func _process(delta: float) -> void:
 	stick_view.queue_redraw()
 
 
-func _win() -> void:
+## How each mode is won or lost
+func _check_end() -> void:
+	var me: Player = world.me
+	var m: Dictionary = world.mode
+	var goal: float = m.get("win", 0.0)
+	if m.get("duo", false):
+		if world.pct(me) >= goal:
+			_win("%s claimed %d%% of the map!" % [me.name, int(goal)], me)
+		elif world.pct(world.p2) >= goal:
+			_win("%s claimed %d%% of the map!" % [world.p2.name, int(goal)], world.p2)
+	elif m.get("teams", false):
+		if world.team_pct(0) >= goal:
+			_win("Your team claimed %d%% of the map!" % int(goal))
+		elif world.team_pct(1) >= goal:
+			_lose("The other team claimed %d%% first." % int(goal), 0.6)
+	elif m.get("boss", false):
+		if world.king and not world.king.alive:
+			_win("You defeated the King!")
+	elif m.has("time"):
+		var left: float = m.time - play_time
+		if left <= 10 and ceili(left) != _tick and left > 0:
+			_tick = ceili(left)
+			sfx.play("tick")
+			if _tick == 10:
+				_callout("10 SECONDS!", Color("#ff5d73"))
+		if left <= 0 and me.alive:
+			var place: int = world.rank_of(me)
+			if place == 1:
+				_win("Time's up and you're the biggest!")
+			else:
+				_lose("Time's up! You finished #%d of %d." % [place, world.alive_count()], 0.6)
+	elif goal > 0 and me.alive and world.pct(me) >= goal:
+		_win("You claimed %d%% of the map!" % int(goal))
+
+
+func _win(reason: String, who: Player = null) -> void:
 	state = "won"
 	world.won = true
 	slowmo = 1.4
 	sfx.play("win")
 	_vibrate(120)
-	_callout("VICTORY!", YELLOW)
+	_callout("VICTORY!" if who == null else "%s WINS!" % who.name.to_upper(), YELLOW)
+	var at: Vector2 = (who if who else world.me).pos
 	for i in 6:
-		view.burst(world.me.pos + Vector2(randf_range(-6, 6), randf_range(-5, 5)), world.COLORS[i], 30, 520.0)
+		view.burst(at + Vector2(randf_range(-6, 6), randf_range(-5, 5)), world.COLORS[i], 30, 520.0)
 	var id := _game_id
 	await get_tree().create_timer(1.6).timeout
 	if id == _game_id:
-		_game_over(true, "You claimed %d%% of the map!" % int(world.WIN_PCT))
+		_game_over(true, reason, who)
 
 
-func _game_over(won: bool, reason: String) -> void:
+func _lose(reason: String, delay: float) -> void:
+	state = "won" # the game is over; keep playing the moment out
+	var id := _game_id
+	await get_tree().create_timer(delay).timeout
+	if id == _game_id:
+		_game_over(false, reason)
+
+
+func _best_key() -> String:
+	return "daily-" + world.today() if mode_id == "daily" else mode_id
+
+
+func _game_over(won: bool, reason: String, who: Player = null) -> void:
 	if state == "over":
 		return
 	state = "over"
+	_split_off(true)
+	over_title.label_settings.font_color = YELLOW if won else Color.WHITE
+	over_reason.text = reason
+	if world.p2:
+		# 2 Players is just for fun: no coins or records
+		var winner: Player = who if who else (world.p2 if not world.me.alive else world.me)
+		over_title.text = "%s wins!" % winner.name
+		over_title.label_settings.font_color = winner.color.lightened(0.2)
+		over_stats.text = "%s %.1f%%  ·  %s %.1f%%" % [world.me.name, world.pct(world.me), world.p2.name, world.pct(world.p2)]
+		over_best.text = "2-player games are just for fun"
+		over_coins.text = ""
+		_show(over_screen)
+		return
 	games += 1
 	if won:
 		wins += 1
 	var score := snappedf(peak, 0.1)
-	var new_best := score > best
+	var key := _best_key()
+	var new_best: bool = score > bests.get(key, 0.0)
 	if new_best:
-		best = score
+		bests[key] = score
 	var earned: int = roundi(score * 2) + world.me.kills * 5 + (50 if won else 0) + world.coins_picked
+	if won and world.mode.get("boss", false):
+		earned += 100
 	wallet += earned
 	_save()
 	over_coins.text = "+%d coins" % earned
 	over_title.text = "You win!" if won else "Game over"
-	over_title.label_settings.font_color = YELLOW if won else Color.WHITE
-	over_reason.text = reason
 	over_stats.text = "Best size %.1f%%  ·  %d knockout%s  ·  %s" % [score, world.me.kills, "" if world.me.kills == 1 else "s", _fmt_time(play_time)]
-	over_best.text = "New best!" if new_best else "Your best: %.1f%%" % best
+	var label: String = "Today's best" if mode_id == "daily" else "%s best" % world.MODES[mode_id].name
+	over_best.text = ("New %s!" % label.to_lower()) if new_best else "%s: %.1f%%" % [label, bests.get(key, 0.0)]
 	_show(over_screen)
 
 
@@ -238,6 +327,27 @@ func _resume() -> void:
 func _to_menu() -> void:
 	hud.visible = false
 	_start_demo()
+
+
+# ---------- 2 Players: split screen ----------
+
+func _split_on() -> void:
+	if split == null:
+		split = preload("res://scripts/split_view.gd").new()
+		add_child(split)
+	split.visible = true
+	split.layout()
+	# The main camera looks far away, so the world isn't drawn a third time
+	cam.position = Vector2(1e6, 1e6)
+	_layout_hud()
+
+
+## Leaves the split screen; keep_view leaves it up (for the results screen)
+func _split_off(keep_view := false) -> void:
+	if split and not keep_view:
+		split.visible = false
+	if hud:
+		_layout_hud()
 
 
 func _back() -> void:
@@ -279,7 +389,31 @@ func _on_knocked_out(v: Player, killer: Player, how: String, _lost: PackedInt32A
 	if state == "menu":
 		return
 	var me: Player = world.me
-	if v == me and not ending:
+	if world.p2 and (v == me or v == world.p2) and not ending:
+		# 2 Players: the first human knocked out loses
+		ending = true
+		sfx.play("death")
+		shake = 1.0
+		_vibrate(300)
+		var winner: Player = world.p2 if v == me else me
+		var id := _game_id
+		await get_tree().create_timer(0.9).timeout
+		if id == _game_id:
+			_game_over(true, "%s was knocked out%s." % [v.name, "" if killer == null or killer == v else " by " + killer.name], winner)
+	elif v == me and me.lives > 1 and not ending:
+		# Boss Battle: lose a life and come back somewhere else
+		me.lives -= 1
+		sfx.play("hurt")
+		shake = 1.0
+		_vibrate(200)
+		_toast("Ouch! %d %s left" % [me.lives, "life" if me.lives == 1 else "lives"])
+		var id := _game_id
+		await get_tree().create_timer(1.2).timeout
+		if id == _game_id and not me.alive:
+			if not world.spawn(me):
+				world.spawn(me, world.N / 2, world.N / 2)
+			_snap_camera()
+	elif v == me and not ending:
 		ending = true
 		sfx.play("death")
 		shake = 1.0
@@ -287,11 +421,16 @@ func _on_knocked_out(v: Player, killer: Player, how: String, _lost: PackedInt32A
 		var reason := "You crossed your own trail!" if killer == me \
 			else "%s swallowed all your land!" % killer.name if how == "swallow" \
 			else "You bumped into %s outside your land!" % killer.name if how == "bump" \
+			else "The %s cut your trail!" % killer.name if killer.is_boss \
 			else "%s cut your trail!" % killer.name
 		var id := _game_id
 		await get_tree().create_timer(0.9).timeout
 		if id == _game_id:
 			_game_over(false, reason)
+	elif v.is_boss and state != "menu":
+		sfx.play("bossdown")
+		shake = 1.0
+		_vibrate(250)
 	elif killer == me and v != me:
 		sfx.play("cut")
 		shake = maxf(shake, 0.4)
@@ -304,6 +443,25 @@ func _on_knocked_out(v: Player, killer: Player, how: String, _lost: PackedInt32A
 			_callout("TRIPLE KO!", Color("#ff5d73"))
 		elif _kos.size() == 2:
 			_callout("DOUBLE KO!", Color("#ff8c42"))
+
+
+func _on_boss_hit(k: Player, _by: Player) -> void:
+	if state == "menu":
+		return
+	sfx.play("bosshit")
+	shake = maxf(shake, 0.8)
+	_vibrate(80)
+	view.float_text(k.pos + Vector2(0, -3), "-1 heart", Color("#ff5d73"), Color.WHITE, 1.3)
+	if k.hp == 1:
+		_callout("LAST HEART!", Color("#ff5d73"))
+		_toast("The King is furious!")
+
+
+func _on_guards(_k: Player) -> void:
+	if state == "menu":
+		return
+	sfx.play("roar")
+	_toast("The King calls for guards!")
 
 
 const PICK_TOASTS := {
@@ -344,14 +502,15 @@ func _check_danger() -> void:
 	var danger := 0.0
 	var n: int = world.N
 	for p in world.players:
-		if p == null or p == me:
+		if p == null or world.allies(p, me) or (world.p2 and p == world.p2):
 			continue
 		var close := INF
 		if me.alive and me.trail.size() > 0 and me.shield <= 0 and p.alive:
 			for k in range(0, me.trail.size(), 2):
 				var i: int = me.trail[k]
 				close = minf(close, p.pos.distance_to(Vector2(i % n + 0.5, i / n + 0.5)))
-		view.views[p.id].threat = close < 10
+		if view.views.has(p.id):
+			view.views[p.id].threat = close < 10
 		if close < 7:
 			danger = maxf(danger, 1.0 - close / 7.0)
 	if danger > 0.3 and view.danger <= 0.3:
@@ -361,37 +520,63 @@ func _check_danger() -> void:
 
 # ---------- Controls ----------
 
+func _keys(left: int, right: int, up: int, down: int) -> Vector2:
+	var v := Vector2.ZERO
+	if Input.is_key_pressed(left):
+		v.x -= 1
+	if Input.is_key_pressed(right):
+		v.x += 1
+	if Input.is_key_pressed(up):
+		v.y -= 1
+	if Input.is_key_pressed(down):
+		v.y += 1
+	return v
+
+
 func _steer() -> void:
 	var me: Player = world.me
-	var v := Vector2.ZERO
-	if Input.is_key_pressed(KEY_LEFT) or Input.is_key_pressed(KEY_A):
-		v.x -= 1
-	if Input.is_key_pressed(KEY_RIGHT) or Input.is_key_pressed(KEY_D):
-		v.x += 1
-	if Input.is_key_pressed(KEY_UP) or Input.is_key_pressed(KEY_W):
-		v.y -= 1
-	if Input.is_key_pressed(KEY_DOWN) or Input.is_key_pressed(KEY_S):
-		v.y += 1
+	var v := _keys(KEY_A, KEY_D, KEY_W, KEY_S)
+	if not world.p2:
+		v += _keys(KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN)
 	if v == Vector2.ZERO and _stick_index >= 0 and _stick_pos.distance_to(_stick_origin) > 12:
 		v = _stick_pos - _stick_origin
-	if v != Vector2.ZERO:
+	if v != Vector2.ZERO and me.alive:
 		me.desired = v.angle()
+	if world.p2 and world.p2.alive:
+		var v2 := _keys(KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN)
+		if v2 == Vector2.ZERO and _stick2_index >= 0 and _stick2_pos.distance_to(_stick2_origin) > 12:
+			v2 = _stick2_pos - _stick2_origin
+		if v2 != Vector2.ZERO:
+			world.p2.desired = v2.angle()
 
 
 func _unhandled_input(e: InputEvent) -> void:
 	if e is InputEventScreenTouch:
-		if e.pressed and _stick_index == -1:
+		# In 2 Players, a finger on Player 2's half of the screen steers Player 2
+		var second: bool = world.p2 != null and split != null and split.rect(1).has_point(e.position)
+		if e.pressed and second and _stick2_index == -1:
+			_stick2_index = e.index
+			_stick2_origin = e.position
+			_stick2_pos = e.position
+		elif e.pressed and not second and _stick_index == -1:
 			_stick_index = e.index
 			_stick_origin = e.position
 			_stick_pos = e.position
 		elif not e.pressed and e.index == _stick_index:
 			_stick_index = -1
+		elif not e.pressed and e.index == _stick2_index:
+			_stick2_index = -1
 	elif e is InputEventScreenDrag and e.index == _stick_index:
 		_stick_pos = e.position
 		# Drag far and the joystick follows your finger, so you never run out of room
 		var d: Vector2 = _stick_pos - _stick_origin
 		if d.length() > 90:
 			_stick_origin = _stick_pos - d.normalized() * 90
+	elif e is InputEventScreenDrag and e.index == _stick2_index:
+		_stick2_pos = e.position
+		var d2: Vector2 = _stick2_pos - _stick2_origin
+		if d2.length() > 90:
+			_stick2_origin = _stick2_pos - d2.normalized() * 90
 	elif e is InputEventKey and e.pressed and not e.echo:
 		if e.keycode == KEY_ESCAPE or e.keycode == KEY_P:
 			if state == "paused":
@@ -404,12 +589,15 @@ func _unhandled_input(e: InputEvent) -> void:
 
 
 func _draw_stick() -> void:
-	if _stick_index < 0 or not (state == "play" or state == "countdown"):
+	if not (state == "play" or state == "countdown"):
 		return
-	stick_view.draw_circle(_stick_origin, 90, Color(1, 1, 1, 0.12), true, -1, true)
-	stick_view.draw_arc(_stick_origin, 90, 0, TAU, 64, Color(0.12, 0.15, 0.27, 0.35), 3.0, true)
-	var d := (_stick_pos - _stick_origin).limit_length(90)
-	stick_view.draw_circle(_stick_origin + d, 38, Color(0.12, 0.15, 0.27, 0.35), true, -1, true)
+	for s in [[_stick_index, _stick_origin, _stick_pos], [_stick2_index, _stick2_origin, _stick2_pos]]:
+		if s[0] < 0:
+			continue
+		stick_view.draw_circle(s[1], 90, Color(1, 1, 1, 0.12), true, -1, true)
+		stick_view.draw_arc(s[1], 90, 0, TAU, 64, Color(0.12, 0.15, 0.27, 0.35), 3.0, true)
+		var d: Vector2 = (s[2] - s[1]).limit_length(90)
+		stick_view.draw_circle(s[1] + d, 38, Color(0.12, 0.15, 0.27, 0.35), true, -1, true)
 
 
 func _vibrate(ms: int) -> void:
@@ -419,34 +607,64 @@ func _vibrate(ms: int) -> void:
 
 # ---------- Camera ----------
 
-func _cam_zoom() -> float:
+func _cam_zoom(p: Player = null) -> float:
+	var who: Player = p if p else world.me
 	var vis := get_viewport_rect().size
-	var cell_px := minf(vis.x, vis.y) / 25.0
-	var z := cell_px / CELL * (1.0 - minf(0.3, world.pct(world.me) / 90.0))
+	if world.p2 and split:
+		vis = split.rect(0).size
+	var cell_px := minf(vis.x, vis.y) / (25.0 if not world.p2 else 18.0)
+	var z := cell_px / CELL * (1.0 - minf(0.3, world.pct(who) / 90.0))
 	return z * (0.8 if state == "menu" else 1.0)
+
+
+var _duo_cams := [{}, {}]
 
 
 func _snap_camera() -> void:
 	cam.position = world.me.pos * CELL
 	cam.zoom = Vector2.ONE * _cam_zoom()
+	if world.p2:
+		cam.position = Vector2(1e6, 1e6)
+		for i in 2:
+			var p: Player = world.humans()[i]
+			_duo_cams[i] = {"pos": p.pos * CELL, "zoom": _cam_zoom(p)}
 
 
 ## The camera glides after you, looking a little ahead, and zooms out as your land grows
 func _update_camera(dt: float) -> void:
+	shake = maxf(0.0, shake - dt * 2.0)
+	var jiggle := Vector2(randf_range(-1, 1), randf_range(-1, 1)) * shake * CELL * 0.35
+	if world.p2 and split and split.visible:
+		for i in 2:
+			var p: Player = world.humans()[i]
+			var c: Dictionary = _duo_cams[i]
+			var lead := Vector2.from_angle(p.angle) * 2.0 if p.alive else Vector2.ZERO
+			c.pos = c.pos.lerp((p.pos + lead) * CELL, 1.0 - exp(-dt * 4.5))
+			c.zoom = lerpf(c.zoom, _cam_zoom(p), 1.0 - exp(-dt * 1.8))
+			split.aim(i, c.pos, c.zoom, jiggle)
+		return
 	var me: Player = world.me
 	var lead := Vector2.from_angle(me.angle) * 2.2 if me.alive else Vector2.ZERO
 	cam.position = cam.position.lerp((me.pos + lead) * CELL, 1.0 - exp(-dt * 4.5))
 	cam.zoom = cam.zoom.lerp(Vector2.ONE * _cam_zoom(), 1.0 - exp(-dt * 1.8))
-	shake = maxf(0.0, shake - dt * 2.0)
-	cam.offset = Vector2(randf_range(-1, 1), randf_range(-1, 1)) * shake * CELL * 0.35
+	cam.offset = jiggle
 
 
 # ---------- HUD ----------
 
 func _update_hud() -> void:
 	var me: Player = world.me
+	_update_mode_pill()
+	if world.p2:
+		for i in 2:
+			var h: Player = world.humans()[i]
+			duo_labels[i].text = "%s  %.1f%%%s" % [h.name, world.pct(h), "" if h.alive else "  ·  out"]
+			duo_labels[i].label_settings.font_color = h.color.lightened(0.1)
+		return
 	pct_label.text = "%.1f%%" % world.pct(me)
-	goal_bar.set_meta("fill", clampf(world.pct(me) / world.WIN_PCT, 0, 1))
+	var goal: float = world.mode.get("win", 0.0)
+	goal_bar.visible = goal > 0
+	goal_bar.set_meta("fill", clampf((world.team_pct(0) if world.mode.get("teams", false) else world.pct(me)) / maxf(goal, 1.0), 0, 1))
 	goal_bar.set_meta("color", me.color)
 	goal_bar.queue_redraw()
 	var kos := "%d KO%s" % [me.kills, "" if me.kills == 1 else "s"]
@@ -489,10 +707,65 @@ func _update_hud() -> void:
 			continue
 		var p: Player = top[r]
 		row[1].color = p.color
-		row[2].text = "%d. %s" % [ranked.find(p) + 1, p.name]
+		var mark := "* " if world.mode.get("teams", false) and p != me and world.allies(p, me) else ""
+		row[2].text = "%d. %s%s" % [ranked.find(p) + 1, mark, p.name]
 		row[3].text = "%.1f%%" % world.pct(p)
-		var c := Color("#1f5fd6") if p == me else INK
+		var c := Color("#1f5fd6") if p == me or mark != "" else Color("#d6304a") if p.is_boss else INK
 		row[2].label_settings.font_color = c
+	# The leaderboard shrinks to fit its rows (the Boss Battle has only a few players)
+	right_card.size.y = right_card.get_combined_minimum_size().y
+
+
+## The pill at the top: the clock, the team score, or the King's hearts and your lives
+func _update_mode_pill() -> void:
+	for c in mode_row.get_children():
+		c.queue_free()
+	var m: Dictionary = world.mode
+	var parts := []
+	if m.has("time"):
+		var left: float = maxf(0.0, m.time - play_time)
+		parts.append(_label("Time  " + _fmt_time(ceilf(left)), 30, Color("#ff3c50") if left <= 15 else INK))
+	elif m.get("teams", false):
+		parts.append(_label("Your team %.1f%%" % world.team_pct(0), 26, Color("#1f5fd6")))
+		parts.append(_label("vs", 22, MUTED, 0, INK, font_med))
+		parts.append(_label("%.1f%%" % world.team_pct(1), 26, Color("#d6304a")))
+	elif m.get("boss", false) and world.king:
+		parts.append(_label("King", 26, Color("#d6304a")))
+		for i in world.king.max_hp:
+			parts.append(_icon(Art.HEART, 26, Color("#ff3c50") if i < world.king.hp else Color("#d5dbe8")))
+		parts.append(_label("  You", 26, INK))
+		for i in 3:
+			parts.append(_icon(Art.HEART, 22, world.me.color if i < world.me.lives else Color("#d5dbe8")))
+	elif m.get("duo", false):
+		parts.append(_label("First to %d%%" % int(m.win), 24, INK))
+	elif m.get("daily", false):
+		parts.append(_label("Daily · %s" % world.MAPS[world.map_id], 24, INK))
+	mode_pill.visible = not parts.is_empty()
+	for c in parts:
+		mode_row.add_child(c)
+
+
+func _icon(svg: String, size: int, tint: Color) -> TextureRect:
+	var t := TextureRect.new()
+	t.texture = Art.tex(svg, 64)
+	t.custom_minimum_size = Vector2(size, size)
+	t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	t.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	t.modulate = tint
+	t.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return t
+
+
+## 2 Players hides the solo cards and labels each half instead
+func _layout_hud() -> void:
+	var duo: bool = world.p2 != null and split != null and split.visible
+	for c in [left_card, right_card, mm_card]:
+		c.visible = not duo
+	for i in duo_labels.size():
+		duo_labels[i].visible = duo
+		if duo:
+			var r: Rect2 = split.rect(i)
+			duo_labels[i].position = Vector2(r.position.x + 20, r.end.y - 64)
 
 
 func _update_minimap() -> void:
@@ -649,6 +922,7 @@ func _show(screen: Control) -> void:
 
 func _build_ui() -> void:
 	ui_layer = CanvasLayer.new()
+	ui_layer.layer = 2 # above the 2-player split screen
 	add_child(ui_layer)
 	var safe := _safe_margins()
 
@@ -660,6 +934,7 @@ func _build_ui() -> void:
 	ui_layer.add_child(hud)
 
 	var left := _card()
+	left_card = left
 	hud.add_child(left)
 	var lv := VBoxContainer.new()
 	lv.add_theme_constant_override("separation", 4)
@@ -692,6 +967,7 @@ func _build_ui() -> void:
 	lv.add_child(fx_row)
 
 	var right := _card()
+	right_card = right
 	hud.add_child(right)
 	var rv := VBoxContainer.new()
 	rv.add_theme_constant_override("separation", 2)
@@ -725,7 +1001,7 @@ func _build_ui() -> void:
 	hud.add_child(pause_btn)
 	_pin(pause_btn, Control.PRESET_BOTTOM_RIGHT, safe)
 
-	var mm_card := _card()
+	mm_card = _card()
 	hud.add_child(mm_card)
 	mm_img = Image.create(world.N, world.N, false, Image.FORMAT_RGBA8)
 	mm_tex = ImageTexture.create_from_image(mm_img)
@@ -743,12 +1019,31 @@ func _build_ui() -> void:
 	minimap.add_child(mm_dot)
 	_pin(mm_card, Control.PRESET_BOTTOM_LEFT, safe)
 
+	# The clock, team score or boss hearts, at the top in the middle
+	var pill_row := HBoxContainer.new()
+	pill_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	pill_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pill_row.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	pill_row.offset_top = 262 + safe.y
+	hud.add_child(pill_row)
+	mode_pill = _card()
+	mode_row = HBoxContainer.new()
+	mode_row.add_theme_constant_override("separation", 6)
+	mode_pill.add_child(mode_row)
+	pill_row.add_child(mode_pill)
+	for i in 2:
+		var dl := _label("", 30, Color.WHITE, 10, NAVY)
+		dl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		dl.visible = false
+		hud.add_child(dl)
+		duo_labels.append(dl)
+
 	# Messages pop up on a dark rounded label near the top
 	var toast_row := HBoxContainer.new()
 	toast_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	toast_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	toast_row.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
-	toast_row.offset_top = 250 + safe.y
+	toast_row.offset_top = 340 + safe.y
 	hud.add_child(toast_row)
 	toast_panel = PanelContainer.new()
 	var ts := _style(Color(0.12, 0.15, 0.27, 0.78), 24)
@@ -886,6 +1181,29 @@ func _build_menu(safe: Vector4) -> void:
 			sfx.play("tap")
 			_refresh_menu())
 		swatches.add_child(b)
+	col.add_child(_label("MODE", 22, Color(1, 1, 1, 0.75)))
+	modes_row = HFlowContainer.new()
+	modes_row.alignment = FlowContainer.ALIGNMENT_CENTER
+	modes_row.add_theme_constant_override("h_separation", 8)
+	modes_row.add_theme_constant_override("v_separation", 8)
+	modes_row.custom_minimum_size.x = 600
+	col.add_child(modes_row)
+	for id in world.MODES:
+		var b := Button.new()
+		b.text = world.MODES[id].name
+		b.focus_mode = Control.FOCUS_NONE
+		b.add_theme_font_override("font", font)
+		b.add_theme_font_size_override("font_size", 24)
+		b.pressed.connect(func():
+			mode_id = id
+			_save()
+			sfx.play("tap")
+			_refresh_menu())
+		modes_row.add_child(b)
+	mode_desc = _label("", 22, Color(1, 1, 1, 0.85), 0, INK, font_med)
+	mode_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	mode_desc.custom_minimum_size.x = 600
+	col.add_child(mode_desc)
 	col.add_child(_label("MAP", 22, Color(1, 1, 1, 0.75)))
 	maps_row = HBoxContainer.new()
 	maps_row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -950,12 +1268,29 @@ func _refresh_menu() -> void:
 			s.border_color = world.COLORS[i].darkened(0.3)
 		for st in ["normal", "hover", "pressed"]:
 			b.add_theme_stylebox_override(st, s)
-	best_label.text = "Best: %.1f%%   ·   Wins: %d" % [best, wins] if games > 0 else "Claim 50% of the map to win"
+	var b: float = bests.get("daily-" + world.today() if mode_id == "daily" else mode_id, 0.0)
+	best_label.text = ("Best: %.1f%%   ·   Wins: %d" % [b, wins]) if games > 0 else "Pick a mode and a map, then play!"
+	mode_desc.text = world.MODES[mode_id].desc
+	if mode_id == "daily":
+		var h: int = absi(world.today().hash())
+		mode_desc.text += "  ·  Today's map: %s" % world.MAPS.values()[h % world.MAPS.size()]
+	for mb in modes_row.get_children():
+		var on: bool = mb.text == world.MODES[mode_id].name
+		var st := _style(YELLOW if on else Color(1, 1, 1, 0.16), 18)
+		st.content_margin_left = 18
+		st.content_margin_right = 18
+		st.content_margin_top = 8
+		st.content_margin_bottom = 8
+		for k in ["normal", "hover", "pressed"]:
+			mb.add_theme_stylebox_override(k, st)
+		for k in ["font_color", "font_hover_color", "font_pressed_color"]:
+			mb.add_theme_color_override(k, Color("#5a3200") if on else Color.WHITE)
 	sound_btn.text = "Sound: off" if sfx.muted else "Sound: on"
 	music_btn.text = "Music: on" if music.enabled else "Music: off"
 	wallet_label.text = str(wallet)
 	for mb in maps_row.get_children():
-		var picked: bool = mb.text == world.MAPS[map_id]
+		mb.disabled = mode_id == "daily"
+		var picked: bool = mb.text == world.MAPS[map_id] and mode_id != "daily"
 		var st := _style(Color.WHITE if picked else Color(1, 1, 1, 0.16), 18)
 		st.content_margin_left = 16
 		st.content_margin_right = 16
@@ -1032,7 +1367,8 @@ func _load() -> void:
 	var c := ConfigFile.new()
 	if c.load(SAVE_PATH) != OK:
 		return
-	best = c.get_value("stats", "best", 0.0)
+	bests = c.get_value("stats", "bests", {"classic": c.get_value("stats", "best", 0.0)})
+	mode_id = c.get_value("player", "mode", "classic")
 	games = c.get_value("stats", "games", 0)
 	wins = c.get_value("stats", "wins", 0)
 	my_color = clampi(c.get_value("player", "color", 0), 0, 7)
@@ -1044,7 +1380,8 @@ func _load() -> void:
 
 func _save() -> void:
 	var c := ConfigFile.new()
-	c.set_value("stats", "best", best)
+	c.set_value("stats", "bests", bests)
+	c.set_value("player", "mode", mode_id)
 	c.set_value("stats", "games", games)
 	c.set_value("stats", "wins", wins)
 	c.set_value("player", "color", my_color)
