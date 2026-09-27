@@ -190,6 +190,53 @@ func _run() -> void:
 	main._to_menu()
 	ok("The split screen goes away on the menu", not main.split.visible)
 
+	# The shop
+	main._to_menu()
+	await process_frame
+	main.wallet = 500
+	main.owned = {"skin": ["plain"], "trail": ["none"], "pet": ["none"]}
+	main.equipped = {"skin": "plain", "trail": "none", "pet": "none"}
+	main.shop.open()
+	await process_frame
+	ok("The shop opens from the menu", main.shop.visible and not main.menu.visible and main.state == "menu")
+	main.shop.tap("skin", "cat")
+	ok("Buying a skin takes its price and puts it on", main.wallet == 200 and main.owned.skin.has("cat") and main.equipped.skin == "cat", str(main.wallet))
+	main.shop.tap("skin", "galaxy")
+	ok("You can't buy what you can't afford", main.wallet == 200 and not main.owned.skin.has("galaxy") and main.equipped.skin == "cat")
+	main.shop.tap("skin", "plain")
+	main.shop.tap("skin", "cat")
+	ok("Switching to something you own is free", main.wallet == 200 and main.equipped.skin == "cat")
+	main.shop.show_tab("trail")
+	main.shop.tap("trail", "sparkle")
+	ok("Trails can be bought too", main.wallet == 0 and main.equipped.trail == "sparkle")
+	var shop_cfg := ConfigFile.new()
+	shop_cfg.load(main.SAVE_PATH)
+	ok("Purchases are saved", shop_cfg.get_value("shop", "owned_skin", []).has("cat") and shop_cfg.get_value("shop", "using_trail", "") == "sparkle" and shop_cfg.get_value("player", "coins", -1) == 0)
+	main._back()
+	await process_frame
+	ok("Back closes the shop", not main.shop.visible and main.menu.visible)
+	ok("The menu's square wears your look", w.me.skin == "cat" and w.me.trail_fx == "sparkle")
+	main.owned.pet.append("bee")
+	main.equipped.pet = "bee"
+	await _play()
+	ok("You play in your skin, trail and pet", w.me.skin == "cat" and w.me.trail_fx == "sparkle" and w.me.pet == "bee")
+	ok("Your trail effect is ready", main.view.views[w.me.id]._emitter != null)
+	var dressed := 0
+	for p in w.players:
+		if p and p.is_bot and (p.skin != "plain" or p.pet != "none" or p.trail_fx != "none"):
+			dressed += 1
+	ok("Bots wear shop items too", dressed > 0, "%d dressed" % dressed)
+	# A save with things that don't exist falls back to the free ones
+	shop_cfg.set_value("shop", "owned_skin", ["plain", "cat", "unicorn"])
+	shop_cfg.set_value("shop", "using_skin", "unicorn")
+	shop_cfg.set_value("shop", "using_pet", "bee")
+	shop_cfg.set_value("shop", "owned_pet", [])
+	shop_cfg.save(main.SAVE_PATH)
+	main._load()
+	ok("Unknown or unowned items fall back safely", main.equipped.skin == "plain" and main.owned.skin == ["plain", "cat"] and main.equipped.pet == "none" and main.owned.pet == ["none"])
+	main._to_menu()
+	await process_frame
+
 	# Music is synthesized on a thread and ends up playable
 	for t in 40:
 		if main.music.stream != null:

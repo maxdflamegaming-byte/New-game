@@ -22,6 +22,8 @@ var my_color := 0
 var map_id := "square"
 var mode_id := "classic"
 var wallet := 0 # coins you've saved up
+var owned := {"skin": ["plain"], "trail": ["none"], "pet": ["none"]} # bought in the shop
+var equipped := {"skin": "plain", "trail": "none", "pet": "none"} # what you're wearing
 var bests := {} # best claim per mode (the Daily's is per day)
 var games := 0
 var wins := 0
@@ -91,6 +93,7 @@ var music_btn: Button
 var best_label: Label
 var swatches: HBoxContainer
 var sound_btn: Button
+var shop: Control
 
 
 func _ready() -> void:
@@ -128,6 +131,7 @@ func _start_demo() -> void:
 	_game_id += 1
 	state = "menu"
 	_split_off()
+	world.looks = equipped
 	world.setup(my_color, "You", true, map_id)
 	view.rebuild()
 	_snap_camera()
@@ -137,6 +141,7 @@ func _start_demo() -> void:
 
 func start_game() -> void:
 	_game_id += 1
+	world.looks = equipped
 	world.setup(my_color, "You", false, map_id, mode_id)
 	view.rebuild()
 	if world.p2:
@@ -359,7 +364,10 @@ func _back() -> void:
 		"over":
 			_to_menu()
 		"menu":
-			get_tree().quit()
+			if shop.visible:
+				shop.close()
+			else:
+				get_tree().quit()
 
 
 func _notification(what: int) -> void:
@@ -910,8 +918,8 @@ func _screen() -> Control:
 
 
 func _show(screen: Control) -> void:
-	for s in [menu, pause_screen, over_screen]:
-		if s != screen:
+	for s in [menu, pause_screen, over_screen, shop]:
+		if s and s != screen:
 			s.visible = false
 	if screen:
 		screen.visible = true
@@ -1083,6 +1091,9 @@ func _build_ui() -> void:
 	_build_menu(safe)
 	_build_pause()
 	_build_over()
+	shop = preload("res://scripts/shop.gd").new()
+	ui_layer.add_child(shop)
+	shop.build(self)
 
 
 ## Puts a control in a corner of the screen, 16 units in (plus room for notches)
@@ -1142,6 +1153,12 @@ func _build_menu(safe: Vector4) -> void:
 	wallet_card.add_child(wrow)
 	menu.add_child(wallet_card)
 	_pin(wallet_card, Control.PRESET_TOP_RIGHT, safe)
+	wallet_card.grow_horizontal = Control.GROW_DIRECTION_BEGIN # bigger numbers grow to the left
+	var shop_btn := _button("SHOP", Color("#4ed8a0"), Color("#0f4a33"), Color("#2a9d6c"), 32)
+	shop_btn.custom_minimum_size = Vector2(170, 76)
+	shop_btn.pressed.connect(func(): shop.open())
+	menu.add_child(shop_btn)
+	_pin(shop_btn, Control.PRESET_TOP_LEFT, safe)
 	var col := _center_column(menu)
 	# The title: every letter a player colour, bobbing gently
 	var title := HBoxContainer.new()
@@ -1374,6 +1391,17 @@ func _load() -> void:
 	my_color = clampi(c.get_value("player", "color", 0), 0, 7)
 	wallet = c.get_value("player", "coins", 0)
 	map_id = c.get_value("player", "map", "square")
+	for kind in owned:
+		var have: Array = c.get_value("shop", "owned_" + kind, owned[kind])
+		var free: String = Cosmetics.KINDS[kind].free
+		owned[kind] = []
+		for id in have:
+			if Cosmetics.items(kind).has(id) and not owned[kind].has(id):
+				owned[kind].append(id)
+		if not owned[kind].has(free):
+			owned[kind].insert(0, free)
+		var on: String = c.get_value("shop", "using_" + kind, free)
+		equipped[kind] = on if owned[kind].has(on) else free
 	set_meta("music", c.get_value("settings", "music", true))
 	set_meta("muted", c.get_value("settings", "muted", false))
 
@@ -1387,6 +1415,9 @@ func _save() -> void:
 	c.set_value("player", "color", my_color)
 	c.set_value("player", "coins", wallet)
 	c.set_value("player", "map", map_id)
+	for kind in owned:
+		c.set_value("shop", "owned_" + kind, owned[kind])
+		c.set_value("shop", "using_" + kind, equipped[kind])
 	c.set_value("settings", "music", music.enabled)
 	c.set_value("settings", "muted", sfx.muted)
 	c.save(SAVE_PATH)

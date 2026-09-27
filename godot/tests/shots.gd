@@ -1,7 +1,8 @@
 extends SceneTree
 ## Screenshots of the real game (run with a display, e.g. under xvfb-run):
 ##   godot --path godot --rendering-driver opengl3 -s tests/shots.gd -- OUT_DIR WIDTH HEIGHT [GAMES]
-## GAMES is a comma-separated list of maps, or of mode:map pairs (e.g. boss:square,duo:round)
+## GAMES is a comma-separated list of maps, or of mode:map pairs (e.g. boss:square,duo:round).
+## "shop" takes the shop's three tabs; "looks:MAP" plays with a skin, trail effect and pet on.
 
 var main
 var out := "/tmp"
@@ -35,8 +36,21 @@ func _run() -> void:
 	await _wait(2.5)
 	await _shot("0-menu")
 	for m in maps:
+		if m == "shop":
+			main.wallet = 700
+			main.owned.skin.append("cat")
+			main.shop.open()
+			for tab in ["skin", "trail", "pet"]:
+				main.equipped = {"skin": "ninja", "trail": "stars", "pet": "dragon"}
+				main.shop.show_tab(tab)
+				await _wait(1.6)
+				await _shot("shop-" + tab)
+			main.shop.close()
+			continue
 		var parts: PackedStringArray = m.split(":")
-		main.mode_id = parts[0] if parts.size() > 1 else "classic"
+		main.mode_id = parts[0] if parts.size() > 1 and parts[0] != "looks" else "classic"
+		if parts[0] == "looks":
+			main.equipped = {"skin": "galaxy", "trail": "fire", "pet": "chick"}
 		main.map_id = parts[-1]
 		main.start_game()
 		var w = main.world

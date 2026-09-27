@@ -182,6 +182,17 @@ func _update_trails() -> void:
 			l.visible = true
 			l.points = pts
 			l.default_color = [Color(col, 0.2), Color(col, 0.65), Color(1, 1, 1, 0.35)][k]
+			# The Rainbow trail from the shop: colours flowing along the rope
+			if p.trail_fx == "rainbow" and k < 2 and not (p == w.me and danger > 0):
+				if l.gradient == null:
+					l.gradient = Gradient.new()
+					l.gradient.offsets = PackedFloat32Array([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+				var cols := PackedColorArray()
+				for i in 6:
+					cols.append(Color(Cosmetics.rainbow(-t, i / 5.0), [0.3, 0.85][k]))
+				l.gradient.colors = cols
+			elif l.gradient:
+				l.gradient = null
 
 
 # ---------- Board and land ----------

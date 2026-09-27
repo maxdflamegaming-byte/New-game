@@ -72,6 +72,7 @@ var powerups: Array = [] # {pos, kind, age}
 var coins: Array = [] # {pos, age, life}
 var freezer: Player = null # whoever has Freeze running
 var coins_picked := 0 # by you, this game
+var looks := {} # your skin, trail and pet from the shop
 
 var _setting_up := false # no spawn events while a game is being set up
 var _power_timer := 3.0
@@ -126,11 +127,15 @@ func setup(my_color: int, my_name: String, demo := false, map := "square", mode_
 	var duo: bool = mode.get("duo", false)
 	me = Player.new(1, (my_name if my_name != "" else "You") if not duo else "Player 1", COLORS[my_color], demo)
 	players.append(me)
+	me.skin = looks.get("skin", "plain")
+	me.trail_fx = looks.get("trail", "none")
+	me.pet = looks.get("pet", "none")
 	var taken := [my_color]
 	if duo:
 		var c2 := (my_color + 4) % COLORS.size()
 		taken.append(c2)
 		p2 = Player.new(2, "Player 2", COLORS[c2], false)
+		Cosmetics.dress_bot(p2)
 		players.append(p2)
 	var names := BOT_NAMES.duplicate()
 	names.shuffle()
@@ -144,6 +149,7 @@ func setup(my_color: int, my_name: String, demo := false, map := "square", mode_
 	for i in bot_count:
 		var b := Player.new(players.size(), names[i], others[i], true)
 		bots.give_personality(b, mix[i])
+		Cosmetics.dress_bot(b)
 		players.append(b)
 	if demo:
 		bots.give_personality(me, "wildcard")
@@ -764,6 +770,7 @@ func _call_guards(k: Player) -> void:
 	for name in ["Guard", "Knight"]:
 		var g := Player.new(players.size(), name, spare.pop_front() if spare.size() else Color("#8d97ab"), true)
 		bots.give_personality(g, "hunter")
+		Cosmetics.dress_bot(g)
 		g.team = g.id
 		players.append(g)
 		spawn(g)

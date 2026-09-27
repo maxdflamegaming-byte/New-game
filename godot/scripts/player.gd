@@ -34,6 +34,11 @@ var rage := false
 var hit_flash := 0.0
 var size := 1.0 # drawn size (the King is bigger)
 
+# Looks from the shop
+var skin := "plain"
+var trail_fx := "none"
+var pet := "none"
+
 # Bot brain
 var persona := "wildcard"
 var greed := 40.0

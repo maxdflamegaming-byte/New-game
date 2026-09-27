@@ -9,18 +9,15 @@ var leader := false
 var threat := false
 var frozen := false
 var label: Label
-var _body: Texture2D
-var _side: Texture2D
-var _gloss: Texture2D
 var _shadow: Texture2D
 var _crown: Texture2D
+var _emitter: CPUParticles2D # the trail effect from the shop
+var _pet_pos := Vector2.INF # where the pet is, in the world
+var _pet_face := 1.0
 
 
 func setup(player: Player, tex_px: int, font: Font, world = null) -> void:
 	p = player
-	_body = Art.tex(Art.BODY, tex_px)
-	_side = Art.tex(Art.SIDE, tex_px)
-	_gloss = Art.tex(Art.GLOSS, tex_px)
 	_shadow = Art.tex(Art.SHADOW, tex_px)
 	_crown = Art.tex(Art.CROWN, tex_px)
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
@@ -45,6 +42,9 @@ func setup(player: Player, tex_px: int, font: Font, world = null) -> void:
 	label.size = Vector2(240, 44)
 	label.position = Vector2(-120, -CELL * (1.6 + 0.65 * p.size))
 	add_child(label)
+	_emitter = Cosmetics.make_emitter(p.trail_fx, 1.0 + 0.5 * (p.size - 1.0), p.color)
+	if _emitter:
+		add_child(_emitter)
 
 
 func _process(_dt: float) -> void:
@@ -52,6 +52,18 @@ func _process(_dt: float) -> void:
 	if not visible:
 		return
 	position = p.pos * CELL
+	if _emitter:
+		_emitter.emitting = not p.trail.is_empty()
+	# The pet trots along behind, catching up when it falls back
+	if p.pet != "none":
+		var back := Vector2.from_angle(p.angle + PI)
+		var goal := position + back * CELL * 1.5 + back.orthogonal() * CELL * 0.7
+		if _pet_pos == Vector2.INF or _pet_pos.distance_to(goal) > CELL * 8:
+			_pet_pos = goal
+		var old := _pet_pos
+		_pet_pos = _pet_pos.lerp(goal, 1.0 - exp(-_dt * 6.0))
+		if absf(_pet_pos.x - old.x) > 0.3:
+			_pet_face = signf(_pet_pos.x - old.x)
 	queue_redraw()
 
 
@@ -59,6 +71,8 @@ func _draw() -> void:
 	var t := Time.get_ticks_msec() / 1000.0
 	var s := CELL * 1.4 * p.size
 	var bob := sin(t * 12.0 + p.id) * CELL * 0.05
+	if p.pet != "none" and _pet_pos != Vector2.INF:
+		Cosmetics.draw_pet(self, _pet_pos - position, CELL * 1.3, p.pet, p.color, t + p.id, _pet_face)
 	# Soft shadow on the ground
 	draw_texture_rect(_shadow, Rect2(-s * 0.75, s * 0.3, s * 1.5, s * 0.55), false)
 	# Shield: a glowing bubble that flickers as it runs out
@@ -79,26 +93,14 @@ func _draw() -> void:
 		modulate.a = 0.45 + 0.15 * sin(t * 10.0)
 	else:
 		modulate.a = 1.0
-	# Body, leaning into turns and squashing a little when it lands
-	draw_set_transform(Vector2(0, bob), p.turning * 0.14, Vector2(1 + p.squash * 0.12, 1 - p.squash * 0.12))
-	draw_texture_rect(_side, Rect2(-s / 2, -s / 2 + s * 0.17, s, s), false, p.dark)
-	draw_texture_rect(_body, Rect2(-s / 2, -s / 2, s, s), false, p.color)
-	draw_texture_rect(_gloss, Rect2(-s / 2, -s / 2, s, s), false)
+	# Body, leaning into turns and squashing a little when it lands, in its shop skin
+	var extra := []
 	if frozen:
-		draw_texture_rect(_side, Rect2(-s / 2, -s / 2, s, s), false, Color(0.63, 0.88, 1.0, 0.55))
+		extra.append(Color(0.63, 0.88, 1.0, 0.55))
 	if p.hit_flash > 0:
-		draw_texture_rect(_side, Rect2(-s / 2, -s / 2, s, s), false, Color(1, 1, 1, p.hit_flash * 0.8))
-	# Eyes look the way it's heading
-	var look := Vector2.from_angle(p.angle)
-	for side in [-1, 1]:
-		var e := Vector2(side * s * 0.2, -s * 0.05) + look * s * 0.08
-		if p.blink < 0:
-			draw_rect(Rect2(e - Vector2(s * 0.11, s * 0.025), Vector2(s * 0.22, s * 0.05)), Color("#26304a"))
-		else:
-			draw_circle(e, s * 0.14, Color.WHITE, true, -1, true)
-			draw_circle(e + look * s * 0.06, s * 0.07, Color("#26304a"), true, -1, true)
-			draw_circle(e + look * s * 0.06 + Vector2(-s * 0.025, -s * 0.03), s * 0.025, Color.WHITE, true, -1, true)
-	draw_set_transform(Vector2.ZERO)
+		extra.append(Color(1, 1, 1, p.hit_flash * 0.8))
+	Cosmetics.draw_square(self, Vector2(0, bob), s, p.color, p.dark, p.skin, Vector2.from_angle(p.angle), t,
+			p.turning * 0.14, p.squash, p.blink < 0, extra)
 	if leader or p.is_boss:
 		var w := CELL * (1.0 if not p.is_boss else 1.4)
 		draw_texture_rect(_crown, Rect2(-w / 2, -CELL * (2.3 + 0.6 * p.size) + sin(t * 4.0) * 2.0, w, w), false)
