@@ -321,4 +321,7 @@ const T := {
 	"#%d of %d": "#%d de %d",
 	"LANGUAGE": "IDIOMA",
 	"Auto": "Automático",
+	"Choose your language": "Elige tu idioma",
+	"Then a quick tutorial will show you how to play.": "Después, un tutorial rápido te enseñará a jugar.",
+	"Let's go!": "¡Vamos!",
 }

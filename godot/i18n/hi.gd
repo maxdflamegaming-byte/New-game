@@ -329,4 +329,7 @@ const T := {
 	"#%d of %d": "#%d (कुल %d)",
 	"LANGUAGE": "भाषा",
 	"Auto": "ऑटो",
+	"Choose your language": "अपनी भाषा चुनें",
+	"Then a quick tutorial will show you how to play.": "फिर एक छोटा ट्यूटोरियल आपको खेलना सिखाएगा।",
+	"Let's go!": "चलो शुरू करें!",
 }

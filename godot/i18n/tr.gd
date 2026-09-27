@@ -322,4 +322,7 @@ const T := {
 	"#%d of %d": "#%d / %d",
 	"LANGUAGE": "DİL",
 	"Auto": "Otomatik",
+	"Choose your language": "Dilini seç",
+	"Then a quick tutorial will show you how to play.": "Ardından kısa bir eğitim sana nasıl oynanacağını gösterecek.",
+	"Let's go!": "Hadi başlayalım!",
 }

@@ -127,6 +127,10 @@ var over_xp: Label
 var over_xp_bar: Control
 var again_btn: Button
 var ask_box: Control
+var welcome: Control # the very first launch: pick a language, then the tutorial
+var welcomed := false
+var _welcome_pick := ""
+var _welcome_buttons := {}
 var tut_card: PanelContainer
 var tut_label: Label
 var toast_row: HBoxContainer
@@ -173,6 +177,8 @@ func _ready() -> void:
 	world.blinked.connect(_on_blinked)
 	_build_ui()
 	_start_demo()
+	if not welcomed:
+		_open_welcome()
 
 
 # ---------- Game flow ----------
@@ -542,6 +548,9 @@ func _back() -> void:
 		"over":
 			_to_menu()
 		"menu":
+			if welcome.visible:
+				get_tree().quit()
+				return
 			if ask_box.visible:
 				ask_box.visible = false
 				return
@@ -954,6 +963,96 @@ func _build_ask() -> void:
 	no.custom_minimum_size = Vector2(0, 80)
 	no.pressed.connect(func(): start_game())
 	col.add_child(no)
+
+
+# ---------- First launch ----------
+
+## The very first time the game opens: choose a language, then straight into the tutorial
+func _build_welcome() -> void:
+	welcome = Control.new()
+	welcome.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	welcome.visible = false
+	ui_layer.add_child(welcome)
+	_dim(welcome, Color(0.11, 0.14, 0.26, 0.55), Color(0.08, 0.1, 0.2, 0.9))
+	var col := _center_column(welcome)
+	col.add_theme_constant_override("separation", 22)
+	# The title, a colour per letter like the menu
+	var title := HBoxContainer.new()
+	title.alignment = BoxContainer.ALIGNMENT_CENTER
+	title.add_theme_constant_override("separation", 2)
+	var word := "COLOR CLAIM"
+	for i in word.length():
+		var ch := word[i]
+		var l := _label(ch, 92, world.COLORS[i % world.COLORS.size()] if ch != " " else Color.WHITE, 20, NAVY)
+		l.custom_minimum_size.x = 22 if ch == " " else 0
+		title.add_child(l)
+	col.add_child(title)
+	var c := _card(Color(1, 1, 1, 0.97))
+	col.add_child(c)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 16)
+	c.add_child(box)
+	box.add_child(_label("Choose your language", 40, INK))
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 12)
+	grid.add_theme_constant_override("v_separation", 12)
+	box.add_child(grid)
+	for code in I18n.LANGS:
+		if code == "":
+			continue
+		var b := Button.new()
+		b.text = I18n.LANGS[code]
+		b.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED # each language in its own words
+		b.focus_mode = Control.FOCUS_NONE
+		b.custom_minimum_size = Vector2(270, 82)
+		b.add_theme_font_override("font", font)
+		b.add_theme_font_size_override("font_size", 30)
+		b.pressed.connect(func():
+			sfx.play("tap")
+			_pick_welcome_language(code))
+		grid.add_child(b)
+		_welcome_buttons[code] = b
+	var t := _label("Then a quick tutorial will show you how to play.", 26, MUTED, 0, INK, font_med)
+	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	t.custom_minimum_size.x = 552
+	box.add_child(t)
+	var go := _button("Let's go!", YELLOW, Color("#5a3200"), Color("#d27a06"), 44)
+	go.custom_minimum_size = Vector2(0, 104)
+	go.pressed.connect(_finish_welcome)
+	box.add_child(go)
+
+
+func _open_welcome() -> void:
+	_pick_welcome_language(I18n.current()) # the phone's language, if the game has it
+	welcome.visible = true
+	welcome.modulate.a = 0.0
+	create_tween().tween_property(welcome, "modulate:a", 1.0, 0.35)
+	menu.visible = false
+
+
+## Tapping a language switches to it at once, so the screen reads in that language
+func _pick_welcome_language(code: String) -> void:
+	_welcome_pick = code
+	I18n.lang = code
+	I18n.apply()
+	for k in _welcome_buttons:
+		var on: bool = k == code
+		var st := _style(YELLOW if on else Color(0.12, 0.15, 0.27, 0.07), 20, 6 if on else 0, Color("#d27a06"))
+		st.content_margin_top = 8
+		for s in ["normal", "hover", "pressed"]:
+			_welcome_buttons[k].add_theme_stylebox_override(s, st)
+		for s in ["font_color", "font_hover_color", "font_pressed_color"]:
+			_welcome_buttons[k].add_theme_color_override(s, Color("#5a3200") if on else INK)
+
+
+func _finish_welcome() -> void:
+	welcomed = true
+	I18n.lang = _welcome_pick
+	I18n.apply()
+	_save()
+	welcome.visible = false
+	start_tutorial()
 
 
 # ---------- Controls ----------
@@ -1633,6 +1732,7 @@ func _build_ui() -> void:
 	ui_layer.add_child(settings_screen)
 	settings_screen.build(self)
 	_build_ask()
+	_build_welcome()
 
 
 ## Puts a control in a corner of the screen, 16 units in (plus room for notches)
@@ -2150,6 +2250,8 @@ func _load() -> void:
 	Gfx.show_fps = c.get_value("settings", "show_fps", false)
 	big_stick = c.get_value("settings", "big_stick", false)
 	controls = c.get_value("settings", "controls", "stick")
+	# Saves from before the welcome screen: those players have already found their way
+	welcomed = c.get_value("player", "welcomed", games > 0 or prog.tutorial_done)
 	I18n.lang = c.get_value("settings", "lang", "")
 	Patterns.on = c.get_value("settings", "colorblind", false)
 	set_meta("music", c.get_value("settings", "music", true))
@@ -2182,6 +2284,7 @@ func _save() -> void:
 	c.set_value("settings", "show_fps", Gfx.show_fps)
 	c.set_value("settings", "big_stick", big_stick)
 	c.set_value("settings", "controls", controls)
+	c.set_value("player", "welcomed", welcomed)
 	c.set_value("settings", "lang", I18n.lang)
 	c.set_value("settings", "colorblind", Patterns.on)
 	c.set_value("settings", "music", music.enabled)

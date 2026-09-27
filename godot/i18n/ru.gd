@@ -329,4 +329,7 @@ const T := {
 	"#%d of %d": "#%d из %d",
 	"LANGUAGE": "ЯЗЫК",
 	"Auto": "Авто",
+	"Choose your language": "Выберите язык",
+	"Then a quick tutorial will show you how to play.": "Затем короткое обучение покажет, как играть.",
+	"Let's go!": "Поехали!",
 }

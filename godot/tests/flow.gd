@@ -36,6 +36,10 @@ func _run() -> void:
 	main.prog.tutorial_done = true # skip the first-game tutorial offer (tested on its own below)
 	I18n.lang = "en" # the checks below compare English text
 	I18n.apply()
+	var first_launch: bool = main.welcome.visible
+	main.welcomed = true
+	main.welcome.visible = false
+	main.menu.visible = true
 	ok("Starts on the menu with a live bots-only game", main.state == "menu" and w.me.is_bot)
 
 	# Power-ups
@@ -514,6 +518,26 @@ func _run() -> void:
 	main.prog = hint_prog
 	main._to_menu()
 	await process_frame
+
+	# The very first launch: pick a language, then straight into the tutorial
+	var welcome_prog: Progress = main.prog
+	main.prog = Progress.new()
+	main.welcomed = false
+	main._open_welcome()
+	ok("A fresh install opens on the language screen", main.welcome.visible and not main.menu.visible)
+	main._pick_welcome_language("es")
+	ok("Tapping a language switches the game to it", main.tr("PLAY") == "JUGAR" and I18n.lang == "es")
+	main._finish_welcome()
+	await process_frame
+	ok("Let's go! starts the tutorial", not main.welcome.visible and main.play_mode == "tutorial" and main.state != "menu")
+	main._load()
+	ok("The language screen only shows once", main.welcomed and I18n.lang == "es")
+	main.prog = welcome_prog
+	I18n.lang = "en"
+	I18n.apply()
+	main._to_menu()
+	await process_frame
+	ok("On a fresh install (as on GitHub), the language screen is the first thing you see", first_launch or OS.get_environment("CI") == "")
 
 	# Languages
 	var expect := {"es": "JUGAR", "pt": "JOGAR", "hi": "खेलें", "id": "MAIN", "ru": "ИГРАТЬ", "tr": "OYNA"}

@@ -313,4 +313,7 @@ const T := {
 	"#%d of %d": "#%d dari %d",
 	"LANGUAGE": "BAHASA",
 	"Auto": "Otomatis",
+	"Choose your language": "Pilih bahasamu",
+	"Then a quick tutorial will show you how to play.": "Lalu tutorial singkat akan mengajarimu cara bermain.",
+	"Let's go!": "Ayo mulai!",
 }
