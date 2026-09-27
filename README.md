@@ -7,6 +7,8 @@ Sound effects are generated in code (`shared/sfx.js`), so there are no audio fil
 
 ### 🟦 Color Claim (`color-claim/`)
 A territory game inspired by Paper.io.
+
+**Layout:** a mobile-first home screen that also fits tablets and computers. A top bar holds your profile (live avatar, name and level), rank, coins and settings. The home screen shows your animated character and pet, a game-setup card with swipeable mode cards, map chips and bot difficulty, and a big Play button. A bottom dock opens the Shop, Missions, Season pass, Clan and Profile. Every other screen has a header with a back button and your coins. Fonts: Fredoka for titles and buttons, Nunito for text.
 - Leave your land to draw a trail, then loop back to claim everything you enclosed.
 - Cut another player's trail to knock them out. If anyone touches *your* trail, or you cross it yourself, you're out.
 - A 3-2-1 countdown starts each game, and everyone gets a 3-second shield after spawning.

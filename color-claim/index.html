@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <title>Color Claim</title>
   <meta name="description" content="Draw loops to claim land, cut rival trails and take over the map.">
   <meta name="theme-color" content="#4f8cff">
@@ -11,6 +11,9 @@
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon-192.png">
   <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=Nunito:wght@500;700;800;900&display=swap">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -78,52 +81,93 @@
   </div>
 
   <div id="menu" class="screen show">
-    <div class="wallet"><span class="coin"></span> <span class="coin-count">0</span></div>
-    <div id="level-badge" class="level-badge"><b id="menu-level">Lv 1</b><span class="xpbar"><span id="menu-xp"></span></span></div>
-    <h1>Color Claim</h1>
-    <p>Loop back to your land to claim everything inside. Cut other trails, and protect yours!</p>
-    <div class="custom">
-      <input id="name-input" maxlength="12" placeholder="Your name" autocomplete="off" spellcheck="false">
+    <header class="topbar">
+      <button id="profile-chip" class="profile-chip" data-open="profile" aria-label="Your profile">
+        <canvas id="chip-avatar" width="88" height="88"></canvas>
+        <span class="chip-text">
+          <b id="chip-name">Player</b>
+          <span id="level-badge" class="level-badge"><b id="menu-level">Lv 1</b><span class="xpbar"><span id="menu-xp"></span></span></span>
+        </span>
+      </button>
+      <div class="topbar-right">
+        <button class="nav-btn rank-nav" data-open="rank"><span id="rank-nav-icon"></span><span id="rank-nav-label">Rank</span></button>
+        <button class="wallet" data-open="locker" aria-label="Coins, open the shop"><span class="coin"></span> <span class="coin-count">0</span></button>
+        <button class="nav-btn gear-btn" data-open="settings" aria-label="Settings" data-icon="gear"></button>
+      </div>
+    </header>
+
+    <main class="home">
+      <section class="home-hero">
+        <h1>Color Claim</h1>
+        <p class="tagline">Loop back to your land to claim everything inside. Cut other trails, and protect yours!</p>
+        <button class="hero-stage" data-open="profile" aria-label="Your character">
+          <canvas id="hero" width="360" height="260"></canvas>
+        </button>
+        <p id="streak-line" class="streak-line"></p>
+      </section>
+
+      <section class="home-play">
+        <div class="setup-card">
+          <div class="setup-label"><span>Game mode</span></div>
+          <div class="seg mode-row" id="modes" aria-label="Game mode"></div>
+          <div class="setup-label"><span>Map</span></div>
+          <div class="seg chip-row" id="maps" aria-label="Map"></div>
+          <div class="diff-row"><span class="setup-label inline">Bots</span><div class="seg" id="diffs" aria-label="Bot difficulty"></div></div>
+          <div class="seg hidden" id="bosses" aria-label="Boss"></div>
+          <p id="mode-desc" class="small"></p>
+        </div>
+        <div id="event-banner" class="event-banner"></div>
+        <button id="play-btn">Play</button>
+        <p class="small best-line"><b id="menu-best"></b></p>
+        <p class="small keys">Steer: mouse, WASD / arrows, or drag on touch screens &middot; 1-6 emotes &middot; P pause &middot; M sound &middot; N music</p>
+      </section>
+    </main>
+
+    <nav class="dock" aria-label="Main menu">
+      <button class="dock-btn nav-btn" data-open="locker" data-icon="shop"><span>Shop</span></button>
+      <button class="dock-btn nav-btn" data-open="missions" data-icon="missions"><span>Missions</span><span id="mission-badge" class="badge">0/3</span></button>
+      <button class="dock-btn nav-btn dock-pass" data-open="season" data-icon="pass"><span>Pass</span></button>
+      <button class="dock-btn nav-btn clan-nav" data-open="clan" id="clan-nav">Clan</button>
+      <button class="dock-btn nav-btn" data-open="profile" data-icon="profile"><span>Profile</span></button>
+    </nav>
+  </div>
+
+  <div id="profile" class="screen">
+    <h2>Profile</h2>
+    <div class="profile-card">
+      <canvas id="profile-avatar" width="240" height="240"></canvas>
+      <div class="profile-info">
+        <label class="field-label" for="name-input">Name</label>
+        <input id="name-input" maxlength="12" placeholder="Your name" autocomplete="off" spellcheck="false">
+        <div id="profile-tags" class="profile-tags"></div>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Colour</h3>
       <div id="swatches"></div>
     </div>
-    <div class="pickers">
-      <div class="seg" id="modes" aria-label="Game mode"></div>
-      <div class="seg" id="maps" aria-label="Map"></div>
-      <div class="diff-row"><span class="small">Bots</span><div class="seg" id="diffs" aria-label="Bot difficulty"></div></div>
-      <div class="seg hidden" id="bosses" aria-label="Boss"></div>
-      <p id="mode-desc" class="small"></p>
+    <div id="profile-stats" class="profile-stats"></div>
+    <div class="tile-grid">
+      <button class="tile nav-btn" data-open="trophies" data-icon="trophy"><span>Trophies</span></button>
+      <button class="tile nav-btn" data-open="stats" data-icon="stats"><span>Stats</span></button>
+      <button class="tile nav-btn" data-open="rank" data-icon="rank"><span>Rank</span></button>
+      <button class="tile nav-btn" data-open="challenge" data-icon="challenge"><span>Challenge</span></button>
+      <button class="tile nav-btn" data-open="editor" data-icon="editor"><span>Map editor</span></button>
+      <button id="howto-open" class="tile nav-btn" data-icon="help"><span>How to play</span></button>
+      <button id="install-btn" class="tile nav-btn install hidden" data-icon="install"><span>Install app</span></button>
     </div>
-    <div id="event-banner" class="event-banner"></div>
-    <button id="play-btn">Play</button>
-    <p class="small"><b id="menu-best"></b></p>
-    <p id="streak-line" class="streak-line"></p>
-    <nav class="menu-nav">
-      <button class="nav-btn rank-nav" data-open="rank"><span id="rank-nav-icon"></span><span id="rank-nav-label">Rank</span></button>
-      <button class="nav-btn clan-nav" data-open="clan" id="clan-nav">Clan</button>
-      <button class="nav-btn" data-open="missions">Missions <span id="mission-badge" class="badge">0/3</span></button>
-      <button class="nav-btn" data-open="challenge">Challenge</button>
-      <button class="nav-btn" data-open="season">Season</button>
-      <button class="nav-btn" data-open="locker">Locker</button>
-      <button class="nav-btn" data-open="upgrades">Upgrades</button>
-      <button class="nav-btn" data-open="trophies">Trophies</button>
-      <button class="nav-btn" data-open="stats">Stats</button>
-      <button class="nav-btn" data-open="editor">Map editor</button>
-      <button class="nav-btn" data-open="settings">Settings</button>
-      <button id="howto-open" class="nav-btn">How to play</button>
-      <button id="install-btn" class="nav-btn install hidden">Install app</button>
-    </nav>
-    <p class="small keys">Steer: mouse, WASD / arrows, or drag on touch screens &middot; 1-6 emotes &middot; P pause &middot; M sound &middot; N music</p>
+    <button class="secondary" data-back>Back</button>
   </div>
 
   <div id="locker" class="screen">
-    <div class="wallet"><span class="coin"></span> <span class="coin-count">0</span></div>
-    <h2>Locker</h2>
+    <h2>Shop</h2>
     <p class="small">Earn coins every game. Unlock skins by playing, or buy them. Trail effects puff out behind you, and pets follow you around.</p>
     <div class="seg">
       <button class="seg-btn tab" data-tab="skins">Skins</button>
       <button class="seg-btn tab" data-tab="trails">Trail effects</button>
       <button class="seg-btn tab" data-tab="pets">Pets</button>
     </div>
+    <button class="nav-btn shop-upgrades" data-open="upgrades" data-icon="upgrade"><span>Power-up upgrades</span></button>
     <div id="locker-items"></div>
     <button class="secondary" data-back>Back</button>
   </div>
@@ -180,8 +224,7 @@
   </div>
 
   <div id="upgrades" class="screen">
-    <div class="wallet"><span class="coin"></span> <span class="coin-count">0</span></div>
-    <h2>Power-up upgrades</h2>
+    <h2>Upgrades</h2>
     <p class="small">Each level makes a power-up last 20% longer (the Paint Bomb gets bigger instead). Upgrades work in every mode except 2 Players.</p>
     <ul id="upgrade-list" class="upgrade-list"></ul>
     <button class="secondary" data-back>Back</button>
@@ -261,52 +304,57 @@
   </div>
 
   <div id="paused" class="screen">
-    <h2>Paused</h2>
-    <button id="resume-btn">Resume</button>
-    <button id="photo-btn" class="secondary">Photo mode</button>
+    <div class="result-card pause-card">
+      <h2>Paused</h2>
+      <button id="resume-btn">Resume</button>
+      <button id="photo-btn" class="secondary">Photo mode</button>
+    </div>
   </div>
 
   <div id="over" class="screen">
-    <h2 id="over-title">Game Over</h2>
-    <p id="over-reason"></p>
-    <p id="over-stats"></p>
-    <p id="over-best" class="small"></p>
-    <p id="challenge-result" class="challenge-result hidden"></p>
-    <p id="over-coins" class="coins-earned"></p>
-    <p id="over-xp" class="xp-earned"></p>
-    <div id="over-rank" class="rank-earned hidden"></div>
-    <p id="over-streak" class="streak-earned hidden"></p>
-    <p id="over-clan" class="clan-earned hidden"></p>
-    <ul id="over-missions" class="hidden"></ul>
-    <ul id="over-season" class="hidden"></ul>
-    <p id="over-unlock" class="unlock hidden"></p>
-    <ul id="over-ach" class="hidden"></ul>
-    <div id="challenge-share" class="hidden">
-      <button id="challenge-make" class="nav-btn">Challenge a friend</button>
-      <div id="challenge-code" class="hidden code-box">
-        <input id="challenge-code-text" class="code-input" readonly>
-        <button id="challenge-copy" class="nav-btn">Copy</button>
+    <div class="result-card">
+      <h2 id="over-title">Game Over</h2>
+      <p id="over-reason"></p>
+      <p id="over-stats"></p>
+      <p id="over-best" class="small"></p>
+      <p id="challenge-result" class="challenge-result hidden"></p>
+      <p id="over-coins" class="coins-earned"></p>
+      <p id="over-xp" class="xp-earned"></p>
+      <div id="over-rank" class="rank-earned hidden"></div>
+      <p id="over-streak" class="streak-earned hidden"></p>
+      <p id="over-clan" class="clan-earned hidden"></p>
+      <ul id="over-missions" class="hidden"></ul>
+      <ul id="over-season" class="hidden"></ul>
+      <p id="over-unlock" class="unlock hidden"></p>
+      <ul id="over-ach" class="hidden"></ul>
+      <div id="challenge-share" class="hidden">
+        <button id="challenge-make" class="nav-btn">Challenge a friend</button>
+        <div id="challenge-code" class="hidden code-box">
+          <input id="challenge-code-text" class="code-input" readonly>
+          <button id="challenge-copy" class="nav-btn">Copy</button>
+        </div>
       </div>
-    </div>
-    <div class="row">
-      <button id="again-btn">Play again</button>
-      <button id="replay-btn" class="secondary">Watch replay</button>
-      <button id="menu-btn" class="secondary">Menu</button>
-    </div>
-    <div id="gif-box" class="gif-box hidden">
-      <div class="code-box">
-        <button id="gif-btn" class="nav-btn">Make a GIF</button>
-        <a id="gif-save" class="nav-btn hidden" download="color-claim-replay.gif">Download GIF</a>
-        <button id="gif-share" class="nav-btn hidden">Share</button>
+      <div class="row">
+        <button id="again-btn">Play again</button>
+        <button id="replay-btn" class="secondary">Watch replay</button>
+        <button id="menu-btn" class="secondary">Menu</button>
       </div>
-      <p id="gif-status" class="small"></p>
-      <img id="gif-img" class="gif-img hidden" alt="Replay GIF">
+      <div id="gif-box" class="gif-box hidden">
+        <div class="code-box">
+          <button id="gif-btn" class="nav-btn">Make a GIF</button>
+          <a id="gif-save" class="nav-btn hidden" download="color-claim-replay.gif">Download GIF</a>
+          <button id="gif-share" class="nav-btn hidden">Share</button>
+        </div>
+        <p id="gif-status" class="small"></p>
+        <img id="gif-img" class="gif-img hidden" alt="Replay GIF">
+      </div>
     </div>
   </div>
 
   <script src="../shared/sfx.js"></script>
   <script src="../shared/icons.js"></script>
   <script src="../shared/music.js"></script>
+  <script src="ui.js"></script>
   <script src="gif.js"></script>
   <script src="game.js"></script>
   <script src="progress.js"></script>

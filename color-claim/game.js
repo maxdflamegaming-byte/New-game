@@ -1664,11 +1664,10 @@ function buildSwatches() {
       myColor = i;
       save('color-claim-color', i);
       buildSwatches();
+      if ($('profile').classList.contains('show')) drawAvatar($('profile-avatar'));
     });
     box.appendChild(b);
   });
-  $('play-btn').style.background = COLORS[myColor];
-  $('play-btn').style.boxShadow = `0 5px 0 ${shade(COLORS[myColor], -0.3)}`;
   refreshLocker();
 }
 
@@ -1679,8 +1678,9 @@ function buildPickers() {
     for (const [id, item] of Object.entries(items)) {
       if (item.hidden) continue;
       const b = document.createElement('button');
-      b.className = 'seg-btn' + (id === current ? ' picked' : '');
-      b.textContent = item.name;
+      b.className = 'seg-btn' + (id === current ? ' picked' : '') + (boxId === 'modes' ? ' mode-card' : '');
+      if (boxId === 'modes') b.innerHTML = `${uiIcon(id, 'mode-icon')}<span>${item.name}</span>`;
+      else b.textContent = item.name;
       b.disabled = !!disabled;
       b.addEventListener('click', () => onPick(id));
       box.appendChild(b);
@@ -1688,6 +1688,8 @@ function buildPickers() {
   };
   const daily = !!fixedMap(myMode);
   seg('modes', MODES, myMode, id => { myMode = id; save('color-claim-mode', id); buildPickers(); });
+  const picked = $('modes').querySelector('.picked');
+  if (picked && picked.scrollIntoView && $('menu').classList.contains('show')) picked.scrollIntoView({ block: 'nearest', inline: 'center' });
   seg('diffs', DIFFICULTY, myDiff, id => { myDiff = id; save('color-claim-diff', id); buildPickers(); });
   const bossBox = $('bosses');
   bossBox.classList.toggle('hidden', !MODES[myMode].boss);
@@ -1884,7 +1886,7 @@ function endGame(won, reason) {
     if (streakDay.pet) toast('7-day streak! Star Sprite pet unlocked in the Locker');
   }
   const fresh = SKINS.filter(sk => isUnlocked(sk) && !before.includes(sk));
-  $('over-unlock').textContent = fresh.length ? `🎁 New skin unlocked: ${fresh.map(sk => sk.name).join(', ')}! Find it in the Locker.` : '';
+  $('over-unlock').textContent = fresh.length ? `🎁 New skin unlocked: ${fresh.map(sk => sk.name).join(', ')}! Find it in the Shop.` : '';
   $('over-unlock').classList.toggle('hidden', !fresh.length);
   if (fresh.length || trophies.length) Sfx.play('trophy');
   const bonus = trophies.length * ACH_REWARD;
@@ -2300,7 +2302,7 @@ function drawGhost(x0, y0) {
   drawBody(ctx, { color: me.color, dark: me.dark, skin: me.skin, blink: 1, hueOff: me.hueOff }, sz, time);
   ctx.restore();
   ctx.globalAlpha = 0.7;
-  ctx.font = `bold ${Math.round(CELL * 0.7)}px system-ui, sans-serif`;
+  ctx.font = `bold ${Math.round(CELL * 0.7)}px Fredoka, system-ui, sans-serif`;
   ctx.textAlign = 'center';
   ctx.fillStyle = 'rgba(38, 48, 74, 0.9)';
   ctx.fillText(`Best run · ${g.pct.toFixed(1)}%`, gx, gy - sz * 0.85);
@@ -2372,7 +2374,7 @@ function drawEmote(g, id, x, y, r) {
     dot(-0.42, -0.42, 0.14, 'rgba(255, 255, 255, 0.7)');
   } else if (id === 'gg') {
     g.fillStyle = '#4f8cff';
-    g.font = `900 ${Math.round(r * 1.2)}px system-ui, sans-serif`;
+    g.font = `900 ${Math.round(r * 1.2)}px Fredoka, system-ui, sans-serif`;
     g.textAlign = 'center';
     g.textBaseline = 'middle';
     g.fillText('GG', 0, r * 0.08);
@@ -3353,7 +3355,7 @@ function drawHead(p, x0, y0, leaderId) {
   }
 
   ctx.textAlign = 'center';
-  ctx.font = `bold ${Math.round(CELL * 0.8 * TXT())}px system-ui, sans-serif`;
+  ctx.font = `bold ${Math.round(CELL * 0.8 * TXT())}px Fredoka, system-ui, sans-serif`;
   ctx.lineWidth = 3;
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
   ctx.strokeText((p.clanTag ? `[${p.clanTag}] ` : '') + p.name, hx, hy - s * 0.85 + bob);
@@ -3365,7 +3367,7 @@ function drawHead(p, x0, y0, leaderId) {
   // Under the square: a bot's personality, or the badge you're wearing
   const tag = p.isBot && !p.isBoss && p.persona ? PERSONALITIES[p.persona].name : p === me ? badgeName() : '';
   if (tag) {
-    ctx.font = `bold ${Math.round(CELL * 0.6 * TXT())}px system-ui, sans-serif`;
+    ctx.font = `bold ${Math.round(CELL * 0.6 * TXT())}px Fredoka, system-ui, sans-serif`;
     const tw = ctx.measureText(tag).width + CELL * 0.8, ty = hy + s * 0.95 + bob;
     ctx.fillStyle = p === me ? '#ffc93c' : 'rgba(255, 255, 255, 0.8)';
     ctx.beginPath();
@@ -3385,6 +3387,7 @@ function draw(dt) {
 
   if (!me) {
     drawMenuBackdrop(dt);
+    if (typeof drawHero === 'function') drawHero();
     return;
   }
 
@@ -3409,7 +3412,7 @@ function draw(dt) {
     H = vh;
     drawWorld(focus, c);
     // Player label and score at the bottom of each view
-    ctx.font = 'bold 15px system-ui, sans-serif';
+    ctx.font = 'bold 15px Fredoka, system-ui, sans-serif';
     ctx.textAlign = 'center';
     const label = `${focus.name} · ${pct(focus).toFixed(1)}%${focus.alive ? '' : ' · out'}`;
     const lw = ctx.measureText(label).width + 20;
@@ -3631,7 +3634,7 @@ function drawWorld(focus, c) {
   for (const f of floats) {
     const pop = 1 + Math.max(0, f.life - 1) * 3;
     ctx.globalAlpha = Math.min(1, f.life * 2);
-    ctx.font = `900 ${Math.round(CELL * (f.big ? 1.8 : 1.3) * pop * TXT())}px system-ui, sans-serif`;
+    ctx.font = `900 ${Math.round(CELL * (f.big ? 1.8 : 1.3) * pop * TXT())}px Fredoka, system-ui, sans-serif`;
     ctx.lineWidth = 4;
     ctx.strokeStyle = f.gold ? '#9a6a00' : me.dark;
     ctx.strokeText(f.text, f.x * CELL - x0, f.y * CELL - y0);
@@ -3670,7 +3673,7 @@ function drawWorld(focus, c) {
       ctx.arc(bx, by, CELL * 0.6 * pulse, 0, TAU);
       ctx.fill();
       ctx.fillStyle = '#fff';
-      ctx.font = `900 ${Math.round(CELL * 0.9)}px system-ui, sans-serif`;
+      ctx.font = `900 ${Math.round(CELL * 0.9)}px Fredoka, system-ui, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText('!', bx, by + 1);
@@ -3731,7 +3734,7 @@ function drawWorld(focus, c) {
     ctx.translate(W / 2, H * 0.38);
     ctx.scale(1 + frac * 0.5, 1 + frac * 0.5);
     ctx.globalAlpha = countdown > 0 ? 1 : Math.min(1, goFlash * 2);
-    ctx.font = `900 ${Math.round(Math.min(W, H) * 0.16)}px system-ui, sans-serif`;
+    ctx.font = `900 ${Math.round(Math.min(W, H) * 0.16)}px Fredoka, system-ui, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.lineWidth = 8;
@@ -4206,12 +4209,12 @@ function renderGifFrame(g, k) {
   g.fillStyle = 'rgba(38, 48, 74, 0.85)';
   g.fillRect(0, GIF_SIZE - 22, GIF_SIZE, 22);
   g.fillStyle = '#fff';
-  g.font = '900 12px system-ui, sans-serif';
+  g.font = '900 12px Fredoka, system-ui, sans-serif';
   g.textBaseline = 'middle';
   g.textAlign = 'left';
   g.fillText('COLOR CLAIM', 8, GIF_SIZE - 11);
   g.textAlign = 'right';
-  g.font = 'bold 12px system-ui, sans-serif';
+  g.font = 'bold 12px Fredoka, system-ui, sans-serif';
   g.fillText(`${me.name} · best ${peakPct.toFixed(1)}%`, GIF_SIZE - 8, GIF_SIZE - 11);
   g.textBaseline = 'alphabetic';
   return g.getImageData(0, 0, GIF_SIZE, GIF_SIZE).data;
@@ -4379,11 +4382,11 @@ function snapPhoto() {
   }
   if (photo.frame) {
     g.fillStyle = '#26304a';
-    g.font = '900 30px system-ui, sans-serif';
+    g.font = '900 30px Fredoka, system-ui, sans-serif';
     g.textBaseline = 'middle';
     g.fillText('Color Claim', pad, out.height - foot / 2);
     g.textAlign = 'right';
-    g.font = 'bold 22px system-ui, sans-serif';
+    g.font = 'bold 22px Fredoka, system-ui, sans-serif';
     g.fillStyle = '#6b7690';
     g.fillText(`${me.name} · ${pct(me).toFixed(1)}% · ${new Date().toLocaleDateString()}`, out.width - pad, out.height - foot / 2);
   }

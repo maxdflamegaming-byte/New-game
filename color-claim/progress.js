@@ -473,7 +473,7 @@ function createClan(name, tag, color, emblem) {
 }
 
 function renderClanNav() {
-  $('clan-nav').innerHTML = clan ? `${clanEmblem(clan.emblem, COLORS[clan.color], 18)} [${escapeHtml(clan.tag)}]` : 'Clan';
+  $('clan-nav').innerHTML = clan ? `${clanEmblem(clan.emblem, COLORS[clan.color], 24)}<span>[${escapeHtml(clan.tag)}]</span>` : `${uiIcon('clan')}<span>Clan</span>`;
 }
 
 let clanForm = null; // { name, tag, color, emblem } while creating or editing
@@ -568,6 +568,80 @@ function buildUpgrades() {
     box.appendChild(li);
   }
 }
+
+// ---------- Home screen hero and profile ----------
+const myLook = () => ({ color: COLORS[myColor], dark: shade(COLORS[myColor], -0.28), skin: mySkin, blink: 1, hueOff: 200 });
+
+// Your character on a glowing stand, bobbing and blinking, with your pet beside you
+function drawHero() {
+  if (!$('menu').classList.contains('show')) return;
+  const t = performance.now() / 1000, c = $('hero'), g = c.getContext('2d');
+  const w = c.width, h = c.height, look = myLook();
+  look.blink = (t % 3.2) < 0.12 ? -1 : 1;
+  g.clearRect(0, 0, w, h);
+  const glow = g.createRadialGradient(w / 2, h * 0.8, 10, w / 2, h * 0.8, w * 0.42);
+  glow.addColorStop(0, alpha(look.color, 0.45));
+  glow.addColorStop(1, alpha(look.color, 0));
+  g.fillStyle = glow;
+  g.fillRect(0, 0, w, h);
+  // The stand
+  g.fillStyle = shade(look.color, -0.35);
+  g.beginPath();
+  g.ellipse(w / 2, h * 0.84, w * 0.26, h * 0.08, 0, 0, TAU);
+  g.fill();
+  g.fillStyle = 'rgba(255, 255, 255, 0.9)';
+  g.beginPath();
+  g.ellipse(w / 2, h * 0.8, w * 0.26, h * 0.08, 0, 0, TAU);
+  g.fill();
+  const bob = Math.sin(t * 3) * 6, s = h * 0.42;
+  g.fillStyle = 'rgba(38, 48, 74, 0.18)';
+  g.beginPath();
+  g.ellipse(w / 2, h * 0.79, s * 0.5 - bob * 0.8, s * 0.12, 0, 0, TAU);
+  g.fill();
+  g.save();
+  g.translate(w / 2, h * 0.52 + bob);
+  g.rotate(-Math.PI / 2 + Math.sin(t * 1.3) * 0.12);
+  drawBody(g, look, s, t);
+  g.restore();
+  if (myPet !== 'none') drawPet(g, myPet, w / 2 + s * 0.95, h * 0.68 + Math.sin(t * 3 + 1) * 3, s * 0.5, t, -1);
+  // Little avatar in the top bar (redrawn a few times a second)
+  if (!drawHero.next || t > drawHero.next) {
+    drawHero.next = t + 0.25;
+    drawAvatar($('chip-avatar'), t);
+    const name = myName || 'Player';
+    if ($('chip-name').textContent !== name) $('chip-name').textContent = name;
+  }
+}
+
+function drawAvatar(c, t = 0) {
+  const g = c.getContext('2d'), w = c.width, look = myLook();
+  g.clearRect(0, 0, w, w);
+  g.fillStyle = alpha(look.color, 0.18);
+  g.beginPath();
+  g.arc(w / 2, w / 2, w / 2, 0, TAU);
+  g.fill();
+  g.save();
+  g.translate(w / 2, w * 0.47);
+  g.rotate(-Math.PI / 2);
+  drawBody(g, look, w * 0.52, t);
+  g.restore();
+}
+
+function buildProfile() {
+  drawAvatar($('profile-avatar'));
+  buildSwatches();
+  const lv = levelInfo(xp), r = rankInfo(rp), badge = badgeName();
+  $('profile-tags').innerHTML = [
+    `<span class="tag lvl">Level ${lv.lvl}</span>`,
+    `<span class="tag">${rankIcon(r.tier, 16)} ${r.label}</span>`,
+    clan ? `<span class="tag">${clanEmblem(clan.emblem, COLORS[clan.color], 16)} [${escapeHtml(clan.tag)}]</span>` : '',
+    badge ? `<span class="tag gold">${Icons.trophy} ${badge}</span>` : '',
+  ].join('');
+  const st = stats;
+  $('profile-stats').innerHTML = [['Games', st.games], ['Wins', st.wins], ['Best', `${st.bestPct.toFixed(1)}%`], ['Knockouts', st.kills]]
+    .map(([k, v]) => `<div class="tile-stat"><b>${v}</b><span>${k}</span></div>`).join('');
+}
+$('name-input').addEventListener('input', () => { drawHero.next = 0; });
 
 // ---------- Daily missions ----------
 // Three missions a day, the same for everyone (picked from the date). Rewards pay out automatically.
@@ -963,6 +1037,7 @@ function openScreen(id) {
   if (id === 'season') buildSeason();
   if (id === 'rank') buildRank();
   if (id === 'upgrades') buildUpgrades();
+  if (id === 'profile') buildProfile();
   if (id === 'clan') { clanForm = null; buildClan(); }
   if (id === 'missions') buildQuests();
   if (id === 'editor') editorLoadSlot(editor.slot);
