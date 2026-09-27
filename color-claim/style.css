@@ -721,7 +721,6 @@ button:disabled:hover { transform: none; }
 }
 @keyframes play-shine { 0%, 55% { left: -60%; } 100% { left: 130%; } }
 .nav-btn:not(:disabled):hover { box-shadow: 0 5px 0 #c7cfe0; }
-#hud .left, #board, .icon-btn { backdrop-filter: blur(4px); }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }

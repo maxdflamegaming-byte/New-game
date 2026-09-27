@@ -18,12 +18,12 @@ const { chromium, ROOT, OUT } = require('../lib');
   await page.waitForTimeout(3200);
   const a = await page.evaluate(() => ({ m: [me.x, me.y], p: [p2.x, p2.y] }));
   await page.keyboard.down('d'); await page.keyboard.down('ArrowLeft');
-  await page.waitForTimeout(600);
+  await page.waitForTimeout(1000); // a half turn takes 0.57 s of game time
   await page.keyboard.up('d'); await page.keyboard.up('ArrowLeft');
   const b = await page.evaluate(() => ({ m: [me.x, me.y], p: [p2.x, p2.y], mAng: Math.cos(me.angle), pAng: Math.cos(p2.angle) }));
   ok('WASD steers Player 1 and the arrows steer Player 2', b.mAng > 0.8 && b.pAng < -0.8, `P1 dir ${b.mAng.toFixed(2)}, P2 dir ${b.pAng.toFixed(2)}`);
   await page.screenshot({ path: S + '/pg-duo.png' });
-  await page.evaluate(() => { for (const p of players) if (p) p.fx.shield = 0; kill(p2, players[4]); });
+  await page.evaluate(() => { for (const p of players) if (p && p !== me) p.fx.shield = 0; kill(p2, players[4]); });
   await page.waitForTimeout(1200);
   ok('When Player 2 is knocked out, Player 1 wins', (await page.textContent('#over-title')).includes(await page.evaluate(() => me.name)), await page.textContent('#over-title'));
   ok("2-player games don't pay coins", await page.evaluate(() => coins === 0 && stats.games === 0));

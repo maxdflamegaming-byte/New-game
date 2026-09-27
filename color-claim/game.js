@@ -5,8 +5,25 @@ const canvas = document.getElementById('game');
 let ctx = canvas.getContext('2d'); // swapped for an offscreen canvas while saving a GIF
 let W = 0, H = 0, BASE_CELL = 16, CELL = 16;
 
+// Render quality. Phone screens are very sharp, and drawing every one of their pixels can
+// overheat the GPU after a few seconds of play. In Auto (the default) the game watches its
+// frame rate while you play and steps the resolution down (or back up) to stay smooth; the
+// last step also turns the extra effects off. Your phone's level is remembered.
+const QUALITY = [{ scale: 2 }, { scale: 1.5 }, { scale: 1.25 }, { scale: 1 }, { scale: 1, lowFx: true }];
+// Until the game has measured this device, phones and tablets start one step down
+const touchFirst = window.matchMedia && window.matchMedia('(pointer: coarse)').matches ? 1 : 0;
+let quality = Math.min(QUALITY.length - 1, Math.max(0, Math.round(Number(load('color-claim-quality', touchFirst)) || 0)));
+let gfxMode = 'auto'; // settings.gfx, once settings are loaded
+
+function renderScale() {
+  const dpr = window.devicePixelRatio || 1;
+  if (gfxMode === 'low') return Math.min(dpr, 1);
+  if (gfxMode === 'high') return Math.min(dpr, 2);
+  return Math.min(dpr, QUALITY[quality].scale);
+}
+
 function resize() {
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const dpr = renderScale();
   W = window.innerWidth;
   H = window.innerHeight;
   canvas.width = W * dpr;
@@ -578,9 +595,18 @@ const isUnlocked = sk => !sk.need || stats[sk.need.stat] >= sk.need.n || ownedSk
 let myFx = load('color-claim-fx', 'none');
 
 // Settings (changed on the Settings screen)
-const settings = { vibrate: true, shake: true, controls: 'joystick', stickSize: 'normal', patterns: false, emotes: true, track: 'sunny', bigText: false, contrast: false, speed: 'normal', theme: 'season', gfx: 'high' };
+const settings = { vibrate: true, shake: true, controls: 'joystick', stickSize: 'normal', patterns: false, emotes: true, track: 'sunny', bigText: false, contrast: false, speed: 'normal', theme: 'season', gfx: 'auto' };
 try { Object.assign(settings, JSON.parse(load('color-claim-settings', '{}'))); } catch { /* bad saved data */ }
 const saveSettings = () => save('color-claim-settings', JSON.stringify(settings));
+// Graphics used to be High or Low, with High the default: everyone who had High gets Auto once
+if (load('color-claim-gfx-auto', '') !== '1') {
+  if (settings.gfx === 'high') settings.gfx = 'auto';
+  save('color-claim-gfx-auto', '1');
+  saveSettings();
+}
+if (!['auto', 'high', 'low'].includes(settings.gfx)) settings.gfx = 'auto';
+gfxMode = settings.gfx;
+resize();
 // Map looks. Each season of the year has its own (Settings can pick one instead).
 const THEMES = {
   classic: { name: 'Classic', bg: '#cfd6e4', edge: '#aab4c8', floor: '#f5f7fc', check: '#edf0f8', pillar: '#6b7690', pillarDark: '#4a5369', fx: null, water: '#7cc7e8' },
@@ -745,7 +771,32 @@ function drawStars(x0, y0) {
 // Accessibility: bigger text, high contrast, and a slower game
 const TXT = () => (settings.bigText ? 1.3 : 1);
 const gameSpeed = () => (settings.speed === 'slow' ? 0.75 : 1);
-const hiGfx = () => settings.gfx !== 'low'; // Low graphics skips glows, bevels and lighting
+// Low graphics (or Auto's last step) skips glows, bevels and lighting
+const hiGfx = () => settings.gfx === 'high' || (settings.gfx === 'auto' && !QUALITY[quality].lowFx);
+
+// Auto quality: while you play, a frame rate below about 45 fps for over a second steps the
+// resolution down. After 20 smooth seconds it tries one step up again, but never back to a
+// level that was already too slow this session.
+const perf = { avg: 16, slow: 0, smooth: 0, wait: 0, tooSlow: -1 };
+function watchFrameRate(ms) {
+  if (settings.gfx !== 'auto' || state !== 'play' || countdown > 0 || document.hidden || ms > 250) return;
+  if (perf.wait > 0) { perf.wait -= ms; return; } // let things settle after a change
+  perf.avg += (ms - perf.avg) * 0.08;
+  perf.slow = perf.avg > 22 ? perf.slow + ms : 0;
+  perf.smooth = perf.avg < 18 ? perf.smooth + ms : 0;
+  if (perf.slow > 1200 && quality < QUALITY.length - 1) {
+    perf.tooSlow = Math.max(perf.tooSlow, quality);
+    setQuality(Math.min(QUALITY.length - 1, quality + (perf.avg > 33 ? 2 : 1))); // under 30 fps: two steps
+  } else if (perf.smooth > 20000 && quality > 0 && quality - 1 > perf.tooSlow) {
+    setQuality(quality - 1);
+  }
+}
+function setQuality(q) {
+  quality = q;
+  save('color-claim-quality', q);
+  Object.assign(perf, { avg: 16, slow: 0, smooth: 0, wait: 1500 });
+  resize();
+}
 function applyA11y() {
   document.body.classList.toggle('big-text', !!settings.bigText);
   document.body.classList.toggle('contrast', !!settings.contrast);
@@ -4907,6 +4958,7 @@ let last = performance.now();
 let hudTimer = 0;
 function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
+  watchFrameRate(now - last);
   last = now;
   if (state === 'play' || state === 'won') {
     // The winning moment plays out in slow motion

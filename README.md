@@ -49,7 +49,7 @@ A territory game inspired by Paper.io.
 - **Accessibility:** large text, a high-contrast look and a slower game speed (75%) in Settings.
 - **Map looks:** each season has its own look (Snow in winter, Garden in spring, Desert in summer, Space in autumn) with falling snow, petals, blowing sand or twinkling stars. Pick any look in Settings.
 - **Power-up upgrades:** spend coins to make your power-ups last up to 60% longer (or your Paint Bomb bigger).
-- **Graphics:** rounded, glossy squares, smooth glowing rope trails with sparkles, raised land edges, a wave and ring when you claim land, a soft board shadow and vignette, sparkling power-ups and glinting coins, a camera that looks ahead of you, animated skin patterns, and a rolling sea with foam around the Islands. Settings → Graphics: Low turns the extras off for slower phones.
+- **Graphics:** rounded, glossy squares, smooth glowing rope trails with sparkles, raised land edges, a wave and ring when you claim land, a soft board shadow and vignette, sparkling power-ups and glinting coins, a camera that looks ahead of you, animated skin patterns, and a rolling sea with foam around the Islands. Settings → Graphics: **Auto** (the default) watches the frame rate while you play and lowers the resolution (and at the last step the extras) until the game runs smoothly, then remembers the level for your device; **Sharpest** always draws at full sharpness, and **Fastest** draws at 1× with the extras off.
 - **Photo mode:** from the pause screen, zoom, add a filter (Warm, Cool, Mono, Retro, Pop) and stickers, then save a framed picture.
 - **Daily missions:** 3 new missions every day with coin rewards.
 - **Weekly quest chain:** 5 quests a week (2 easy, 2 medium, 1 hard) that unlock one after another and pay 50, 75, 100, 150 and 300 coins.
@@ -130,7 +130,7 @@ The games are then at **https://maxdflamegaming-byte.github.io/New-game/** (Colo
 
 ## Tests
 
-Browser tests drive Color Claim (and a little of Glow Survivors) in headless Chromium with [Playwright](https://playwright.dev). There are 20 suites and about 400 checks: game rules, bots, every mode and map, menus and layouts at phone and tablet sizes, saving, the GIF replay, and an audit that plays 67 bots-only games and checks the board stays consistent.
+Browser tests drive Color Claim (and a little of Glow Survivors) in headless Chromium with [Playwright](https://playwright.dev). There are 21 suites and about 420 checks: game rules, bots, every mode and map, menus and layouts at phone and tablet sizes, saving, the GIF replay, and an audit that plays 67 bots-only games and checks the board stays consistent.
 
 ```sh
 npm install                  # installs Playwright (once)
@@ -143,3 +143,4 @@ node tests/run.js phase-p    # only suites whose name contains "phase-p"
 - `tests/suites/` has one file per suite; each prints a `PASS` or `FAIL` line per check.
 - Screenshots land in `tests/output/` (not committed).
 - Two checks decode images with Python and Pillow (`pip install pillow`).
+- `perf.js` checks Auto graphics: slow frames step the resolution down, smooth play steps it back up.

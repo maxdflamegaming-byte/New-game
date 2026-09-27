@@ -1396,7 +1396,7 @@ function buildSettings() {
     { label: 'Text size', value: settings.bigText, options: [[false, 'Normal'], [true, 'Large']], set: v => { settings.bigText = v; applyA11y(); } },
     { label: 'High contrast', value: settings.contrast, options: [[false, 'Off'], [true, 'On']], set: v => { settings.contrast = v; applyA11y(); } },
     { label: 'Game speed', value: settings.speed, options: [['normal', 'Normal'], ['slow', 'Slower']], set: v => { settings.speed = v; } },
-    { label: 'Graphics', value: settings.gfx, options: [['high', 'High'], ['low', 'Low (faster)']], set: v => { settings.gfx = v; } },
+    { label: 'Graphics', value: settings.gfx, options: [['auto', 'Auto'], ['high', 'Sharpest'], ['low', 'Fastest']], set: v => { settings.gfx = gfxMode = v; resize(); } },
     { label: 'Map look', value: settings.theme, options: [['season', `Season (${THEMES[seasonTheme()].name})`], ...Object.entries(THEMES).map(([id, t]) => [id, t.name])], set: v => { settings.theme = v; } },
   ];
   const box = $('settings-list');
