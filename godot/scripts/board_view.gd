@@ -82,6 +82,8 @@ func setup(world, ui_font: Font, px: int) -> void:
 	_air.material = _add_mat
 	_air.draw.connect(_draw_air)
 	_items.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	_land.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED # colourblind patterns tile
+	_land.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	w.captured.connect(_on_captured)
 	w.picked.connect(_on_picked)
 	w.painted.connect(_on_painted)
@@ -230,6 +232,19 @@ func _update_trails() -> void:
 					continue
 				l.points = pts
 				l.default_color = [Color(col, 0.2), Color(col, 0.65), Color(1, 1, 1, 0.35)][k]
+				# Colourblind mode: the pattern runs along the middle of the rope
+				if k == 2:
+					var patterned: bool = Patterns.on
+					if patterned and l.texture == null:
+						l.texture = Patterns.tile(Patterns.index_of(p, w.COLORS))
+						l.texture_mode = Line2D.LINE_TEXTURE_TILE
+						l.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+						l.width = CELL * 0.75 * p.size
+					elif not patterned and l.texture:
+						l.texture = null
+						l.width = CELL * 0.2 * p.size
+					if patterned:
+						l.default_color = Color(0.06, 0.08, 0.16, 0.35)
 				# The Rainbow trail from the shop: colours flowing along the rope
 				if p.trail_fx == "rainbow" and k < 2 and not (p == w.me and danger > 0):
 					if l.gradient == null:
@@ -445,6 +460,25 @@ func _draw_land() -> void:
 				e += 1
 			_land.draw_rect(Rect2(x * CELL, y * CELL, (e - x + 1) * CELL, CELL * 0.14), rim)
 			x = e + 1
+	# Colourblind mode: each player's pattern over their land, lined up across the board
+	if Patterns.on:
+		var tex := {}
+		for p in w.players:
+			if p:
+				tex[p.id] = Patterns.tile(Patterns.index_of(p, w.COLORS))
+		for y in n:
+			var x := 0
+			while x < n:
+				var id := land[y * n + x]
+				if id == 0:
+					x += 1
+					continue
+				var e := x
+				while e + 1 < n and land[y * n + e + 1] == id:
+					e += 1
+				var r := Rect2(x * CELL, y * CELL, (e - x + 1) * CELL, CELL)
+				_land.draw_texture_rect_region(tex[id], r, r, Color(0.06, 0.08, 0.16, 0.3))
+				x = e + 1
 	var rim2 := Color(1, 1, 1, 0.16)
 	for y in n:
 		for x in n:

@@ -40,11 +40,24 @@ func refresh() -> void:
 	_toggle(box, "Vibration", m.vibration, func():
 		m.vibration = not m.vibration
 		m._vibrate(60))
-	_choice(box, "Joystick size", ["Normal", "Large"], 1 if m.big_stick else 0, func(i):
-		m.big_stick = i == 1)
-	var hint: Label = m._label("Drag anywhere on the screen to steer. On a keyboard: arrows or WASD, P to pause.", 22, m.MUTED, 0, m.INK, m.font_med)
+	_choice(box, "Steering", ["Joystick", "Tap to turn"], 1 if m.controls == "tap" else 0, func(i):
+		m.controls = "tap" if i == 1 else "stick")
+	if m.controls == "stick":
+		_choice(box, "Joystick size", ["Normal", "Large"], 1 if m.big_stick else 0, func(i):
+			m.big_stick = i == 1)
+	var how := "Drag anywhere on the screen to steer." if m.controls == "stick" \
+		else "Hold the left or right side of the screen to turn; let go to go straight. (2 Players always uses joysticks.)"
+	var hint: Label = m._label(how + " On a keyboard: arrows or WASD, P to pause.", 22, m.MUTED, 0, m.INK, m.font_med)
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(hint)
+	heading("ACCESSIBILITY")
+	box = card()
+	_toggle(box, "Colourblind patterns", Patterns.on, func():
+		Patterns.on = not Patterns.on
+		m.view._land_version = -1) # redraw the land with (or without) patterns
+	var cb: Label = m._label("Every player's land, trail and square also gets its own pattern, so you can tell them apart without colour.", 22, m.MUTED, 0, m.INK, m.font_med)
+	cb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(cb)
 	heading("LEARN")
 	box = card()
 	var t: Label = m._label("New to Color Claim? The tutorial teaches you in 5 quick steps.", 24, m.INK, 0, m.INK, m.font_med)

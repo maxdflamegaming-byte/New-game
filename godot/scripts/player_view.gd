@@ -14,10 +14,12 @@ var _crown: Texture2D
 var _emitter: CPUParticles2D # the trail effect from the shop
 var _pet_pos := Vector2.INF # where the pet is, in the world
 var _pet_face := 1.0
+var _world # for the palette (colourblind patterns)
 
 
 func setup(player: Player, tex_px: int, font: Font, world = null) -> void:
 	p = player
+	_world = world
 	_shadow = Art.tex(Art.SHADOW, tex_px)
 	_crown = Art.tex(Art.CROWN, tex_px)
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
@@ -99,8 +101,9 @@ func _draw() -> void:
 		extra.append(Color(0.63, 0.88, 1.0, 0.55))
 	if p.hit_flash > 0:
 		extra.append(Color(1, 1, 1, p.hit_flash * 0.8))
+	var pattern: Texture2D = Patterns.body(Patterns.index_of(p, _world.COLORS)) if Patterns.on and _world else null
 	Cosmetics.draw_square(self, Vector2(0, bob), s, p.color, p.dark, p.skin, Vector2.from_angle(p.angle), t,
-			p.turning * 0.14, p.squash, p.blink < 0, extra)
+			p.turning * 0.14, p.squash, p.blink < 0, extra, pattern)
 	var top := -CELL * (2.3 + 0.6 * p.size) + sin(t * 4.0) * 2.0
 	if p.boss_kind == "queen":
 		# A tiara with a pink gem

@@ -462,6 +462,57 @@ func _run() -> void:
 	main._to_menu()
 	await process_frame
 
+	# Tap to turn
+	main.controls = "tap"
+	await _play()
+	var tme: Player = w.me
+	var touch := InputEventScreenTouch.new()
+	touch.index = 0
+	touch.position = Vector2(40, 900)
+	touch.pressed = true
+	main._unhandled_input(touch)
+	main._steer()
+	ok("Tap to turn: holding the left side turns left", tme.desired < tme.angle - 1.0, "%.2f vs %.2f" % [tme.desired, tme.angle])
+	touch.pressed = false
+	main._unhandled_input(touch)
+	main._steer()
+	ok("Letting go goes straight", is_equal_approx(tme.desired, tme.angle))
+	main.controls = "stick"
+
+	# Colourblind patterns
+	var seen := {}
+	for p in w.players:
+		if p:
+			seen[Patterns.index_of(p, w.COLORS)] = true
+	Patterns.on = true
+	main.view._land_version = -1
+	for f in 5:
+		await process_frame
+	ok("Colourblind mode gives every player their own pattern", seen.size() == w.players.size() - 1 and Patterns.tile(0) != null and Patterns.body(3) != null, str(seen.size()))
+	Patterns.on = false
+	main.view._land_version = -1
+
+	# Hints and tips for new players
+	var hint_prog: Progress = main.prog
+	main.prog = Progress.new()
+	main.prog.tutorial_done = true
+	main.map_id = "square"
+	main.mode_id = "classic"
+	main.start_game()
+	main.countdown = 0.01
+	await process_frame
+	await process_frame
+	ok("A new player gets a hint when the game starts", main.tut_card.visible and main.tut_label.text.begins_with("Leave your land"), main.tut_label.text)
+	main.play_time += 5.0
+	await process_frame
+	ok("The hint goes away after a few seconds", not main.tut_card.visible)
+	w.kill(w.me, w.me)
+	await _wait(1.3)
+	ok("After a knockout, the results give a tip", main.over_tip.visible and "never cross your own trail" in main.over_tip.text, main.over_tip.text)
+	main.prog = hint_prog
+	main._to_menu()
+	await process_frame
+
 	# The shop
 	main._to_menu()
 	await process_frame

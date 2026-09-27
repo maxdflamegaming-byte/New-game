@@ -200,7 +200,7 @@ static func rainbow(t: float, u: float = 0.0) -> Color:
 ## Draws a square player (body, skin, gloss, eyes and outfit) on `ci`, centred on `at`.
 ## `extra` colours are washed over the body after the gloss (frozen, hit flash).
 static func draw_square(ci: CanvasItem, at: Vector2, s: float, color: Color, dark: Color, skin: String,
-		look: Vector2, t: float, rot := 0.0, squash := 0.0, blink := false, extra: Array = []) -> void:
+		look: Vector2, t: float, rot := 0.0, squash := 0.0, blink := false, extra: Array = [], pattern: Texture2D = null) -> void:
 	var px := 128 if s < 80 and Gfx.level < Gfx.ULTRA else 256
 	var body := Art.tex(Art.BODY, px)
 	var side := Art.tex(Art.SIDE, px)
@@ -244,6 +244,8 @@ static func draw_square(ci: CanvasItem, at: Vector2, s: float, color: Color, dar
 				ci.draw_line(Vector2(-s * 0.26 + k * s * 0.17, s * 0.16), Vector2(-s * 0.26 + k * s * 0.17, s * 0.32), Color(1, 1, 1, 0.5), maxf(1.5, s * 0.03), true)
 			for c in [Vector2(-0.38, -0.38), Vector2(0.38, -0.38), Vector2(-0.38, 0.38), Vector2(0.38, 0.38)]:
 				ci.draw_circle(c * s, s * 0.04, Color(0.1, 0.12, 0.2, 0.4), true, -1, true)
+	if pattern:
+		ci.draw_texture_rect(pattern, r, false, Color(0.06, 0.08, 0.16, 0.3))
 	ci.draw_texture_rect(Art.tex(Art.GLOSS, px), r, false)
 	for c in extra:
 		ci.draw_texture_rect(side, r, false, c)

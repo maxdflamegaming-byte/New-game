@@ -29,6 +29,12 @@ var difficulty := "normal"
 var boss_kind := "king" # which boss the Boss Battle brings (the Queen and Wizard unlock)
 var vibration := true
 var big_stick := false
+var controls := "stick" # stick: drag a joystick anywhere; tap: hold the left or right side to turn
+var _taps := {} # touch index -> -1 (left side) or 1 (right side), for tap to turn
+var _hints := {} # hints already shown this game
+var _hint_until := 0.0
+var _death_how := "" # how you were knocked out, for the tip on the results screen
+var over_tip: Label
 var player_name := "You"
 var play_mode := "classic" # the mode being played (the tutorial isn't picked on the menu)
 # This game's tallies, for missions and trophies
@@ -216,6 +222,10 @@ func start_game(mode := "") -> void:
 	_lives_lost = 0
 	_king_hits = 0
 	_tut_step = 1 if play_mode == "tutorial" else 0
+	_hints.clear()
+	_hint_until = 0.0
+	_taps.clear()
+	_death_how = ""
 	_storm_warned = false
 	_update_tutorial()
 	_show(null)
@@ -244,6 +254,7 @@ func _process(delta: float) -> void:
 				sfx.play("beep")
 			if countdown <= 0:
 				state = "play"
+				_start_hints()
 				_pop(count_label, "GO!")
 				sfx.play("go")
 				_vibrate(40)
@@ -260,6 +271,8 @@ func _process(delta: float) -> void:
 				_check_end()
 				if _tut_step > 0:
 					_update_tutorial()
+				else:
+					_check_hints()
 			_check_danger()
 			if not world.p2:
 				_milestones()
@@ -357,6 +370,8 @@ func _game_over(won: bool, reason: String, who: Player = null) -> void:
 	_split_off(true)
 	over_title.label_settings.font_color = YELLOW if won else Color.WHITE
 	over_reason.text = reason
+	over_tip.text = "" if won else TIPS.get(_death_how, "")
+	over_tip.visible = over_tip.text != ""
 	again_btn.text = "Play again"
 	over_xp.text = ""
 	over_xp_bar.visible = false
@@ -604,6 +619,7 @@ func _on_knocked_out(v: Player, killer: Player, how: String, _lost: PackedInt32A
 			_snap_camera()
 	elif v == me and not ending:
 		ending = true
+		_death_how = "self" if killer == me else how
 		_flash(Color(1, 0.3, 0.35, 0.45))
 		sfx.play("death")
 		shake = 1.0
@@ -767,6 +783,56 @@ func _check_danger() -> void:
 	view.danger = danger
 
 
+# ---------- Hints for new players ----------
+
+## After a knockout, a tip about how to avoid it next time
+const TIPS := {
+	"self": "Tip: never cross your own trail. Loop back the way you came.",
+	"cut": "Tip: keep your loops short when others are close.",
+	"bump": "Tip: outside your land, a bump knocks out whoever has the longer trail.",
+	"swallow": "Tip: spread your land out, so nobody can surround it all.",
+	"saw": "Tip: saws cut trails on their tracks. Cross the tracks quickly.",
+	"storm": "Tip: when the red ring appears, get inside it before it closes.",
+	"trap": "Tip: the Queen's traps only hurt you outside your land.",
+}
+
+const MAP_HINTS := {
+	"saws": "Saw Mill: the blades cut any trail on their tracks!",
+	"storm": "Storm: the arena closes in. Stay inside the ring!",
+	"conveyor": "Conveyor: belts carry you along. Use them to go fast!",
+	"portals": "Portals: step in one and pop out of its twin, trail and all!",
+}
+
+
+## A hint card for a few seconds (new players, and the first game on a hazard map)
+func _hint(key: String, text: String, anyone := false) -> void:
+	if _hints.has(key) or world.p2 or _tut_step > 0 or (not anyone and prog.stats.games >= 5):
+		return
+	_hints[key] = true
+	tut_label.text = text
+	tut_card.visible = true
+	_hint_until = play_time + 4.5
+
+
+func _start_hints() -> void:
+	if MAP_HINTS.has(world.map_id) and not prog.stats.maps.has(world.map_id):
+		_hint("map", MAP_HINTS[world.map_id], true)
+	elif _tap_mode():
+		_hint("start", "Hold the left or right side of the screen to turn. Loop back to your land to claim!")
+	else:
+		_hint("start", "Leave your land, then loop back to claim everything inside!")
+
+
+func _check_hints() -> void:
+	var me: Player = world.me
+	if me.alive and me.trail.size() > 25:
+		_hint("long", "Long trails are risky. Head back to your land!")
+	if view.danger > 0.5:
+		_hint("danger", "Someone is near your trail! Get back to your land!")
+	if tut_card.visible and play_time > _hint_until:
+		tut_card.visible = false
+
+
 # ---------- Tutorial ----------
 
 const TUT_STEPS := [
@@ -785,6 +851,8 @@ func _update_tutorial() -> void:
 	if _tut_step == 0:
 		return
 	tut_label.text = TUT_STEPS[_tut_step]
+	if _tut_step == 1 and _tap_mode():
+		tut_label.text = "Step 1 of 5\nHold the left or right side of the screen to turn. Leave your land to draw a trail!"
 	var me: Player = world.me
 	if _tut_step == 1 and me.alive and me.trail.size() >= 4:
 		_tut_next()
@@ -905,6 +973,12 @@ func _steer() -> void:
 		v = _stick_pos - _stick_origin
 	if v != Vector2.ZERO and me.alive:
 		me.desired = v.angle()
+	elif _tap_mode() and me.alive:
+		# Tap to turn: hold a side of the screen to turn that way, let go to go straight
+		var turn := 0
+		for side in _taps.values():
+			turn += side
+		me.desired = me.angle + signf(turn) * 1.5 if turn != 0 else me.angle
 	if world.p2 and world.p2.alive:
 		var v2 := _keys(KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN)
 		if v2 == Vector2.ZERO and _stick2_index >= 0 and _stick2_pos.distance_to(_stick2_origin) > 12:
@@ -913,7 +987,18 @@ func _steer() -> void:
 			world.p2.desired = v2.angle()
 
 
+func _tap_mode() -> bool:
+	return controls == "tap" and world.p2 == null
+
+
 func _unhandled_input(e: InputEvent) -> void:
+	if _tap_mode() and (e is InputEventScreenTouch or e is InputEventScreenDrag):
+		var half := get_viewport_rect().size.x / 2
+		if e is InputEventScreenTouch and not e.pressed:
+			_taps.erase(e.index)
+		else:
+			_taps[e.index] = -1 if e.position.x < half else 1
+		return
 	if e is InputEventScreenTouch:
 		# In 2 Players, a finger on Player 2's half of the screen steers Player 2
 		var second: bool = world.p2 != null and split != null and split.rect(1).has_point(e.position)
@@ -959,6 +1044,22 @@ func _draw_stick() -> void:
 	if not (state == "play" or state == "countdown"):
 		return
 	_draw_tut_arrow()
+	if _tap_mode():
+		# Tap to turn: a curved arrow in each bottom corner, lit while that side is held
+		var vis := get_viewport_rect().size
+		for side in [-1, 1]:
+			var held := _taps.values().has(side)
+			var c := Vector2(vis.x / 2 + side * vis.x * 0.36, vis.y - 230)
+			var a := Color(0.12, 0.15, 0.27, 0.55 if held else 0.18)
+			var edge := Color(1, 1, 1, 0.8 if held else 0.3)
+			stick_view.draw_circle(c, 64, Color(1, 1, 1, 0.25 if held else 0.08), true, -1, true)
+			var start: float = -PI / 2 - side * 0.3
+			stick_view.draw_arc(c, 40, start, start - side * 2.2, 24, edge, 16.0, true)
+			stick_view.draw_arc(c, 40, start, start - side * 2.2, 24, a, 10.0, true)
+			var tip := c + Vector2.from_angle(start - side * 2.2) * 40
+			var dir := Vector2.from_angle(start - side * 2.2 - side * PI / 2)
+			stick_view.draw_colored_polygon(PackedVector2Array([tip + dir * 20, tip - dir * 8 + dir.orthogonal() * 18, tip - dir * 8 - dir.orthogonal() * 18]), a)
+		return
 	var r := _stick_r()
 	for s in [[_stick_index, _stick_origin, _stick_pos], [_stick2_index, _stick2_origin, _stick2_pos]]:
 		if s[0] < 0:
@@ -1923,6 +2024,10 @@ func _build_over() -> void:
 	over_reason.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	over_reason.custom_minimum_size.x = 600
 	col.add_child(over_reason)
+	over_tip = _label("", 24, Color("#bfe9ff"), 0, INK, font_med)
+	over_tip.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	over_tip.custom_minimum_size.x = 600
+	col.add_child(over_tip)
 	over_stats = _label("", 26, Color(1, 1, 1, 0.85), 0, INK, font_med)
 	col.add_child(over_stats)
 	over_best = _label("", 30, YELLOW)
@@ -2017,6 +2122,8 @@ func _load() -> void:
 		Gfx.fps = 60
 	Gfx.show_fps = c.get_value("settings", "show_fps", false)
 	big_stick = c.get_value("settings", "big_stick", false)
+	controls = c.get_value("settings", "controls", "stick")
+	Patterns.on = c.get_value("settings", "colorblind", false)
 	set_meta("music", c.get_value("settings", "music", true))
 	set_meta("muted", c.get_value("settings", "muted", false))
 
@@ -2046,6 +2153,8 @@ func _save() -> void:
 	c.set_value("settings", "fps", Gfx.fps)
 	c.set_value("settings", "show_fps", Gfx.show_fps)
 	c.set_value("settings", "big_stick", big_stick)
+	c.set_value("settings", "controls", controls)
+	c.set_value("settings", "colorblind", Patterns.on)
 	c.set_value("settings", "music", music.enabled)
 	c.set_value("settings", "muted", sfx.muted)
 	c.save(SAVE_PATH)
