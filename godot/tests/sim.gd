@@ -83,7 +83,9 @@ func _init() -> void:
 	print("sizes: ", ", ".join(sizes))
 	print("power-ups grabbed: ", picked, "  coins left: ", w.coins.size(), "  boss hits: ", boss_hits[0])
 	print("hazards: ", events)
-	for need in ["teleports", "storm closed in", "traps dropped", "wizard blinks", "knocked out by saw"]:
+	# These always happen in these games (the rarer ones, like portal jumps and the Wizard's
+	# blink, depend on the bots, so tests/flow.gd checks those directly instead)
+	for need in ["storm closed in", "traps dropped"]:
 		if not events.has(need):
 			issues["never happened: " + need] = 1
 	print("ISSUES: ", issues if issues else "none")
