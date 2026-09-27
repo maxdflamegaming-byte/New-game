@@ -119,6 +119,7 @@ jobs:
           # when it's signed with your upload key
           "$HOME/godot" --headless --path godot --install-android-build-template --export-release "Android Play" "$GITHUB_WORKSPACE/build/ColorClaimHD-$v.aab"
           test -s "build/ColorClaimHD-$v.aab"
+          rm -f build/*.idsig # apksigner's extra signature file; not needed
           ls -la build
 
       - name: Check what was built

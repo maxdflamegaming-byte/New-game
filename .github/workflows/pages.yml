@@ -28,7 +28,7 @@ jobs:
       - name: Collect site files
         run: |
           mkdir _site
-          cp -r index.html shared survivors color-claim _site/
+          cp -r index.html privacy.html shared survivors color-claim _site/
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

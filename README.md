@@ -108,7 +108,7 @@ python3 -m http.server 8000
 
 ## Color Claim HD (Godot)
 
-`godot/` is Color Claim rebuilt in the free [Godot](https://godotengine.org) engine (4.4). It draws everything with the phone's GPU at the screen's full resolution, so it's sharp and smooth. So far it has:
+`godot/` is Color Claim rebuilt in the free [Godot](https://godotengine.org) engine (4.7). It draws everything with the phone's GPU at the screen's full resolution, so it's sharp and smooth. So far it has:
 
 - **6 modes:** Classic (claim 50% to win), Timed (most land after 3 minutes), Daily (the same map and start for everyone today), Teams (you and 3 bots against 4, claim 50% together), Boss Battle (cut the King's trail 5 times; you have 3 lives, and he calls guards at half health) and 2 Players (split screen on one phone, first to 40%)
 - **5 maps:** Square, Round, Pillars, Maze and Islands (animated water with foam and waves); walls are slid along, never deadly
@@ -137,9 +137,11 @@ python3 -m http.server 8000
 - `scripts/main.gd`: game flow, controls, camera, HUD and screens
 - `scripts/art.gd`, `scripts/sfx.gd` and `scripts/music.gd`: sprites drawn from SVG, and sounds and music made in code at start-up
 
-**Phones it runs on:** Android 5.0 or newer with a 64-bit (arm64) processor and OpenGL ES 3.0 graphics (almost every phone from 2016 on), about 100 MB of free space, and 2 GB of memory or more (3 GB+ recommended for High, 4 GB+ and a recent chip for Ultra at 120 FPS).
+**Phones it runs on:** Android 7.0 or newer with a 64-bit (arm64) processor and OpenGL ES 3.0 graphics (almost every phone from 2017 on), about 100 MB of free space, and 2 GB of memory or more (3 GB+ recommended for High, 4 GB+ and a recent chip for Ultra at 120 FPS).
 
-A GitHub Actions workflow (`.github/workflows/godot.yml`) checks the rules (`tests/sim.gd`: bots-only games in every mode and on every map) and the game flow (`tests/flow.gd`: power-ups, winning, coins, saving, pausing, every mode, the shop, levels, missions, trophies, difficulty, the tutorial, the menu screens, graphics settings, music) on every change. The APK is built only when the workflow is started by hand (Actions → Build Color Claim HD (Godot) → Run workflow): it makes **ColorClaimHD-0.N.apk** and puts it on the Releases page. It installs next to the older Color Claim app. To open the project yourself, install Godot 4.4 and open `godot/project.godot`.
+A GitHub Actions workflow (`.github/workflows/godot.yml`) checks the rules (`tests/sim.gd`: bots-only games in every mode and on every map) and the game flow (`tests/flow.gd`: power-ups, winning, coins, saving, pausing, every mode, the shop, levels, missions, trophies, difficulty, the tutorial, the menu screens, graphics settings, music) on every change. The game is built only when the workflow is started by hand (Actions → Build Color Claim HD (Godot) → Run workflow): it makes **ColorClaimHD-1.0.N.apk** (to install on a phone) and **ColorClaimHD-1.0.N.aab** (the App Bundle for Google Play, a Gradle build targeting Android 16 / API 36), checks them, and puts them on the Releases page. Both are signed with the private upload key from the repo's secrets; without it, only a test APK is kept. To open the project yourself, install Godot 4.7 and open `godot/project.godot`.
+
+**Google Play:** everything for the store is in [`store/`](store/): a step-by-step guide ([`store/PUBLISHING.md`](store/PUBLISHING.md)), the listing text, the 512 icon, the feature graphic, 8 captioned screenshots and the privacy policy (also [`privacy.html`](privacy.html) on GitHub Pages). `tests/store_shots.gd` retakes the screenshots and `tests/make_icons.gd` redraws the icons.
 
 ## Android app (APK)
 
