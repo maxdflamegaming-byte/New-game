@@ -33,6 +33,7 @@ var max_hp := 0
 var rage := false
 var hit_flash := 0.0
 var size := 1.0 # drawn size (the King is bigger)
+var harmless := false # the tutorial's practice bot can't knock you out
 
 # Looks from the shop
 var skin := "plain"

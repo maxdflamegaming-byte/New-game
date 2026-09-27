@@ -115,6 +115,13 @@ python3 -m http.server 8000
 - **Power-ups:** Speed (1.6× for 4 s), Shield (6 s), Freeze (everyone else at half speed for 4 s), Ghost (cross your own trail for 5 s) and Paint Bomb (claims a circle of land), with icons, sparkles, effects on the squares and HUD chips showing the seconds left
 - **Gold coins** on the map, and a saved wallet: every game pays 2 per % claimed, 5 per knockout, 50 for a win (100 more for beating the King), plus what you picked up
 - **Shop:** spend coins on 8 skins (Stripes, Dots, Shades, Kitty, Ninja, Robot, Galaxy, Rainbow), 7 trail effects (Sparkles, Bubbles, Hearts, Stars, Confetti, Fire, Rainbow) and 5 pets that follow you (Chick, Slime, Boo, Bee, Dragon). A showcase shows your square driving around in your look. Bots wear shop items too.
+- **Levels and XP:** every game gives XP (more for land, knockouts and winning), and each level-up pays coins
+- **Daily missions:** 3 new ones every day (the same for everyone), paid as soon as you finish them; plus a **daily streak** bonus for your first game each day (20 coins up to 150 on day 7)
+- **22 trophies** (25 coins each) and a **profile** with your name, level, stats and trophies
+- **Bot difficulty:** Easy (0.75× coins), Normal or Hard (faster, bolder bots, 1.5× coins)
+- **Tutorial:** 5 guided steps with a harmless practice bot (leave your land, loop home, grab a power-up, cut a trail, claim 15%), offered before your first game and in Settings; 50 coins the first time
+- **Settings:** sound, music, vibration and joystick size
+- The menu has a level badge and a dock for the Shop, Missions, Profile and Settings; the results screen shows your XP bar and each reward as it pops in
 - Smooth glowing trails, raised land, particles, a live bots-only game behind the menu, a touch joystick (one per player in 2 Players), a minimap, callouts, sound effects, and **music** made in code (on a background thread, so the game starts at once)
 
 - `scripts/world.gd`: the board, rules and modes (movement, trails, capturing land, knockouts, bumps, the King)
@@ -122,10 +129,12 @@ python3 -m http.server 8000
 - `scripts/board_view.gd` and `scripts/player_view.gd`: drawing and effects
 - `scripts/split_view.gd`: the 2 Players split screen
 - `scripts/cosmetics.gd` and `scripts/shop.gd`: the skins, trail effects and pets, and the shop screen
+- `scripts/progress.gd`: levels, missions, the streak, trophies and stats
+- `scripts/menu_screen.gd`, `missions_screen.gd`, `profile_screen.gd` and `settings_screen.gd`: the menu's other screens
 - `scripts/main.gd`: game flow, controls, camera, HUD and screens
 - `scripts/art.gd`, `scripts/sfx.gd` and `scripts/music.gd`: sprites drawn from SVG, and sounds and music made in code at start-up
 
-A GitHub Actions workflow (`.github/workflows/godot.yml`) checks the rules (`tests/sim.gd`: bots-only games in every mode and on every map) and the game flow (`tests/flow.gd`: power-ups, winning, coins, saving, pausing, every mode, the shop, music) on every change. The APK is built only when the workflow is started by hand (Actions → Build Color Claim HD (Godot) → Run workflow): it makes **ColorClaimHD-0.N.apk** and puts it on the Releases page. It installs next to the older Color Claim app. To open the project yourself, install Godot 4.4 and open `godot/project.godot`.
+A GitHub Actions workflow (`.github/workflows/godot.yml`) checks the rules (`tests/sim.gd`: bots-only games in every mode and on every map) and the game flow (`tests/flow.gd`: power-ups, winning, coins, saving, pausing, every mode, the shop, levels, missions, trophies, difficulty, the tutorial, the menu screens, music) on every change. The APK is built only when the workflow is started by hand (Actions → Build Color Claim HD (Godot) → Run workflow): it makes **ColorClaimHD-0.N.apk** and puts it on the Releases page. It installs next to the older Color Claim app. To open the project yourself, install Godot 4.4 and open `godot/project.godot`.
 
 ## Android app (APK)
 

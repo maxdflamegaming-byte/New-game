@@ -31,6 +31,14 @@ const MODES := {
 	"teams": {"name": "Teams", "desc": "You + 3 bots vs 4 bots · first team to 50% wins", "win": 50.0, "teams": true},
 	"boss": {"name": "Boss", "desc": "Cut the King's trail to knock off his hearts · you have 3 lives", "boss": true},
 	"duo": {"name": "2 Players", "desc": "Two players on one screen · first to 40% wins", "win": 40.0, "duo": true},
+	"tutorial": {"name": "Tutorial", "desc": "Learn to play in 5 quick steps", "win": 15.0, "tutorial": true, "hidden": true},
+}
+
+## Bot difficulty: how fast and bold the bots are, and how much a game pays
+const DIFFICULTY := {
+	"easy": {"name": "Easy", "speed": 0.9, "coins": 0.75},
+	"normal": {"name": "Normal", "speed": 1.0, "coins": 1.0},
+	"hard": {"name": "Hard", "speed": 1.08, "coins": 1.5},
 }
 const KING_HEARTS := 5
 
@@ -73,6 +81,7 @@ var coins: Array = [] # {pos, age, life}
 var freezer: Player = null # whoever has Freeze running
 var coins_picked := 0 # by you, this game
 var looks := {} # your skin, trail and pet from the shop
+var difficulty := "normal"
 
 var _setting_up := false # no spawn events while a game is being set up
 var _power_timer := 3.0
@@ -103,6 +112,8 @@ func setup(my_color: int, my_name: String, demo := false, map := "square", mode_
 	mode_id = mode_name if MODES.has(mode_name) else "classic"
 	mode = MODES[mode_id]
 	map_id = map if MAPS.has(map) else "square"
+	if mode.get("tutorial", false):
+		map_id = "square" # the tutorial is always on the plain map
 	# Daily: the date picks the map and seeds the start, so it's the same for everyone today
 	if mode.get("daily", false):
 		var h := today().hash()
@@ -145,12 +156,27 @@ func setup(my_color: int, my_name: String, demo := false, map := "square", mode_
 			others.append(COLORS[i])
 	var mix: Array = bots.PERSONA_MIX.duplicate()
 	mix.shuffle()
-	var bot_count := 0 if mode.get("boss", false) else 8 - players.size() + 1
+	var tutorial: bool = mode.get("tutorial", false)
+	var bot_count := 0 if mode.get("boss", false) else 1 if tutorial else 8 - players.size() + 1
 	for i in bot_count:
-		var b := Player.new(players.size(), names[i], others[i], true)
+		var b := Player.new(players.size(), names[i] if not tutorial else "Coach", others[i], true)
 		bots.give_personality(b, mix[i])
+		_tune(b)
 		Cosmetics.dress_bot(b)
 		players.append(b)
+	if tutorial:
+		# A slow, harmless practice bot that makes long loops, so its trail is easy to cut
+		var coach: Player = players[players.size() - 1]
+		bots.give_personality(coach, "explorer")
+		coach.harmless = true
+		coach.aggro = 0.0
+		coach.flee = 0.0
+		coach.grab_chance = 0.0
+		coach.greed = 34
+		coach.loop_scale = 1.3
+		me.lives = 999
+		_power_timer = INF # the tutorial places its own power-up
+		_coin_timer = INF
 	if demo:
 		bots.give_personality(me, "wildcard")
 	# Teams: you and the first 3 bots against the other 4
@@ -377,6 +403,9 @@ func kill(victim: Player, killer: Player, how := "cut") -> void:
 	# Once you've won, the celebration can't be spoiled
 	if won and not victim.is_bot:
 		return
+	# The practice bot can't hurt anyone
+	if killer and killer.harmless and killer != victim:
+		return
 	# A shield stops other players, but not your own mistakes or losing all your land
 	if victim.shield > 0 and killer != victim and how != "swallow":
 		return
@@ -564,6 +593,10 @@ func _paint_bomb(p: Player) -> void:
 
 func speed_of(p: Player) -> float:
 	var v := SPEED
+	if p.harmless:
+		v *= 0.6
+	elif p.is_bot and p != me:
+		v *= DIFFICULTY.get(difficulty, DIFFICULTY.normal).speed
 	if p.is_boss:
 		v *= 1.28 if p.rage else 1.12
 	if p.fx.speed > 0:
@@ -700,6 +733,17 @@ func update(dt: float) -> void:
 # A big, fast bot with hearts. Cutting his trail (or him crossing it) takes a heart instead of
 # knocking him out. At half health he calls two guards; on his last heart he gets faster.
 
+## Easy bots are timid and slow to hunt; Hard ones go for your trail
+func _tune(b: Player) -> void:
+	match difficulty:
+		"easy":
+			b.aggro *= 0.4
+			b.flee += 2.0
+		"hard":
+			b.aggro = minf(1.0, b.aggro * 1.4 + 0.1)
+			b.flee = maxf(2.0, b.flee - 1.0)
+
+
 func _spawn_king() -> void:
 	var k := Player.new(players.size(), "King", Color("#3b3f58"), true)
 	bots.give_personality(k, "hunter")
@@ -711,6 +755,8 @@ func _spawn_king() -> void:
 	k.aggro = 0.7
 	k.loop_scale = 1.7
 	k.flee = 0
+	if difficulty == "easy":
+		k.aggro = 0.4
 	k.team = k.id
 	players.append(k)
 	king = k
@@ -770,6 +816,7 @@ func _call_guards(k: Player) -> void:
 	for name in ["Guard", "Knight"]:
 		var g := Player.new(players.size(), name, spare.pop_front() if spare.size() else Color("#8d97ab"), true)
 		bots.give_personality(g, "hunter")
+		_tune(g)
 		Cosmetics.dress_bot(g)
 		g.team = g.id
 		players.append(g)

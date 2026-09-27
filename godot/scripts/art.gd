@@ -98,6 +98,53 @@ const HEART := """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"
 <path d="M32 56 C8 40 4 28 4 20 C4 10 12 4 20 4 C26 4 30 8 32 12 C34 8 38 4 44 4 C52 4 60 10 60 20 C60 28 56 40 32 56 Z" fill="#ffffff"/>
 </svg>"""
 
+## Menu dock icons (white, tinted when drawn)
+const BAG := """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+<path d="M22 22 C22 10 42 10 42 22" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+<path d="M10 22 L54 22 L50 58 L14 58 Z" fill="#ffffff" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
+</svg>"""
+
+const TARGET := """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+<circle cx="32" cy="32" r="26" fill="none" stroke="#ffffff" stroke-width="6"/>
+<circle cx="32" cy="32" r="14" fill="none" stroke="#ffffff" stroke-width="6"/>
+<circle cx="32" cy="32" r="5" fill="#ffffff"/>
+</svg>"""
+
+const PERSON := """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+<circle cx="32" cy="20" r="13" fill="#ffffff"/>
+<path d="M8 60 C8 44 18 36 32 36 C46 36 56 44 56 60 Z" fill="#ffffff"/>
+</svg>"""
+
+const GEAR := """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+<g fill="#ffffff">
+<rect x="27" y="2" width="10" height="14" rx="3"/><rect x="27" y="48" width="10" height="14" rx="3"/>
+<rect x="2" y="27" width="14" height="10" rx="3"/><rect x="48" y="27" width="14" height="10" rx="3"/>
+<rect x="27" y="2" width="10" height="14" rx="3" transform="rotate(45 32 32)"/><rect x="27" y="48" width="10" height="14" rx="3" transform="rotate(45 32 32)"/>
+<rect x="2" y="27" width="14" height="10" rx="3" transform="rotate(45 32 32)"/><rect x="48" y="27" width="14" height="10" rx="3" transform="rotate(45 32 32)"/>
+</g>
+<circle cx="32" cy="32" r="20" fill="#ffffff"/>
+<circle cx="32" cy="32" r="8" fill="#000000" fill-opacity="0.35"/>
+</svg>"""
+
+## Trophies: gold when you have one, grey when you don't
+const TROPHY := """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+<path d="M16 10 L48 10 L48 26 C48 36 40 42 32 42 C24 42 16 36 16 26 Z" fill="#ffffff"/>
+<path d="M16 14 L6 14 C6 26 12 30 18 30 M48 14 L58 14 C58 26 52 30 46 30" fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round"/>
+<rect x="28" y="40" width="8" height="10" fill="#ffffff"/>
+<rect x="18" y="50" width="28" height="8" rx="3" fill="#ffffff"/>
+<ellipse cx="25" cy="19" rx="4" ry="6" fill="#000000" fill-opacity="0.12"/>
+</svg>"""
+
+const CHECK := """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+<circle cx="32" cy="32" r="28" fill="#2ec48a"/>
+<path d="M18 33 L28 43 L47 22" fill="none" stroke="#ffffff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>"""
+
+const FLAME := """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+<path d="M32 4 C36 16 50 22 50 40 C50 52 42 60 32 60 C22 60 14 52 14 40 C14 30 20 24 24 18 C26 26 28 28 32 30 C32 20 30 12 32 4 Z" fill="#ff8a1f"/>
+<path d="M32 30 C36 38 42 40 42 48 C42 54 38 58 32 58 C26 58 22 54 22 48 C22 42 28 40 32 30 Z" fill="#ffd23f"/>
+</svg>"""
+
 static var _cache := {}
 
 

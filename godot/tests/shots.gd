@@ -36,6 +36,40 @@ func _run() -> void:
 	await _wait(2.5)
 	await _shot("0-menu")
 	for m in maps:
+		if m == "screens":
+			main.prog.finish({"mode": "classic", "map": "square", "won": true, "pct": 55.0, "kos": 4, "powerups": 3, "time": 200.0, "best_loop": 7.0}, main.world.today())
+			main.prog.finish({"mode": "boss", "map": "round", "won": true, "pct": 20.0, "lives_lost": 0}, main.world.today())
+			main.equipped = {"skin": "robot", "trail": "stars", "pet": "bee"}
+			main._to_menu()
+			await _wait(1.0)
+			await _shot("menu")
+			for sc in ["missions_screen", "profile_screen", "settings_screen"]:
+				main.get(sc).open()
+				await _wait(0.8)
+				await _shot(sc)
+				main.get(sc).close()
+			continue
+		if m == "tutorial":
+			main.start_tutorial()
+			await _wait(6.0)
+			await _shot("tutorial-1")
+			main._tut_step = 3
+			main._place_tut_powerup()
+			await _wait(1.0)
+			await _shot("tutorial-3")
+			main._to_menu()
+			continue
+		if m == "results":
+			main.prog.tutorial_done = true
+			main.mode_id = "classic"
+			main.start_game()
+			await _wait(4.0)
+			main.peak = 51.0
+			main._game_over(true, "You claimed 50% of the map!")
+			await _wait(2.5)
+			await _shot("results")
+			main._to_menu()
+			continue
 		if m == "shop":
 			main.wallet = 700
 			main.owned.skin.append("cat")

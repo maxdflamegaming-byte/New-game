@@ -190,6 +190,9 @@ func tap(kind: String, id: String) -> void:
 		m.sfx.play("coin")
 		m.sfx.play("win")
 		info.text = "You got %s! It's on now." % name
+		for r in m.prog.award("shopper"):
+			m.wallet += r.coins
+			info.text += "  %s: +%d coins!" % [r.text, r.coins]
 		_celebrate(kind, id)
 	m._save()
 	if kind == "trail":

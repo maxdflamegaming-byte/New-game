@@ -24,6 +24,19 @@ var mode_id := "classic"
 var wallet := 0 # coins you've saved up
 var owned := {"skin": ["plain"], "trail": ["none"], "pet": ["none"]} # bought in the shop
 var equipped := {"skin": "plain", "trail": "none", "pet": "none"} # what you're wearing
+var prog := Progress.new() # levels, missions, streak, trophies and stats
+var difficulty := "normal"
+var vibration := true
+var big_stick := false
+var player_name := "You"
+var play_mode := "classic" # the mode being played (the tutorial isn't picked on the menu)
+# This game's tallies, for missions and trophies
+var _power_count := 0
+var _best_loop := 0.0
+var _multi := 0
+var _lives_lost := 0
+var _king_hits := 0
+var _tut_step := 0 # 1..5 in the tutorial
 var bests := {} # best claim per mode (the Daily's is per day)
 var games := 0
 var wins := 0
@@ -89,11 +102,24 @@ var wallet_label: Label
 var maps_row: HBoxContainer
 var modes_row: HFlowContainer
 var mode_desc: Label
-var music_btn: Button
 var best_label: Label
 var swatches: HBoxContainer
-var sound_btn: Button
 var shop: Control
+var missions_screen: Control
+var profile_screen: Control
+var settings_screen: Control
+var level_label: Label
+var level_bar: Control
+var missions_badge: Label
+var diff_row: HBoxContainer
+var over_rewards: VBoxContainer
+var over_xp: Label
+var over_xp_bar: Control
+var again_btn: Button
+var ask_box: Control
+var tut_card: PanelContainer
+var tut_label: Label
+var toast_row: HBoxContainer
 
 
 func _ready() -> void:
@@ -132,17 +158,26 @@ func _start_demo() -> void:
 	state = "menu"
 	_split_off()
 	world.looks = equipped
-	world.setup(my_color, "You", true, map_id)
+	world.difficulty = "normal"
+	world.setup(my_color, player_name, true, map_id)
 	view.rebuild()
 	_snap_camera()
 	_show(menu)
 	_refresh_menu()
 
 
-func start_game() -> void:
+func start_game(mode := "") -> void:
+	# The first game ever offers the tutorial
+	if mode == "" and state == "menu" and prog.stats.games == 0 and not prog.tutorial_done and not ask_box.get_meta("asked", false):
+		ask_box.set_meta("asked", true)
+		ask_box.visible = true
+		return
+	ask_box.visible = false
 	_game_id += 1
+	play_mode = mode if mode != "" else mode_id
 	world.looks = equipped
-	world.setup(my_color, "You", false, map_id, mode_id)
+	world.difficulty = difficulty
+	world.setup(my_color, player_name, false, map_id, play_mode)
 	view.rebuild()
 	if world.p2:
 		_split_on()
@@ -158,6 +193,13 @@ func start_game() -> void:
 	ending = false
 	_kos.clear()
 	_marks.clear()
+	_power_count = 0
+	_best_loop = 0.0
+	_multi = 0
+	_lives_lost = 0
+	_king_hits = 0
+	_tut_step = 1 if play_mode == "tutorial" else 0
+	_update_tutorial()
 	_show(null)
 	hud.visible = true
 	_update_hud()
@@ -198,6 +240,8 @@ func _process(delta: float) -> void:
 				peak = maxf(peak, world.pct(me))
 			if state == "play":
 				_check_end()
+				if _tut_step > 0:
+					_update_tutorial()
 			_check_danger()
 			if not world.p2:
 				_milestones()
@@ -244,6 +288,9 @@ func _check_end() -> void:
 				_win("Time's up and you're the biggest!")
 			else:
 				_lose("Time's up! You finished #%d of %d." % [place, world.alive_count()], 0.6)
+	elif m.get("tutorial", false):
+		if _tut_step >= 5 and me.alive and world.pct(me) >= goal:
+			_win("You finished the tutorial!")
 	elif goal > 0 and me.alive and world.pct(me) >= goal:
 		_win("You claimed %d%% of the map!" % int(goal))
 
@@ -272,8 +319,12 @@ func _lose(reason: String, delay: float) -> void:
 		_game_over(false, reason)
 
 
+func start_tutorial() -> void:
+	start_game("tutorial")
+
+
 func _best_key() -> String:
-	return "daily-" + world.today() if mode_id == "daily" else mode_id
+	return "daily-" + world.today() if play_mode == "daily" else play_mode
 
 
 func _game_over(won: bool, reason: String, who: Player = null) -> void:
@@ -283,35 +334,111 @@ func _game_over(won: bool, reason: String, who: Player = null) -> void:
 	_split_off(true)
 	over_title.label_settings.font_color = YELLOW if won else Color.WHITE
 	over_reason.text = reason
-	if world.p2:
-		# 2 Players is just for fun: no coins or records
+	again_btn.text = "Play again"
+	over_xp.text = ""
+	over_xp_bar.visible = false
+	var rewards := []
+	if play_mode == "tutorial":
+		over_title.text = "Well done!"
+		over_stats.text = "You know how to play. Now take on the real bots!"
+		over_best.text = ""
+		var first: bool = not prog.tutorial_done
+		prog.tutorial_done = true
+		if first:
+			rewards.append({"text": "Tutorial complete", "coins": 50, "kind": "mission"})
+		rewards.append_array(prog.award("tutorial"))
+		over_coins.text = ""
+		again_btn.text = "Play for real"
+	elif world.p2:
+		# 2 Players is just for fun: no coins or records (but it counts for trying every mode)
 		var winner: Player = who if who else (world.p2 if not world.me.alive else world.me)
 		over_title.text = "%s wins!" % winner.name
 		over_title.label_settings.font_color = winner.color.lightened(0.2)
 		over_stats.text = "%s %.1f%%  ·  %s %.1f%%" % [world.me.name, world.pct(world.me), world.p2.name, world.pct(world.p2)]
 		over_best.text = "2-player games are just for fun"
 		over_coins.text = ""
-		_show(over_screen)
-		return
-	games += 1
-	if won:
-		wins += 1
-	var score := snappedf(peak, 0.1)
-	var key := _best_key()
-	var new_best: bool = score > bests.get(key, 0.0)
-	if new_best:
-		bests[key] = score
-	var earned: int = roundi(score * 2) + world.me.kills * 5 + (50 if won else 0) + world.coins_picked
-	if won and world.mode.get("boss", false):
-		earned += 100
-	wallet += earned
+		rewards = prog.finish({"mode": "duo", "map": world.map_id}, world.today())
+	else:
+		games += 1
+		if won:
+			wins += 1
+		var score := snappedf(peak, 0.1)
+		var key := _best_key()
+		var new_best: bool = score > bests.get(key, 0.0)
+		if new_best:
+			bests[key] = score
+		var earned: int = roundi(score * 2) + world.me.kills * 5 + (50 if won else 0) + world.coins_picked
+		if won and world.mode.get("boss", false):
+			earned += 100
+		var mult: float = world.DIFFICULTY[difficulty].coins
+		earned = roundi(earned * mult)
+		wallet += earned
+		var level_before: int = prog.level
+		var xp_before: float = float(prog.xp) / Progress.need(prog.level)
+		var gained := Progress.xp_for({"pct": score, "kos": world.me.kills, "won": won})
+		rewards = prog.finish({
+			"mode": play_mode, "map": world.map_id, "won": won, "pct": score, "kos": world.me.kills,
+			"powerups": _power_count, "coins": world.coins_picked / world.COIN_VALUE, "time": play_time,
+			"best_loop": _best_loop, "king_hits": _king_hits, "lives_lost": _lives_lost, "multi_ko": _multi,
+			"wallet": wallet,
+		}, world.today())
+		over_coins.text = "+%d coins" % earned + ("  (x%s %s)" % [str(mult), world.DIFFICULTY[difficulty].name] if mult != 1.0 else "")
+		over_title.text = "You win!" if won else "Game over"
+		over_stats.text = "Best size %.1f%%  ·  %d knockout%s  ·  %s" % [score, world.me.kills, "" if world.me.kills == 1 else "s", _fmt_time(play_time)]
+		var label: String = "Today's best" if play_mode == "daily" else "%s best" % world.MODES[play_mode].name
+		over_best.text = ("New %s!" % label.to_lower()) if new_best else "%s: %.1f%%" % [label, bests.get(key, 0.0)]
+		# XP: the bar fills up (and wraps round on a level up)
+		over_xp.text = "Level %d  ·  +%d XP" % [prog.level, gained]
+		over_xp_bar.visible = true
+		var to: float = float(prog.xp) / Progress.need(prog.level)
+		over_xp_bar.set_meta("fill", xp_before)
+		var tw := over_xp_bar.create_tween()
+		if prog.level > level_before:
+			tw.tween_method(_set_xp_fill, xp_before, 1.0, 0.6)
+			tw.tween_method(_set_xp_fill, 0.0, to, 0.5)
+		else:
+			tw.tween_method(_set_xp_fill, xp_before, to, 0.8)
+	for r in rewards:
+		wallet += r.coins
 	_save()
-	over_coins.text = "+%d coins" % earned
-	over_title.text = "You win!" if won else "Game over"
-	over_stats.text = "Best size %.1f%%  ·  %d knockout%s  ·  %s" % [score, world.me.kills, "" if world.me.kills == 1 else "s", _fmt_time(play_time)]
-	var label: String = "Today's best" if mode_id == "daily" else "%s best" % world.MODES[mode_id].name
-	over_best.text = ("New %s!" % label.to_lower()) if new_best else "%s: %.1f%%" % [label, bests.get(key, 0.0)]
+	_show_rewards(rewards)
 	_show(over_screen)
+
+
+func _set_xp_fill(f: float) -> void:
+	over_xp_bar.set_meta("fill", f)
+	over_xp_bar.queue_redraw()
+
+
+## Level-ups, missions, streak and trophies on the results screen, popping in one by one
+func _show_rewards(rewards: Array) -> void:
+	for c in over_rewards.get_children():
+		c.queue_free()
+	over_rewards.visible = not rewards.is_empty()
+	var colors := {"level": Color("#8d7bd6"), "mission": Color("#2ec48a"), "streak": Color("#ff8a1f"), "trophy": Color("#e0a800")}
+	var id := _game_id
+	for i in rewards.size():
+		var r: Dictionary = rewards[i]
+		var pill := PanelContainer.new()
+		var st := _style(colors.get(r.kind, INK), 20)
+		st.content_margin_top = 6
+		st.content_margin_bottom = 6
+		pill.add_theme_stylebox_override("panel", st)
+		pill.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		pill.add_child(row)
+		row.add_child(_label(r.text, 26, Color.WHITE))
+		row.add_child(_icon(Art.COIN, 26, Color.WHITE))
+		row.add_child(_label("+%d" % r.coins, 26, Color("#fff1a8")))
+		pill.modulate.a = 0.0
+		over_rewards.add_child(pill)
+		var tw := pill.create_tween()
+		tw.tween_interval(0.5 + i * 0.35)
+		tw.tween_property(pill, "modulate:a", 1.0, 0.25)
+		tw.tween_callback(func():
+			if id == _game_id and state == "over":
+				sfx.play("hype" if r.kind == "level" else "coin"))
 
 
 func _pause() -> void:
@@ -364,10 +491,14 @@ func _back() -> void:
 		"over":
 			_to_menu()
 		"menu":
-			if shop.visible:
-				shop.close()
-			else:
-				get_tree().quit()
+			if ask_box.visible:
+				ask_box.visible = false
+				return
+			for sc in [shop, missions_screen, profile_screen, settings_screen]:
+				if sc.visible:
+					sc.close()
+					return
+			get_tree().quit()
 
 
 func _notification(what: int) -> void:
@@ -382,6 +513,9 @@ func _notification(what: int) -> void:
 func _on_captured(p: Player, _cells: PackedInt32Array, gain: float) -> void:
 	if p != world.me or state == "menu":
 		return
+	_best_loop = maxf(_best_loop, gain)
+	if _tut_step == 2:
+		_tut_next()
 	sfx.play("capture")
 	if gain >= 1.0:
 		_vibrate(20)
@@ -409,12 +543,16 @@ func _on_knocked_out(v: Player, killer: Player, how: String, _lost: PackedInt32A
 		if id == _game_id:
 			_game_over(true, "%s was knocked out%s." % [v.name, "" if killer == null or killer == v else " by " + killer.name], winner)
 	elif v == me and me.lives > 1 and not ending:
-		# Boss Battle: lose a life and come back somewhere else
+		# Boss Battle: lose a life and come back somewhere else (the tutorial has lots)
 		me.lives -= 1
+		_lives_lost += 1
 		sfx.play("hurt")
 		shake = 1.0
 		_vibrate(200)
-		_toast("Ouch! %d %s left" % [me.lives, "life" if me.lives == 1 else "lives"])
+		if _tut_step > 0:
+			_toast("Oops! Never cross your own trail. Try again!")
+		else:
+			_toast("Ouch! %d %s left" % [me.lives, "life" if me.lives == 1 else "lives"])
 		var id := _game_id
 		await get_tree().create_timer(1.2).timeout
 		if id == _game_id and not me.alive:
@@ -447,15 +585,20 @@ func _on_knocked_out(v: Player, killer: Player, how: String, _lost: PackedInt32A
 		var now: float = world.time
 		_kos = _kos.filter(func(t): return now - t < 4.0)
 		_kos.append(now)
+		_multi = maxi(_multi, _kos.size())
+		if _tut_step == 4:
+			_tut_next()
 		if _kos.size() >= 3:
 			_callout("TRIPLE KO!", Color("#ff5d73"))
 		elif _kos.size() == 2:
 			_callout("DOUBLE KO!", Color("#ff8c42"))
 
 
-func _on_boss_hit(k: Player, _by: Player) -> void:
+func _on_boss_hit(k: Player, by: Player) -> void:
 	if state == "menu":
 		return
+	if by == world.me:
+		_king_hits += 1
 	sfx.play("bosshit")
 	shake = maxf(shake, 0.8)
 	_vibrate(80)
@@ -482,9 +625,12 @@ func _on_picked(p: Player, kind: String, _at: Vector2) -> void:
 	if state == "menu":
 		return
 	if p == world.me:
+		_power_count += 1
 		sfx.play(kind)
 		_toast(PICK_TOASTS[kind])
 		_vibrate(15)
+		if _tut_step == 3:
+			_tut_next()
 	elif kind == "freeze" and world.me.alive and p.pos.distance_to(world.me.pos) < 40:
 		sfx.play("freeze")
 		_toast("%s froze everyone!" % p.name)
@@ -524,6 +670,120 @@ func _check_danger() -> void:
 	if danger > 0.3 and view.danger <= 0.3:
 		sfx.play("warn")
 	view.danger = danger
+
+
+# ---------- Tutorial ----------
+
+const TUT_STEPS := [
+	"",
+	"Step 1 of 5\nDrag anywhere to steer. Leave your land to draw a trail!",
+	"Step 2 of 5\nNow come back to your land. Everything inside your loop becomes yours!",
+	"Step 3 of 5\nGrab the power-up! Follow the arrow.",
+	"Step 4 of 5\nKnock out Coach: drive across Coach's trail while it's outside its land. Coach can't hurt you.",
+	"Step 5 of 5\nClaim 15% of the map to finish. Never cross your own trail!",
+]
+
+
+func _update_tutorial() -> void:
+	tut_card.visible = _tut_step > 0 and state != "over"
+	toast_row.offset_top = (430 if _tut_step > 0 else 340) + _safe_margins().y
+	if _tut_step == 0:
+		return
+	tut_label.text = TUT_STEPS[_tut_step]
+	var me: Player = world.me
+	if _tut_step == 1 and me.alive and me.trail.size() >= 4:
+		_tut_next()
+	elif _tut_step == 3 and world.powerups.is_empty():
+		_place_tut_powerup()
+
+
+func _tut_next() -> void:
+	_tut_step = mini(_tut_step + 1, 5)
+	sfx.play("coin")
+	_callout(["", "", "NICE!", "GREAT!", "AWESOME!", "SUPER!"][_tut_step], Color("#2ec48a"))
+	if _tut_step == 3:
+		_place_tut_powerup()
+	elif _tut_step == 5:
+		world._coin_timer = 1.0 # coins start showing up
+	tut_label.text = TUT_STEPS[_tut_step]
+	tut_card.pivot_offset = tut_card.size / 2
+	tut_card.scale = Vector2(1.08, 1.08)
+	tut_card.create_tween().tween_property(tut_card, "scale", Vector2.ONE, 0.3).set_trans(Tween.TRANS_BACK)
+
+
+## A power-up a few cells in front of you, somewhere open
+func _place_tut_powerup() -> void:
+	var me: Player = world.me
+	for k in 12:
+		var q: Vector2 = me.pos + Vector2.from_angle(me.angle + k * 0.5) * 7.0
+		if q.x > 2 and q.y > 2 and q.x < world.N - 2 and q.y < world.N - 2 and not world.is_wall_at(q.x, q.y):
+			world.powerups.append({"pos": q, "kind": "speed", "age": 0.0})
+			return
+
+
+## In the tutorial, an arrow points at the power-up or at Coach
+func _draw_tut_arrow() -> void:
+	if _tut_step != 3 and _tut_step != 4:
+		return
+	var target := Vector2.INF
+	if _tut_step == 3 and not world.powerups.is_empty():
+		target = world.powerups[0].pos
+	elif _tut_step == 4 and world.players.size() > 2 and world.players[2].alive:
+		target = world.players[2].pos
+	if target == Vector2.INF:
+		return
+	var at: Vector2 = get_viewport().canvas_transform * (target * CELL)
+	var vis := get_viewport_rect().size
+	var t := Time.get_ticks_msec() / 1000.0
+	var inside := Rect2(Vector2(60, 330), vis - Vector2(120, 520))
+	var tip: Vector2
+	var dir: Vector2
+	if inside.has_point(at):
+		dir = Vector2.DOWN
+		tip = at - Vector2(0, 46 + sin(t * 8.0) * 8.0)
+	else:
+		var c := inside.get_center()
+		dir = (at - c).normalized()
+		# Where the line to the target leaves the box
+		var k := INF
+		if dir.x != 0:
+			k = minf(k, absf((inside.size.x / 2) / dir.x))
+		if dir.y != 0:
+			k = minf(k, absf((inside.size.y / 2) / dir.y))
+		tip = c + dir * (k + sin(t * 8.0) * 8.0)
+	var side := dir.orthogonal()
+	var pts := PackedVector2Array([tip, tip - dir * 44 + side * 26, tip - dir * 44 - side * 26])
+	stick_view.draw_colored_polygon(pts, Color("#ffc233"))
+	stick_view.draw_polyline(PackedVector2Array([pts[0], pts[1], pts[2], pts[0]]), Color("#5a3200"), 4.0, true)
+
+
+func _build_ask() -> void:
+	ask_box = Control.new()
+	ask_box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	ask_box.visible = false
+	ui_layer.add_child(ask_box)
+	_dim(ask_box, Color(0.08, 0.1, 0.2, 0.6), Color(0.08, 0.1, 0.2, 0.8))
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	ask_box.add_child(center)
+	var c := _card(Color(1, 1, 1, 0.97))
+	center.add_child(c)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 16)
+	c.add_child(col)
+	col.add_child(_label("New here?", 54, INK))
+	var t := _label("Learn the basics in a quick tutorial, and get 50 coins for finishing it.", 28, MUTED, 0, INK, font_med)
+	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	t.custom_minimum_size.x = 520
+	col.add_child(t)
+	var yes := _button("Play the tutorial", YELLOW, Color("#5a3200"), Color("#d27a06"), 36)
+	yes.custom_minimum_size = Vector2(0, 96)
+	yes.pressed.connect(start_tutorial)
+	col.add_child(yes)
+	var no := _button("Skip, just play", Color(0.12, 0.15, 0.27, 0.08), INK, Color(0.12, 0.15, 0.27, 0.1), 28)
+	no.custom_minimum_size = Vector2(0, 80)
+	no.pressed.connect(func(): start_game())
+	col.add_child(no)
 
 
 # ---------- Controls ----------
@@ -578,13 +838,13 @@ func _unhandled_input(e: InputEvent) -> void:
 		_stick_pos = e.position
 		# Drag far and the joystick follows your finger, so you never run out of room
 		var d: Vector2 = _stick_pos - _stick_origin
-		if d.length() > 90:
-			_stick_origin = _stick_pos - d.normalized() * 90
+		if d.length() > _stick_r():
+			_stick_origin = _stick_pos - d.normalized() * _stick_r()
 	elif e is InputEventScreenDrag and e.index == _stick2_index:
 		_stick2_pos = e.position
 		var d2: Vector2 = _stick2_pos - _stick2_origin
-		if d2.length() > 90:
-			_stick2_origin = _stick2_pos - d2.normalized() * 90
+		if d2.length() > _stick_r():
+			_stick2_origin = _stick2_pos - d2.normalized() * _stick_r()
 	elif e is InputEventKey and e.pressed and not e.echo:
 		if e.keycode == KEY_ESCAPE or e.keycode == KEY_P:
 			if state == "paused":
@@ -596,20 +856,26 @@ func _unhandled_input(e: InputEvent) -> void:
 				start_game()
 
 
+func _stick_r() -> float:
+	return 125.0 if big_stick else 90.0
+
+
 func _draw_stick() -> void:
 	if not (state == "play" or state == "countdown"):
 		return
+	_draw_tut_arrow()
+	var r := _stick_r()
 	for s in [[_stick_index, _stick_origin, _stick_pos], [_stick2_index, _stick2_origin, _stick2_pos]]:
 		if s[0] < 0:
 			continue
-		stick_view.draw_circle(s[1], 90, Color(1, 1, 1, 0.12), true, -1, true)
-		stick_view.draw_arc(s[1], 90, 0, TAU, 64, Color(0.12, 0.15, 0.27, 0.35), 3.0, true)
-		var d: Vector2 = (s[2] - s[1]).limit_length(90)
-		stick_view.draw_circle(s[1] + d, 38, Color(0.12, 0.15, 0.27, 0.35), true, -1, true)
+		stick_view.draw_circle(s[1], r, Color(1, 1, 1, 0.12), true, -1, true)
+		stick_view.draw_arc(s[1], r, 0, TAU, 64, Color(0.12, 0.15, 0.27, 0.35), 3.0, true)
+		var d: Vector2 = (s[2] - s[1]).limit_length(r)
+		stick_view.draw_circle(s[1] + d, r * 0.42, Color(0.12, 0.15, 0.27, 0.35), true, -1, true)
 
 
 func _vibrate(ms: int) -> void:
-	if OS.has_feature("mobile"):
+	if vibration and OS.has_feature("mobile"):
 		Input.vibrate_handheld(ms)
 
 
@@ -918,7 +1184,7 @@ func _screen() -> Control:
 
 
 func _show(screen: Control) -> void:
-	for s in [menu, pause_screen, over_screen, shop]:
+	for s in [menu, pause_screen, over_screen, shop, missions_screen, profile_screen, settings_screen]:
 		if s and s != screen:
 			s.visible = false
 	if screen:
@@ -1047,7 +1313,7 @@ func _build_ui() -> void:
 		duo_labels.append(dl)
 
 	# Messages pop up on a dark rounded label near the top
-	var toast_row := HBoxContainer.new()
+	toast_row = HBoxContainer.new()
 	toast_row.alignment = BoxContainer.ALIGNMENT_CENTER
 	toast_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	toast_row.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
@@ -1065,6 +1331,21 @@ func _build_ui() -> void:
 	toast_row.add_child(toast_panel)
 	toast_label = _label("", 28, Color.WHITE, 0, INK, font_med)
 	toast_panel.add_child(toast_label)
+
+	# The tutorial's instructions
+	var tut_row := HBoxContainer.new()
+	tut_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	tut_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tut_row.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	tut_row.offset_top = 250 + safe.y
+	hud.add_child(tut_row)
+	tut_card = _card(Color(1, 1, 1, 0.95))
+	tut_card.visible = false
+	tut_row.add_child(tut_card)
+	tut_label = _label("", 30, INK)
+	tut_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	tut_label.custom_minimum_size.x = 560
+	tut_card.add_child(tut_label)
 
 	callout_label = _label("", 84, YELLOW, 18, INK)
 	callout_label.set_anchors_preset(Control.PRESET_CENTER)
@@ -1094,6 +1375,16 @@ func _build_ui() -> void:
 	shop = preload("res://scripts/shop.gd").new()
 	ui_layer.add_child(shop)
 	shop.build(self)
+	missions_screen = preload("res://scripts/missions_screen.gd").new()
+	ui_layer.add_child(missions_screen)
+	missions_screen.build(self)
+	profile_screen = preload("res://scripts/profile_screen.gd").new()
+	ui_layer.add_child(profile_screen)
+	profile_screen.build(self)
+	settings_screen = preload("res://scripts/settings_screen.gd").new()
+	ui_layer.add_child(settings_screen)
+	settings_screen.build(self)
+	_build_ask()
 
 
 ## Puts a control in a corner of the screen, 16 units in (plus room for notches)
@@ -1154,11 +1445,42 @@ func _build_menu(safe: Vector4) -> void:
 	menu.add_child(wallet_card)
 	_pin(wallet_card, Control.PRESET_TOP_RIGHT, safe)
 	wallet_card.grow_horizontal = Control.GROW_DIRECTION_BEGIN # bigger numbers grow to the left
-	var shop_btn := _button("SHOP", Color("#4ed8a0"), Color("#0f4a33"), Color("#2a9d6c"), 32)
-	shop_btn.custom_minimum_size = Vector2(170, 76)
-	shop_btn.pressed.connect(func(): shop.open())
-	menu.add_child(shop_btn)
-	_pin(shop_btn, Control.PRESET_TOP_LEFT, safe)
+	# Your level (tap it for your profile)
+	var badge := Button.new()
+	badge.focus_mode = Control.FOCUS_NONE
+	var bs := _style(Color(1, 1, 1, 0.92), 26)
+	bs.shadow_color = Color(0.08, 0.1, 0.2, 0.18)
+	bs.shadow_size = 12
+	bs.shadow_offset = Vector2(0, 5)
+	for k in ["normal", "hover", "pressed"]:
+		badge.add_theme_stylebox_override(k, bs)
+	badge.pressed.connect(func():
+		sfx.play("tap")
+		profile_screen.open())
+	var bv := VBoxContainer.new()
+	bv.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bv.add_theme_constant_override("separation", 6)
+	bv.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	bv.offset_left = 20
+	bv.offset_right = -20
+	bv.offset_top = 10
+	bv.offset_bottom = -12
+	badge.add_child(bv)
+	level_label = _label("Level 1", 26, Color("#6a57b8"))
+	level_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	level_label.clip_text = true
+	bv.add_child(level_label)
+	level_bar = Control.new()
+	level_bar.custom_minimum_size = Vector2(0, 12)
+	level_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	level_bar.draw.connect(func():
+		var f: float = level_bar.get_meta("fill", 0.0)
+		level_bar.draw_rect(Rect2(Vector2.ZERO, level_bar.size), Color(0.12, 0.15, 0.27, 0.12))
+		level_bar.draw_rect(Rect2(Vector2.ZERO, Vector2(level_bar.size.x * f, level_bar.size.y)), Color("#8d7bd6")))
+	bv.add_child(level_bar)
+	badge.custom_minimum_size = Vector2(250, 84)
+	menu.add_child(badge)
+	_pin(badge, Control.PRESET_TOP_LEFT, safe)
 	var col := _center_column(menu)
 	# The title: every letter a player colour, bobbing gently
 	var title := HBoxContainer.new()
@@ -1206,6 +1528,8 @@ func _build_menu(safe: Vector4) -> void:
 	modes_row.custom_minimum_size.x = 600
 	col.add_child(modes_row)
 	for id in world.MODES:
+		if world.MODES[id].get("hidden", false):
+			continue
 		var b := Button.new()
 		b.text = world.MODES[id].name
 		b.focus_mode = Control.FOCUS_NONE
@@ -1238,6 +1562,24 @@ func _build_menu(safe: Vector4) -> void:
 			sfx.play("tap")
 			_start_demo())
 		maps_row.add_child(mb)
+	col.add_child(_label("BOTS", 22, Color(1, 1, 1, 0.75)))
+	diff_row = HBoxContainer.new()
+	diff_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	diff_row.add_theme_constant_override("separation", 8)
+	col.add_child(diff_row)
+	for id in world.DIFFICULTY:
+		var db := Button.new()
+		db.text = world.DIFFICULTY[id].name
+		db.set_meta("id", id)
+		db.focus_mode = Control.FOCUS_NONE
+		db.add_theme_font_override("font", font)
+		db.add_theme_font_size_override("font_size", 22)
+		db.pressed.connect(func():
+			difficulty = id
+			_save()
+			sfx.play("tap")
+			_refresh_menu())
+		diff_row.add_child(db)
 	col.add_child(Control.new())
 	var play := _button("PLAY", YELLOW, Color("#5a3200"), Color("#d27a06"), 64)
 	play.custom_minimum_size = Vector2(380, 120)
@@ -1250,24 +1592,58 @@ func _build_menu(safe: Vector4) -> void:
 	pulse.tween_property(play, "scale", Vector2.ONE, 0.7).set_trans(Tween.TRANS_SINE)
 	best_label = _label("", 26, Color(1, 1, 1, 0.85), 0, INK, font_med)
 	col.add_child(best_label)
-	var toggles := HBoxContainer.new()
-	toggles.alignment = BoxContainer.ALIGNMENT_CENTER
-	toggles.add_theme_constant_override("separation", 12)
-	col.add_child(toggles)
-	sound_btn = _button("", Color(1, 1, 1, 0.16), Color.WHITE, Color(1, 1, 1, 0.1), 24)
-	sound_btn.pressed.connect(func():
-		sfx.muted = not sfx.muted
-		_save()
-		_refresh_menu())
-	toggles.add_child(sound_btn)
-	music_btn = _button("", Color(1, 1, 1, 0.16), Color.WHITE, Color(1, 1, 1, 0.1), 24)
-	music_btn.pressed.connect(func():
-		music.set_enabled(not music.enabled)
-		_save()
-		_refresh_menu())
-	toggles.add_child(music_btn)
-	var foot := _label("Steer by dragging anywhere · arrows or WASD on a keyboard", 20, Color(1, 1, 1, 0.6), 0, INK, font_med)
-	col.add_child(foot)
+	# The dock: Shop, Missions, Profile and Settings
+	var dock := HBoxContainer.new()
+	dock.alignment = BoxContainer.ALIGNMENT_CENTER
+	dock.add_theme_constant_override("separation", 12)
+	menu.add_child(dock)
+	var items := [["Shop", Art.BAG, Color("#4ed8a0"), func(): shop.open()],
+		["Missions", Art.TARGET, Color("#ff8a5c"), func(): missions_screen.open()],
+		["Profile", Art.PERSON, Color("#8d7bd6"), func(): profile_screen.open()],
+		["Settings", Art.GEAR, Color("#7f8aa6"), func(): settings_screen.open()]]
+	for it in items:
+		var b := Button.new()
+		b.focus_mode = Control.FOCUS_NONE
+		b.custom_minimum_size = Vector2(150, 112)
+		var c: Color = it[2]
+		b.add_theme_stylebox_override("normal", _style(c, 26, 8, c.darkened(0.25)))
+		b.add_theme_stylebox_override("hover", _style(c.lightened(0.06), 26, 8, c.darkened(0.25)))
+		b.add_theme_stylebox_override("pressed", _style(c.darkened(0.05), 26, 3, c.darkened(0.25)))
+		var open: Callable = it[3]
+		b.pressed.connect(func():
+			sfx.play("tap")
+			open.call())
+		var v := VBoxContainer.new()
+		v.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		v.offset_bottom = -6
+		v.alignment = BoxContainer.ALIGNMENT_CENTER
+		v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		v.add_theme_constant_override("separation", 2)
+		b.add_child(v)
+		var ic := _icon(it[1], 44, Color.WHITE)
+		ic.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		v.add_child(ic)
+		v.add_child(_label(it[0], 24, Color.WHITE, 6, c.darkened(0.35)))
+		if it[0] == "Missions":
+			# How many of today's missions are done
+			missions_badge = _label("", 20, Color.WHITE)
+			var bp := PanelContainer.new()
+			var bst := _style(Color("#ff3c50"), 14)
+			bst.content_margin_left = 8
+			bst.content_margin_right = 8
+			bst.content_margin_top = 0
+			bst.content_margin_bottom = 2
+			bp.add_theme_stylebox_override("panel", bst)
+			bp.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			bp.add_child(missions_badge)
+			bp.position = Vector2(104, -10)
+			b.add_child(bp)
+		dock.add_child(b)
+	dock.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE, 16)
+	dock.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	dock.offset_top -= safe.w + 8
+	dock.offset_bottom -= safe.w + 8
 
 
 func _refresh_menu() -> void:
@@ -1287,6 +1663,8 @@ func _refresh_menu() -> void:
 			b.add_theme_stylebox_override(st, s)
 	var b: float = bests.get("daily-" + world.today() if mode_id == "daily" else mode_id, 0.0)
 	best_label.text = ("Best: %.1f%%   ·   Wins: %d" % [b, wins]) if games > 0 else "Pick a mode and a map, then play!"
+	if difficulty != "normal":
+		best_label.text += "   ·   Coins x%s" % str(world.DIFFICULTY[difficulty].coins)
 	mode_desc.text = world.MODES[mode_id].desc
 	if mode_id == "daily":
 		var h: int = absi(world.today().hash())
@@ -1302,9 +1680,25 @@ func _refresh_menu() -> void:
 			mb.add_theme_stylebox_override(k, st)
 		for k in ["font_color", "font_hover_color", "font_pressed_color"]:
 			mb.add_theme_color_override(k, Color("#5a3200") if on else Color.WHITE)
-	sound_btn.text = "Sound: off" if sfx.muted else "Sound: on"
-	music_btn.text = "Music: on" if music.enabled else "Music: off"
 	wallet_label.text = str(wallet)
+	level_label.text = "Level %d  ·  %s" % [prog.level, player_name]
+	level_bar.set_meta("fill", float(prog.xp) / Progress.need(prog.level))
+	level_bar.queue_redraw()
+	prog.ensure_day(world.today())
+	var done := prog.missions.filter(func(m): return m.done).size()
+	missions_badge.text = "%d/3" % done
+	missions_badge.get_parent().visible = done < 3
+	for db in diff_row.get_children():
+		var on: bool = db.get_meta("id") == difficulty
+		var st := _style(Color.WHITE if on else Color(1, 1, 1, 0.16), 18)
+		st.content_margin_left = 18
+		st.content_margin_right = 18
+		st.content_margin_top = 8
+		st.content_margin_bottom = 8
+		for k in ["normal", "hover", "pressed"]:
+			db.add_theme_stylebox_override(k, st)
+		for k in ["font_color", "font_hover_color", "font_pressed_color"]:
+			db.add_theme_color_override(k, INK if on else Color.WHITE)
 	for mb in maps_row.get_children():
 		mb.disabled = mode_id == "daily"
 		var picked: bool = mb.text == world.MAPS[map_id] and mode_id != "daily"
@@ -1350,12 +1744,26 @@ func _build_over() -> void:
 	col.add_child(over_best)
 	over_coins = _label("", 34, Color("#ffd23f"), 10, Color("#6b4a00"))
 	col.add_child(over_coins)
+	over_xp = _label("", 26, Color("#d8cfff"))
+	col.add_child(over_xp)
+	over_xp_bar = Control.new()
+	over_xp_bar.custom_minimum_size = Vector2(380, 16)
+	over_xp_bar.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	over_xp_bar.draw.connect(func():
+		var f: float = clampf(over_xp_bar.get_meta("fill", 0.0), 0, 1)
+		over_xp_bar.draw_rect(Rect2(Vector2.ZERO, over_xp_bar.size), Color(1, 1, 1, 0.15))
+		over_xp_bar.draw_rect(Rect2(Vector2.ZERO, Vector2(over_xp_bar.size.x * f, over_xp_bar.size.y)), Color("#a996ff")))
+	col.add_child(over_xp_bar)
+	over_rewards = VBoxContainer.new()
+	over_rewards.add_theme_constant_override("separation", 8)
+	col.add_child(over_rewards)
 	col.add_child(Control.new())
 	var again := _button("Play again", YELLOW, Color("#5a3200"), Color("#d27a06"), 46)
 	again.custom_minimum_size = Vector2(380, 104)
 	again.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	again.pressed.connect(start_game)
+	again.pressed.connect(func(): start_game())
 	col.add_child(again)
+	again_btn = again
 	var menu_btn := _button("Menu", Color(1, 1, 1, 0.92), INK, Color("#c7cfe0"), 32)
 	menu_btn.custom_minimum_size = Vector2(380, 84)
 	menu_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -1402,8 +1810,27 @@ func _load() -> void:
 			owned[kind].insert(0, free)
 		var on: String = c.get_value("shop", "using_" + kind, free)
 		equipped[kind] = on if owned[kind].has(on) else free
+	if c.has_section_key("progress", "data"):
+		prog.from_dict(c.get_value("progress", "data", {}))
+	else:
+		# Saves from before levels and stats: carry over what we know
+		prog.stats.games = games
+		prog.stats.wins = wins
+		for k in bests:
+			prog.stats.best_pct = maxf(prog.stats.best_pct, bests[k])
+		prog.tutorial_done = games > 0
+	difficulty = c.get_value("player", "difficulty", "normal")
+	if not world_difficulties().has(difficulty):
+		difficulty = "normal"
+	player_name = c.get_value("player", "name", "You")
+	vibration = c.get_value("settings", "vibration", true)
+	big_stick = c.get_value("settings", "big_stick", false)
 	set_meta("music", c.get_value("settings", "music", true))
 	set_meta("muted", c.get_value("settings", "muted", false))
+
+
+static func world_difficulties() -> Array:
+	return ["easy", "normal", "hard"]
 
 
 func _save() -> void:
@@ -1418,6 +1845,11 @@ func _save() -> void:
 	for kind in owned:
 		c.set_value("shop", "owned_" + kind, owned[kind])
 		c.set_value("shop", "using_" + kind, equipped[kind])
+	c.set_value("progress", "data", prog.to_dict())
+	c.set_value("player", "difficulty", difficulty)
+	c.set_value("player", "name", player_name)
+	c.set_value("settings", "vibration", vibration)
+	c.set_value("settings", "big_stick", big_stick)
 	c.set_value("settings", "music", music.enabled)
 	c.set_value("settings", "muted", sfx.muted)
 	c.save(SAVE_PATH)

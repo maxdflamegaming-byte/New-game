@@ -33,6 +33,7 @@ func _play(mode := "classic") -> void:
 func _run() -> void:
 	await _wait(0.5)
 	var w = main.world
+	main.prog.tutorial_done = true # skip the first-game tutorial offer (tested on its own below)
 	ok("Starts on the menu with a live bots-only game", main.state == "menu" and w.me.is_bot)
 
 	# Power-ups
@@ -190,28 +191,160 @@ func _run() -> void:
 	main._to_menu()
 	ok("The split screen goes away on the menu", not main.split.visible)
 
+	# Levels, missions, streak and trophies (the rules on their own)
+	var pr := Progress.new()
+	var win_game := {"mode": "classic", "map": "square", "won": true, "pct": 52.0, "kos": 2, "powerups": 3, "coins": 4, "time": 150.0, "best_loop": 6.0, "wallet": 0}
+	var r1: Array = pr.finish(win_game, "2026-03-10")
+	var kinds := r1.map(func(r): return r.kind)
+	ok("A first game pays the streak bonus and earns trophies", kinds.has("streak") and pr.trophies.has("first_win") and pr.trophies.has("first_ko"), str(kinds))
+	ok("Stats add up", pr.stats.games == 1 and pr.stats.wins == 1 and pr.stats.kos == 2 and is_equal_approx(pr.stats.best_pct, 52.0))
+	ok("A game gives XP", pr.xp + (pr.level - 1) * 100 > 0, "level %d xp %d" % [pr.level, pr.xp])
+	var r2: Array = pr.finish(win_game, "2026-03-10")
+	ok("The streak pays once a day, trophies only once", not r2.any(func(r): return r.kind == "streak" or r.text == "Trophy: First Win"))
+	pr.finish(win_game, "2026-03-11")
+	ok("Playing the next day grows the streak", pr.streak == 2)
+	pr.finish(win_game, "2026-03-14")
+	ok("Missing a day starts it again", pr.streak == 1)
+	var lv := Progress.new()
+	var ups: Array = lv._gain_xp(Progress.need(1) + 5)
+	ok("Enough XP levels you up, with coins", lv.level == 2 and lv.xp == 5 and ups.size() == 1 and ups[0].coins == 70)
+	var mp := Progress.new()
+	mp.ensure_day("2026-05-01")
+	var first_ids := mp.missions.map(func(m): return m.id)
+	mp.day = ""
+	mp.ensure_day("2026-05-01")
+	ok("Each day has the same 3 different missions for everyone", mp.missions.map(func(m): return m.id) == first_ids and first_ids.size() == 3 and first_ids[0] != first_ids[1] and first_ids[1] != first_ids[2] and first_ids[0] != first_ids[2])
+	mp.missions = [{"id": "play3", "progress": 0.0, "done": false}, {"id": "claim30", "progress": 0.0, "done": false}, {"id": "teams", "progress": 0.0, "done": false}]
+	var lose_game := {"mode": "classic", "map": "round", "won": false, "pct": 12.0}
+	var got1: Array = mp.finish(lose_game, "2026-05-01")
+	mp.finish(lose_game, "2026-05-01")
+	var got3: Array = mp.finish(win_game, "2026-05-01")
+	var missions_done := got3.filter(func(r): return r.kind == "mission").map(func(r): return r.text)
+	ok("Missions fill up and pay when they're done", not got1.any(func(r): return r.kind == "mission") and missions_done.has("Mission: Play 3 games") and missions_done.has("Mission: Claim 30% in one game") and not mp.missions[2].done, str(missions_done))
+	ok("A finished mission doesn't pay twice", not mp.finish(win_game, "2026-05-01").any(func(r): return r.kind == "mission"))
+	var bp := Progress.new()
+	bp.finish({"mode": "boss", "won": true, "pct": 20.0, "lives_lost": 1}, "2026-05-01")
+	ok("Beating the King after losing a life isn't Flawless", bp.trophies.has("king") and not bp.trophies.has("flawless"))
+	bp.finish({"mode": "boss", "won": true, "pct": 20.0, "lives_lost": 0}, "2026-05-01")
+	ok("Beating him without losing one is", bp.trophies.has("flawless"))
+	var copy := Progress.new()
+	copy.from_dict(pr.to_dict())
+	ok("Progress saves and loads", copy.level == pr.level and copy.xp == pr.xp and copy.trophies.keys() == pr.trophies.keys() and copy.streak == pr.streak and copy.stats.games == pr.stats.games)
+	copy.from_dict({"level": -3, "trophies": ["nope", "king"], "missions": [{"id": "nope"}], "stats": {"games": "lots"}})
+	ok("A broken save is cleaned up", copy.level == 1 and copy.trophies.keys() == ["king"] and copy.missions.is_empty() and copy.stats.games == 0)
+
+	# Bot difficulty
+	main.difficulty = "hard"
+	await _play()
+	var hard_speed: float = w.speed_of(w.players[2])
+	ok("Hard bots are faster", hard_speed > w.SPEED and w.speed_of(w.me) == w.SPEED, str(hard_speed))
+	main.peak = 50.0
+	var before_game: int = main.wallet
+	main._game_over(true, "test")
+	ok("Hard pays 1.5x coins and the results show your rewards", "x1.5" in main.over_coins.text and main.wallet > before_game and main.over_xp.text.begins_with("Level"), main.over_coins.text)
+	main.difficulty = "normal"
+	main._to_menu()
+	await process_frame
+
+	# The first game offers the tutorial
+	var saved_prog: Progress = main.prog
+	main.prog = Progress.new()
+	main.ask_box.set_meta("asked", false)
+	main.start_game()
+	ok("Your very first game offers the tutorial", main.ask_box.visible and main.state == "menu")
+	main._back()
+	ok("Back closes the offer", not main.ask_box.visible)
+
+	# The tutorial
+	main.start_tutorial()
+	main.countdown = 0.0
+	await process_frame
+	await process_frame
+	var coach: Player = w.players[2]
+	ok("The tutorial has you and a practice bot", w.players.size() == 3 and coach.harmless and main._tut_step == 1 and main.tut_card.visible)
+	w.kill(w.me, coach)
+	ok("The practice bot can't knock you out", w.me.alive)
+	for k in 4:
+		w.me.trail.append(k)
+	main._update_tutorial()
+	w.me.trail.clear()
+	ok("Step 1: leaving your land", main._tut_step == 2)
+	main._on_captured(w.me, PackedInt32Array(), 1.0)
+	ok("Step 2: a loop; then a power-up appears", main._tut_step == 3 and w.powerups.size() == 1)
+	w._grab(w.me, "speed", w.me.pos)
+	ok("Step 3: grabbing it", main._tut_step == 4)
+	coach.shield = 0.0
+	w.kill(coach, w.me)
+	await process_frame
+	ok("Step 4: knocking out Coach", main._tut_step == 5)
+	var coins_before: int = main.wallet
+	var need := int(w.play_cells * 0.16)
+	for cell_i in w.N * w.N:
+		if need <= 0:
+			break
+		if w.wall[cell_i] == 0 and w.land[cell_i] != w.me.id and w.trail[cell_i] == 0:
+			w.set_land(cell_i, w.me.id)
+			need -= 1
+	w.land_version += 1
+	await _wait(2.2)
+	ok("Step 5: claiming 15% finishes it, with 50 coins and a trophy", main.state == "over" and main.prog.tutorial_done and main.prog.trophies.has("tutorial") and main.wallet >= coins_before + 75, "%s %d" % [main.state, main.wallet - coins_before])
+	ok("Then it offers a real game", main.again_btn.text == "Play for real")
+	main.prog = saved_prog
+	main._to_menu()
+	await process_frame
+
+	# The menu's screens
+	for sc in [main.missions_screen, main.profile_screen, main.settings_screen]:
+		sc.open()
+		await process_frame
+		var shown: bool = sc.visible and not main.menu.visible and sc.body.get_child_count() > 2
+		main._back()
+		await process_frame
+		ok("%s opens and Back closes it" % sc.get_script().resource_path.get_file(), shown and not sc.visible and main.menu.visible)
+	main.settings_screen.open()
+	var vib: bool = main.vibration
+	main.settings_screen._toggle(VBoxContainer.new(), "x", vib, func(): main.vibration = not main.vibration)
+	main.vibration = not vib
+	main._save()
+	main._load()
+	ok("Settings are saved", main.vibration == (not vib))
+	main.vibration = vib
+	main.settings_screen.close()
+	main.profile_screen.open()
+	main.profile_screen.name_edit.text = "  Max  "
+	main.profile_screen._save_name()
+	main.profile_screen.close()
+	await _play()
+	ok("Your name is saved and shown in the game", main.player_name == "Max" and w.me.name == "Max")
+	main.player_name = "You"
+	main._save()
+	main._to_menu()
+	await process_frame
+	ok("The menu shows your level and today's missions", main.level_label.text.begins_with("Level ") and main.missions_badge.text.ends_with("/3"))
+
 	# The shop
 	main._to_menu()
 	await process_frame
 	main.wallet = 500
+	main.prog.trophies.erase("shopper")
 	main.owned = {"skin": ["plain"], "trail": ["none"], "pet": ["none"]}
 	main.equipped = {"skin": "plain", "trail": "none", "pet": "none"}
 	main.shop.open()
 	await process_frame
 	ok("The shop opens from the menu", main.shop.visible and not main.menu.visible and main.state == "menu")
 	main.shop.tap("skin", "cat")
-	ok("Buying a skin takes its price and puts it on", main.wallet == 200 and main.owned.skin.has("cat") and main.equipped.skin == "cat", str(main.wallet))
+	ok("Buying a skin takes its price and puts it on (and your first buy earns a trophy)", main.wallet == 225 and main.prog.trophies.has("shopper") and main.owned.skin.has("cat") and main.equipped.skin == "cat", str(main.wallet))
 	main.shop.tap("skin", "galaxy")
-	ok("You can't buy what you can't afford", main.wallet == 200 and not main.owned.skin.has("galaxy") and main.equipped.skin == "cat")
+	ok("You can't buy what you can't afford", main.wallet == 225 and not main.owned.skin.has("galaxy") and main.equipped.skin == "cat")
 	main.shop.tap("skin", "plain")
 	main.shop.tap("skin", "cat")
-	ok("Switching to something you own is free", main.wallet == 200 and main.equipped.skin == "cat")
+	ok("Switching to something you own is free", main.wallet == 225 and main.equipped.skin == "cat")
 	main.shop.show_tab("trail")
 	main.shop.tap("trail", "sparkle")
-	ok("Trails can be bought too", main.wallet == 0 and main.equipped.trail == "sparkle")
+	ok("Trails can be bought too", main.wallet == 25 and main.equipped.trail == "sparkle")
 	var shop_cfg := ConfigFile.new()
 	shop_cfg.load(main.SAVE_PATH)
-	ok("Purchases are saved", shop_cfg.get_value("shop", "owned_skin", []).has("cat") and shop_cfg.get_value("shop", "using_trail", "") == "sparkle" and shop_cfg.get_value("player", "coins", -1) == 0)
+	ok("Purchases are saved", shop_cfg.get_value("shop", "owned_skin", []).has("cat") and shop_cfg.get_value("shop", "using_trail", "") == "sparkle" and shop_cfg.get_value("player", "coins", -1) == 25)
 	main._back()
 	await process_frame
 	ok("Back closes the shop", not main.shop.visible and main.menu.visible)
