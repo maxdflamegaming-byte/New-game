@@ -27,7 +27,7 @@ func refresh() -> void:
 	right.add_theme_constant_override("separation", 8)
 	top.add_child(right)
 	name_edit = LineEdit.new()
-	name_edit.text = m.player_name
+	name_edit.text = tr(m.player_name) if m.player_name == "You" else m.player_name
 	name_edit.max_length = 12
 	name_edit.placeholder_text = "Your name"
 	name_edit.add_theme_font_override("font", m.font)
@@ -41,11 +41,11 @@ func refresh() -> void:
 	name_edit.text_submitted.connect(func(_t): name_edit.release_focus())
 	name_edit.focus_exited.connect(_save_name)
 	right.add_child(name_edit)
-	var lv: Label = m._label("Level %d" % p.level, 30, Color("#6a57b8"))
+	var lv: Label = m._label(tr("Level %d") % p.level, 30, Color("#6a57b8"))
 	lv.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	right.add_child(lv)
 	right.add_child(bar(float(p.xp) / Progress.need(p.level), Color("#8d7bd6"), 18))
-	var xl: Label = m._label("%d / %d XP to level %d" % [p.xp, Progress.need(p.level), p.level + 1], 22, m.MUTED, 0, m.INK, m.font_med)
+	var xl: Label = m._label(tr("%d / %d XP to level %d") % [p.xp, Progress.need(p.level), p.level + 1], 22, m.MUTED, 0, m.INK, m.font_med)
 	xl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	right.add_child(xl)
 
@@ -63,7 +63,7 @@ func refresh() -> void:
 		["Knockouts", str(s.kos)], ["Best claim", "%.1f%%" % s.best_pct],
 		["Biggest loop", "%.1f%%" % s.best_loop], ["Time played", "%dh %02dm" % [hours, mins] if hours else "%dm" % mins],
 		["Power-ups", str(s.powerups)], ["Coins picked up", str(s.coins)],
-		["Bosses beaten", str(s.king_wins + s.queen_wins + s.wizard_wins)], ["Best streak", "%d day%s" % [p.streak, "" if p.streak == 1 else "s"]],
+		["Bosses beaten", str(s.king_wins + s.queen_wins + s.wizard_wins)], ["Best streak", tr("1 day") if p.streak == 1 else tr("%d days") % p.streak],
 	]
 	for r in rows:
 		var cell := HBoxContainer.new()
@@ -75,8 +75,8 @@ func refresh() -> void:
 		cell.add_child(m._label(r[1], 26, m.INK))
 		grid.add_child(cell)
 
-	heading("TROPHIES  %d / %d" % [p.trophies.size(), Progress.TROPHIES.size()])
-	info = m._label("Tap a trophy to see how to get it. Each one pays %d coins." % Progress.TROPHY_COINS, 22, Color(1, 1, 1, 0.8), 0, m.INK, m.font_med)
+	heading(tr("TROPHIES") + "  %d / %d" % [p.trophies.size(), Progress.TROPHIES.size()])
+	info = m._label(tr("Tap a trophy to see how to get it. Each one pays %d coins.") % Progress.TROPHY_COINS, 22, Color(1, 1, 1, 0.8), 0, m.INK, m.font_med)
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.add_child(info)
 	var tg := GridContainer.new()
@@ -112,7 +112,7 @@ func refresh() -> void:
 		v.add_child(nl)
 		b.pressed.connect(func():
 			m.sfx.play("tap")
-			info.text = "%s: %s%s" % [d.name, d.desc, "  (You have it!)" if have else ""])
+			info.text = "%s: %s%s" % [tr(d.name), tr(d.desc), "  " + tr("(You have it!)") if have else ""])
 		tg.add_child(b)
 
 

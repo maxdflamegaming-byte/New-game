@@ -43,7 +43,7 @@ func refresh() -> void:
 			right.add_child(r)
 	var clock := Time.get_time_dict_from_system()
 	var left_s: int = 86400 - (clock.hour * 3600 + clock.minute * 60 + clock.second)
-	var soon: Label = m._label("New missions in %dh %02dm  ·  they pay out as soon as you finish them" % [left_s / 3600, (left_s % 3600) / 60],
+	var soon: Label = m._label(tr("New missions in %dh %02dm  ·  they pay out as soon as you finish them") % [left_s / 3600, (left_s % 3600) / 60],
 			22, Color(1, 1, 1, 0.7), 0, m.INK, m.font_med)
 	soon.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.add_child(soon)
@@ -65,8 +65,8 @@ func refresh() -> void:
 		var n := start + k + 1
 		var coins: int = Progress.STREAK_COINS[n - 1] if n <= Progress.STREAK_COINS.size() else 100
 		days.add_child(_day(n, coins, n <= streak, n == shown and not played_today))
-	var msg := "Today's bonus is collected. Come back tomorrow for day %d!" % (streak + 1) if played_today \
-		else "Play a game today for the day %d bonus!" % (streak + 1)
+	var msg := tr("Today's bonus is collected. Come back tomorrow for day %d!") % (streak + 1) if played_today \
+		else tr("Play a game today for the day %d bonus!") % (streak + 1)
 	var ml: Label = m._label(msg, 24, m.INK, 0, m.INK, m.font_med)
 	ml.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(ml)

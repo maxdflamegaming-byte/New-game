@@ -128,7 +128,7 @@ func _gain_xp(amount: int) -> Array:
 	while xp >= need(level):
 		xp -= need(level)
 		level += 1
-		out.append({"text": "Level %d!" % level, "coins": 50 + level * 10, "kind": "level"})
+		out.append({"text": tr("Level %d!") % level, "coins": 50 + level * 10, "kind": "level"})
 	return out
 
 
@@ -139,7 +139,7 @@ func _streak(today: String) -> Array:
 	streak = streak + 1 if streak_day == yesterday else 1
 	streak_day = today
 	var coins: int = STREAK_COINS[streak - 1] if streak <= STREAK_COINS.size() else 100
-	return [{"text": "Day %d streak" % streak if streak > 1 else "First game today", "coins": coins, "kind": "streak"}]
+	return [{"text": tr("Day %d streak") % streak if streak > 1 else tr("First game today"), "coins": coins, "kind": "streak"}]
 
 
 func _missions(s: Dictionary, today: String) -> Array:
@@ -167,7 +167,7 @@ func _missions(s: Dictionary, today: String) -> Array:
 		if m.progress >= d.goal:
 			m.progress = float(d.goal)
 			m.done = true
-			out.append({"text": "Mission: " + d.text, "coins": d.reward, "kind": "mission"})
+			out.append({"text": tr("Mission: %s") % tr(d.text), "coins": d.reward, "kind": "mission"})
 	return out
 
 
@@ -213,7 +213,7 @@ func award(id: String) -> Array:
 	if trophies.has(id) or not TROPHIES.has(id):
 		return []
 	trophies[id] = true
-	return [{"text": "Trophy: " + TROPHIES[id].name, "coins": TROPHY_COINS, "kind": "trophy"}]
+	return [{"text": tr("Trophy: %s") % tr(TROPHIES[id].name), "coins": TROPHY_COINS, "kind": "trophy"}]
 
 
 func _add_unique(key: String, v: String) -> void:

@@ -176,12 +176,12 @@ func tap(kind: String, id: String) -> void:
 	if m.owned[kind].has(id):
 		m.equipped[kind] = id
 		m.sfx.play("tap")
-		info.text = "Now using %s." % name
+		info.text = tr("Now using %s.") % tr(name)
 	else:
 		var cost := Cosmetics.price(kind, id)
 		if m.wallet < cost:
 			m.sfx.play("warn")
-			info.text = "%s costs %d coins. You need %d more: win games and grab coins to earn them!" % [name, cost, cost - m.wallet]
+			info.text = tr("%s costs %d coins. You need %d more: win games and grab coins to earn them!") % [tr(name), cost, cost - m.wallet]
 			_shake(kind, id)
 			return
 		m.wallet -= cost
@@ -189,10 +189,10 @@ func tap(kind: String, id: String) -> void:
 		m.equipped[kind] = id
 		m.sfx.play("coin")
 		m.sfx.play("win")
-		info.text = "You got %s! It's on now." % name
+		info.text = tr("You got %s! It's on now.") % tr(name)
 		for r in m.prog.award("shopper"):
 			m.wallet += r.coins
-			info.text += "  %s: +%d coins!" % [r.text, r.coins]
+			info.text += "  " + tr("%s: +%d coins!") % [r.text, r.coins]
 		_celebrate(kind, id)
 	m._save()
 	if kind == "trail":

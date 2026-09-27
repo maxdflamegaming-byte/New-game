@@ -34,6 +34,8 @@ func _run() -> void:
 	await _wait(0.5)
 	var w = main.world
 	main.prog.tutorial_done = true # skip the first-game tutorial offer (tested on its own below)
+	I18n.lang = "en" # the checks below compare English text
+	I18n.apply()
 	ok("Starts on the menu with a live bots-only game", main.state == "menu" and w.me.is_bot)
 
 	# Power-ups
@@ -512,6 +514,25 @@ func _run() -> void:
 	main.prog = hint_prog
 	main._to_menu()
 	await process_frame
+
+	# Languages
+	var expect := {"es": "JUGAR", "pt": "JOGAR", "hi": "खेलें", "id": "MAIN", "ru": "ИГРАТЬ", "tr": "OYNA"}
+	var langs_ok := true
+	for code in expect:
+		I18n.lang = code
+		I18n.apply()
+		if main.tr("PLAY") != expect[code]:
+			langs_ok = false
+	ok("Six languages are ready", langs_ok)
+	I18n.lang = "ru"
+	I18n.apply()
+	ok("Text with numbers is translated too", main.tr("Level %d") % 3 == "Уровень 3", main.tr("Level %d") % 3)
+	main._refresh_menu()
+	I18n.lang = "en"
+	I18n.apply()
+	ok("And back to English", main.tr("PLAY") == "PLAY")
+	var fb: Array = main.font.fallbacks
+	ok("Fonts have Hindi, Russian and Turkish letters", fb.size() == 3 and fb.all(func(f): return f != null))
 
 	# The shop
 	main._to_menu()

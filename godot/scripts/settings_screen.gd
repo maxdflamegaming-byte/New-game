@@ -9,8 +9,15 @@ func build(main) -> void:
 func refresh() -> void:
 	super()
 	clear()
-	heading("GRAPHICS")
+	heading("LANGUAGE")
 	var box := card()
+	var codes: Array = I18n.LANGS.keys()
+	_choice(box, "", codes.map(func(c): return I18n.LANGS[c] if c != "" else tr("Auto")), codes.find(I18n.lang), func(i):
+		I18n.lang = codes[i]
+		I18n.apply()
+		m._refresh_menu())
+	heading("GRAPHICS")
+	box = card()
 	_choice(box, "Quality", Gfx.LEVELS, Gfx.level, func(i):
 		Gfx.level = i
 		m._apply_gfx())
@@ -22,10 +29,10 @@ func refresh() -> void:
 		Gfx.show_fps = not Gfx.show_fps
 		m._apply_gfx())
 	var hz := Gfx.screen_hz()
-	var about_gfx: Label = m._label(["Low: 720p and fewer effects, for older phones.", "Medium: full resolution, lighter effects.",
-			"High: full resolution, all effects, smoother edges.", "Ultra: sharpest edges, extra glow and sparkle."][Gfx.level]
-			+ ("  Your screen is running at %d Hz." % hz if hz > 0 else "")
-			+ ("  90 and 120 FPS need a 90 or 120 Hz screen, and use more battery." if Gfx.fps > 60 else ""),
+	var about_gfx: Label = m._label(tr(["Low: 720p and fewer effects, for older phones.", "Medium: full resolution, lighter effects.",
+			"High: full resolution, all effects, smoother edges.", "Ultra: sharpest edges, extra glow and sparkle."][Gfx.level])
+			+ ("  " + tr("Your screen is running at %d Hz.") % hz if hz > 0 else "")
+			+ ("  " + tr("90 and 120 FPS need a 90 or 120 Hz screen, and use more battery.") if Gfx.fps > 60 else ""),
 			22, m.MUTED, 0, m.INK, m.font_med)
 	about_gfx.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(about_gfx)
@@ -47,7 +54,7 @@ func refresh() -> void:
 			m.big_stick = i == 1)
 	var how := "Drag anywhere on the screen to steer." if m.controls == "stick" \
 		else "Hold the left or right side of the screen to turn; let go to go straight. (2 Players always uses joysticks.)"
-	var hint: Label = m._label(how + " On a keyboard: arrows or WASD, P to pause.", 22, m.MUTED, 0, m.INK, m.font_med)
+	var hint: Label = m._label(tr(how) + " " + tr("On a keyboard: arrows or WASD, P to pause."), 22, m.MUTED, 0, m.INK, m.font_med)
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(hint)
 	heading("ACCESSIBILITY")
@@ -81,15 +88,26 @@ func _toggle(box: BoxContainer, text: String, on: bool, flip: Callable) -> void:
 ## A row with a name and a set of buttons, one of them picked (more than 2 buttons go on a
 ## row of their own under the name)
 func _choice(box: BoxContainer, text: String, options: Array, picked: int, pick: Callable) -> void:
-	var row := HBoxContainer.new()
+	var row: Container = HBoxContainer.new()
 	row.add_theme_constant_override("separation", 8)
 	box.add_child(row)
 	var l: Label = m._label(text, 28, m.INK)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(l)
-	var wide := options.size() > 2
-	if wide:
+	# More than two choices, or two long ones, go on a row of their own under the name
+	var wide := options.size() > 2 or "".join(options).length() > 16
+	if text == "":
+		row.visible = false
+	if options.size() > 4:
+		# Lots of choices: they wrap onto as many rows as they need
+		var flow := HFlowContainer.new()
+		flow.add_theme_constant_override("h_separation", 8)
+		flow.add_theme_constant_override("v_separation", 8)
+		box.add_child(flow)
+		row = flow
+		wide = false
+	elif wide:
 		row = HBoxContainer.new()
 		row.add_theme_constant_override("separation", 8)
 		box.add_child(row)

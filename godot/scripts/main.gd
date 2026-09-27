@@ -108,6 +108,7 @@ var over_coins: Label
 var wallet_label: Label
 var maps_row: HFlowContainer
 var boss_row: HBoxContainer
+var menu_col: VBoxContainer
 var _storm_warned := false
 var modes_row: HFlowContainer
 var mode_desc: Label
@@ -143,6 +144,8 @@ func _ready() -> void:
 	Gfx.apply(get_tree())
 	font = load("res://assets/fonts/Fredoka-Bold.ttf")
 	font_med = load("res://assets/fonts/Fredoka-Medium.ttf")
+	I18n.add_fallbacks(font, font_med)
+	I18n.setup()
 	sfx = preload("res://scripts/sfx.gd").new()
 	sfx.muted = get_meta("muted", false)
 	add_child(sfx)
@@ -300,17 +303,17 @@ func _check_end() -> void:
 	var goal: float = m.get("win", 0.0)
 	if m.get("duo", false):
 		if world.pct(me) >= goal:
-			_win("%s claimed %d%% of the map!" % [me.name, int(goal)], me)
+			_win(tr("%s claimed %d%% of the map!") % [tr(me.name), int(goal)], me)
 		elif world.pct(world.p2) >= goal:
-			_win("%s claimed %d%% of the map!" % [world.p2.name, int(goal)], world.p2)
+			_win(tr("%s claimed %d%% of the map!") % [tr(world.p2.name), int(goal)], world.p2)
 	elif m.get("teams", false):
 		if world.team_pct(0) >= goal:
-			_win("Your team claimed %d%% of the map!" % int(goal))
+			_win(tr("Your team claimed %d%% of the map!") % int(goal))
 		elif world.team_pct(1) >= goal:
-			_lose("The other team claimed %d%% first." % int(goal), 0.6)
+			_lose(tr("The other team claimed %d%% first.") % int(goal), 0.6)
 	elif m.get("boss", false):
 		if world.king and not world.king.alive:
-			_win("You defeated the %s!" % world.king.name)
+			_win(tr("You defeated the %s!") % tr(world.king.name))
 	elif m.has("time"):
 		var left: float = m.time - play_time
 		if left <= 10 and ceili(left) != _tick and left > 0:
@@ -323,12 +326,12 @@ func _check_end() -> void:
 			if place == 1:
 				_win("Time's up and you're the biggest!")
 			else:
-				_lose("Time's up! You finished #%d of %d." % [place, world.alive_count()], 0.6)
+				_lose(tr("Time's up! You finished #%d of %d.") % [place, world.alive_count()], 0.6)
 	elif m.get("tutorial", false):
 		if _tut_step >= 5 and me.alive and world.pct(me) >= goal:
 			_win("You finished the tutorial!")
 	elif goal > 0 and me.alive and world.pct(me) >= goal:
-		_win("You claimed %d%% of the map!" % int(goal))
+		_win(tr("You claimed %d%% of the map!") % int(goal))
 
 
 func _win(reason: String, who: Player = null) -> void:
@@ -337,7 +340,7 @@ func _win(reason: String, who: Player = null) -> void:
 	slowmo = 1.4
 	sfx.play("win")
 	_vibrate(120)
-	_callout("VICTORY!" if who == null else "%s WINS!" % who.name.to_upper(), YELLOW)
+	_callout("VICTORY!" if who == null else tr("%s WINS!") % tr(who.name).to_upper(), YELLOW)
 	var at: Vector2 = (who if who else world.me).pos
 	for i in 6:
 		view.burst(at + Vector2(randf_range(-6, 6), randf_range(-5, 5)), world.COLORS[i], 30, 520.0)
@@ -383,16 +386,16 @@ func _game_over(won: bool, reason: String, who: Player = null) -> void:
 		var first: bool = not prog.tutorial_done
 		prog.tutorial_done = true
 		if first:
-			rewards.append({"text": "Tutorial complete", "coins": 50, "kind": "mission"})
+			rewards.append({"text": tr("Tutorial complete"), "coins": 50, "kind": "mission"})
 		rewards.append_array(prog.award("tutorial"))
 		over_coins.text = ""
 		again_btn.text = "Play for real"
 	elif world.p2:
 		# 2 Players is just for fun: no coins or records (but it counts for trying every mode)
 		var winner: Player = who if who else (world.p2 if not world.me.alive else world.me)
-		over_title.text = "%s wins!" % winner.name
+		over_title.text = tr("%s wins!") % tr(winner.name)
 		over_title.label_settings.font_color = winner.color.lightened(0.2)
-		over_stats.text = "%s %.1f%%  ·  %s %.1f%%" % [world.me.name, world.pct(world.me), world.p2.name, world.pct(world.p2)]
+		over_stats.text = "%s %.1f%%  ·  %s %.1f%%" % [tr(world.me.name), world.pct(world.me), tr(world.p2.name), world.pct(world.p2)]
 		over_best.text = "2-player games are just for fun"
 		over_coins.text = ""
 		rewards = prog.finish({"mode": "duo", "map": world.map_id}, world.today())
@@ -421,13 +424,17 @@ func _game_over(won: bool, reason: String, who: Player = null) -> void:
 			"boss": world.boss_kind,
 			"wallet": wallet,
 		}, world.today())
-		over_coins.text = "+%d coins" % earned + ("  (x%s %s)" % [str(mult), world.DIFFICULTY[difficulty].name] if mult != 1.0 else "")
+		over_coins.text = tr("+%d coins") % earned + ("  (x%s %s)" % [str(mult), tr(world.DIFFICULTY[difficulty].name)] if mult != 1.0 else "")
 		over_title.text = "You win!" if won else "Game over"
-		over_stats.text = "Best size %.1f%%  ·  %d knockout%s  ·  %s" % [score, world.me.kills, "" if world.me.kills == 1 else "s", _fmt_time(play_time)]
-		var label: String = "Today's best" if play_mode == "daily" else "%s best" % world.MODES[play_mode].name
-		over_best.text = ("New %s!" % label.to_lower()) if new_best else "%s: %.1f%%" % [label, bests.get(key, 0.0)]
+		over_stats.text = (tr("Best size %.1f%%  ·  1 knockout  ·  %s") % [score, _fmt_time(play_time)]) if world.me.kills == 1 \
+			else tr("Best size %.1f%%  ·  %d knockouts  ·  %s") % [score, world.me.kills, _fmt_time(play_time)]
+		if play_mode == "daily":
+			over_best.text = tr("New best today!") if new_best else tr("Today's best: %.1f%%") % bests.get(key, 0.0)
+		else:
+			var mode_name := tr(world.MODES[play_mode].name)
+			over_best.text = tr("New %s best!") % mode_name if new_best else tr("%s best: %.1f%%") % [mode_name, bests.get(key, 0.0)]
 		# XP: the bar fills up (and wraps round on a level up)
-		over_xp.text = "Level %d  ·  +%d XP" % [prog.level, gained]
+		over_xp.text = tr("Level %d  ·  +%d XP") % [prog.level, gained]
 		over_xp_bar.visible = true
 		var to: float = float(prog.xp) / Progress.need(prog.level)
 		over_xp_bar.set_meta("fill", xp_before)
@@ -598,7 +605,7 @@ func _on_knocked_out(v: Player, killer: Player, how: String, _lost: PackedInt32A
 		var id := _game_id
 		await get_tree().create_timer(0.9).timeout
 		if id == _game_id:
-			_game_over(true, "%s was knocked out%s." % [v.name, "" if killer == null or killer == v else " by " + killer.name], winner)
+			_game_over(true, (tr("%s was knocked out.") % tr(v.name)) if killer == null or killer == v else tr("%s was knocked out by %s.") % [tr(v.name), tr(killer.name)], winner)
 	elif v == me and me.lives > 1 and not ending:
 		# Boss Battle: lose a life and come back somewhere else (the tutorial has lots)
 		me.lives -= 1
@@ -610,7 +617,7 @@ func _on_knocked_out(v: Player, killer: Player, how: String, _lost: PackedInt32A
 		if _tut_step > 0:
 			_toast("Oops! Never cross your own trail. Try again!")
 		else:
-			_toast("Ouch! %d %s left" % [me.lives, "life" if me.lives == 1 else "lives"])
+			_toast(tr("Ouch! 1 life left") if me.lives == 1 else tr("Ouch! %d lives left") % me.lives)
 		var id := _game_id
 		await get_tree().create_timer(1.2).timeout
 		if id == _game_id and not me.alive:
@@ -628,10 +635,10 @@ func _on_knocked_out(v: Player, killer: Player, how: String, _lost: PackedInt32A
 			else "The storm caught you!" if how == "storm" \
 			else "You hit one of the Queen's traps!" if how == "trap" \
 			else "You crossed your own trail!" if killer == me \
-			else "%s swallowed all your land!" % killer.name if how == "swallow" \
-			else "You bumped into %s outside your land!" % killer.name if how == "bump" \
-			else "The %s cut your trail!" % killer.name if killer.is_boss \
-			else "%s cut your trail!" % killer.name
+			else tr("%s swallowed all your land!") % tr(killer.name) if how == "swallow" \
+			else tr("You bumped into %s outside your land!") % tr(killer.name) if how == "bump" \
+			else tr("The %s cut your trail!") % tr(killer.name) if killer.is_boss \
+			else tr("%s cut your trail!") % tr(killer.name)
 		var id := _game_id
 		await get_tree().create_timer(0.9).timeout
 		if id == _game_id:
@@ -644,7 +651,7 @@ func _on_knocked_out(v: Player, killer: Player, how: String, _lost: PackedInt32A
 		sfx.play("cut")
 		shake = maxf(shake, 0.4)
 		_vibrate(40)
-		_toast("You knocked out %s!" % v.name)
+		_toast(tr("You knocked out %s!") % tr(v.name))
 		var now: float = world.time
 		_kos = _kos.filter(func(t): return now - t < 4.0)
 		_kos.append(now)
@@ -668,7 +675,7 @@ func _on_boss_hit(k: Player, by: Player) -> void:
 	view.float_text(k.pos + Vector2(0, -3), "-1 heart", Color("#ff5d73"), Color.WHITE, 1.3)
 	if k.hp == 1:
 		_callout("LAST HEART!", Color("#ff5d73"))
-		_toast("The %s is furious!" % k.name)
+		_toast(tr("The %s is furious!") % tr(k.name))
 
 
 ## The Queen unlocks when you've beaten the King, the Wizard when you've beaten the Queen
@@ -716,14 +723,14 @@ func _on_blinked(k: Player, _from: Vector2, _to: Vector2) -> void:
 	if state == "menu":
 		return
 	sfx.play("blink")
-	_toast("The %s blinked home! Cut his trail from further away" % k.name)
+	_toast(tr("The %s blinked home! Cut his trail from further away") % tr(k.name))
 
 
 func _on_guards(_k: Player) -> void:
 	if state == "menu":
 		return
 	sfx.play("roar")
-	_toast("The %s calls for guards!" % _k.name)
+	_toast(tr("The %s calls for guards!") % tr(_k.name))
 
 
 const PICK_TOASTS := {
@@ -744,7 +751,7 @@ func _on_picked(p: Player, kind: String, _at: Vector2) -> void:
 			_tut_next()
 	elif kind == "freeze" and world.me.alive and p.pos.distance_to(world.me.pos) < 40:
 		sfx.play("freeze")
-		_toast("%s froze everyone!" % p.name)
+		_toast(tr("%s froze everyone!") % tr(p.name))
 
 
 func _on_coin(p: Player, at: Vector2) -> void:
@@ -1133,7 +1140,7 @@ func _update_hud() -> void:
 	if world.p2:
 		for i in 2:
 			var h: Player = world.humans()[i]
-			duo_labels[i].text = "%s  %.1f%%%s" % [h.name, world.pct(h), "" if h.alive else "  ·  out"]
+			duo_labels[i].text = "%s  %.1f%%%s" % [tr(h.name), world.pct(h), "" if h.alive else "  ·  " + tr("out")]
 			duo_labels[i].label_settings.font_color = h.color.lightened(0.1)
 		return
 	pct_label.text = "%.1f%%" % world.pct(me)
@@ -1142,8 +1149,8 @@ func _update_hud() -> void:
 	goal_bar.set_meta("fill", clampf((world.team_pct(0) if world.mode.get("teams", false) else world.pct(me)) / maxf(goal, 1.0), 0, 1))
 	goal_bar.set_meta("color", me.color)
 	goal_bar.queue_redraw()
-	var kos := "%d KO%s" % [me.kills, "" if me.kills == 1 else "s"]
-	status_label.text = ("#%d of %d  ·  %s" % [world.rank_of(me), world.alive_count(), kos]) if me.alive else "Knocked out  ·  " + kos
+	var kos := tr("1 KO") if me.kills == 1 else tr("%d KOs") % me.kills
+	status_label.text = (tr("#%d of %d") % [world.rank_of(me), world.alive_count()] + "  ·  " + kos) if me.alive else tr("Knocked out") + "  ·  " + kos
 	coin_label.text = str(wallet + world.coins_picked)
 	# Power-ups running now, with seconds left
 	for c in fx_row.get_children():
@@ -1165,7 +1172,7 @@ func _update_hud() -> void:
 		st.content_margin_top = 2
 		st.content_margin_bottom = 2
 		chip.add_theme_stylebox_override("panel", st)
-		chip.add_child(_label("%s %ds" % [c[0], ceili(c[1])], 18, Color.WHITE))
+		chip.add_child(_label("%s %ds" % [tr(c[0]), ceili(c[1])], 18, Color.WHITE))
 		fx_row.add_child(chip)
 	var ranked := []
 	for p in world.players:
@@ -1183,7 +1190,7 @@ func _update_hud() -> void:
 		var p: Player = top[r]
 		row[1].color = p.color
 		var mark := "* " if world.mode.get("teams", false) and p != me and world.allies(p, me) else ""
-		row[2].text = "%d. %s%s" % [ranked.find(p) + 1, mark, p.name]
+		row[2].text = "%d. %s%s" % [ranked.find(p) + 1, mark, tr(p.name)]
 		row[3].text = "%.1f%%" % world.pct(p)
 		var c := Color("#1f5fd6") if p == me or mark != "" else Color("#d6304a") if p.is_boss else INK
 		row[2].label_settings.font_color = c
@@ -1199,22 +1206,22 @@ func _update_mode_pill() -> void:
 	var parts := []
 	if m.has("time"):
 		var left: float = maxf(0.0, m.time - play_time)
-		parts.append(_label("Time  " + _fmt_time(ceilf(left)), 30, Color("#ff3c50") if left <= 15 else INK))
+		parts.append(_label(tr("Time") + "  " + _fmt_time(ceilf(left)), 30, Color("#ff3c50") if left <= 15 else INK))
 	elif m.get("teams", false):
-		parts.append(_label("Your team %.1f%%" % world.team_pct(0), 26, Color("#1f5fd6")))
+		parts.append(_label(tr("Your team %.1f%%") % world.team_pct(0), 26, Color("#1f5fd6")))
 		parts.append(_label("vs", 22, MUTED, 0, INK, font_med))
 		parts.append(_label("%.1f%%" % world.team_pct(1), 26, Color("#d6304a")))
 	elif m.get("boss", false) and world.king:
 		parts.append(_label(world.king.name, 26, Color("#d6304a")))
 		for i in world.king.max_hp:
 			parts.append(_icon(Art.HEART, 26, Color("#ff3c50") if i < world.king.hp else Color("#d5dbe8")))
-		parts.append(_label("  You", 26, INK))
+		parts.append(_label("  " + tr("You"), 26, INK))
 		for i in 3:
 			parts.append(_icon(Art.HEART, 22, world.me.color if i < world.me.lives else Color("#d5dbe8")))
 	elif m.get("duo", false):
-		parts.append(_label("First to %d%%" % int(m.win), 24, INK))
+		parts.append(_label(tr("First to %d%%") % int(m.win), 24, INK))
 	elif m.get("daily", false):
-		parts.append(_label("Daily · %s" % world.MAPS[world.map_id], 24, INK))
+		parts.append(_label(tr("Daily") + " · " + tr(world.MAPS[world.map_id]), 24, INK))
 	mode_pill.visible = not parts.is_empty()
 	for c in parts:
 		mode_row.add_child(c)
@@ -1723,6 +1730,13 @@ func _build_menu(safe: Vector4) -> void:
 	menu.add_child(badge)
 	_pin(badge, Control.PRESET_TOP_LEFT, safe)
 	var col := _center_column(menu)
+	# Keep the menu between the level badge and the dock (translations can make it taller)
+	var middle: Control = col.get_parent()
+	middle.offset_top = 96 + safe.y
+	middle.offset_bottom = -(140 + safe.w)
+	middle.grow_vertical = Control.GROW_DIRECTION_BOTH # if the menu's too tall it spills evenly (then shrinks to fit)
+	col.add_theme_constant_override("separation", 12)
+	menu_col = col
 	# The title: every letter a player colour, bobbing gently
 	var title := HBoxContainer.new()
 	title.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -1910,7 +1924,20 @@ func _build_menu(safe: Vector4) -> void:
 	dock.offset_bottom -= safe.w + 8
 
 
+## If the menu is taller than the room between the badge and the dock (long translations,
+## the Boss row), shrink it a little to fit
+func _fit_menu() -> void:
+	var middle: Control = menu_col.get_parent()
+	var room: float = get_viewport_rect().size.y - middle.offset_top + middle.offset_bottom
+	var need: float = menu_col.get_combined_minimum_size().y
+	var k := clampf(room / maxf(need, 1.0), 0.75, 1.0)
+	menu_col.pivot_offset = menu_col.size / 2
+	menu_col.scale = Vector2(k, k)
+
+
 func _refresh_menu() -> void:
+	# Once the layout has settled
+	get_tree().create_timer(0.05).timeout.connect(_fit_menu)
 	for i in swatches.get_child_count():
 		var b: Button = swatches.get_child(i)
 		var s := StyleBoxFlat.new()
@@ -1926,18 +1953,18 @@ func _refresh_menu() -> void:
 		for st in ["normal", "hover", "pressed"]:
 			b.add_theme_stylebox_override(st, s)
 	var b: float = bests.get("daily-" + world.today() if mode_id == "daily" else mode_id, 0.0)
-	best_label.text = ("Best: %.1f%%   ·   Wins: %d" % [b, wins]) if games > 0 else "Pick a mode and a map, then play!"
+	best_label.text = (tr("Best: %.1f%%   ·   Wins: %d") % [b, wins]) if games > 0 else tr("Pick a mode and a map, then play!")
 	if difficulty != "normal":
-		best_label.text += "   ·   Coins x%s" % str(world.DIFFICULTY[difficulty].coins)
-	mode_desc.text = world.MODES[mode_id].desc
+		best_label.text += "   ·   " + tr("Coins x%s") % str(world.DIFFICULTY[difficulty].coins)
+	mode_desc.text = tr(world.MODES[mode_id].desc)
 	boss_row.visible = mode_id == "boss"
 	if mode_id == "boss":
 		if not boss_unlocked(boss_kind):
 			boss_kind = "king"
 		var next: String = {"king": "queen", "queen": "wizard"}.get(boss_kind, "")
-		mode_desc.text = "%s: %d hearts · you have 3 lives" % [world.BOSSES[boss_kind].name, world.BOSSES[boss_kind].hearts]
+		mode_desc.text = tr("%s: %d hearts · you have 3 lives") % [tr(world.BOSSES[boss_kind].name), world.BOSSES[boss_kind].hearts]
 		if next != "" and not boss_unlocked(next):
-			mode_desc.text += "  ·  Beat the %s to unlock the %s" % [world.BOSSES[boss_kind].name, world.BOSSES[next].name]
+			mode_desc.text += "  ·  " + tr("Beat the %s to unlock the %s") % [tr(world.BOSSES[boss_kind].name), tr(world.BOSSES[next].name)]
 		for bb in boss_row.get_children():
 			var id: String = bb.get_meta("id")
 			var open := boss_unlocked(id)
@@ -1951,10 +1978,10 @@ func _refresh_menu() -> void:
 				bb.add_theme_stylebox_override(k, st)
 			for k in ["font_color", "font_hover_color", "font_pressed_color", "font_disabled_color"]:
 				bb.add_theme_color_override(k, Color.WHITE if open else Color(1, 1, 1, 0.35))
-			bb.text = world.BOSSES[id].name if open else "%s (locked)" % world.BOSSES[id].name
+			bb.text = world.BOSSES[id].name if open else tr("%s (locked)") % tr(world.BOSSES[id].name)
 	if mode_id == "daily":
 		var h: int = absi(world.today().hash())
-		mode_desc.text += "  ·  Today's map: %s" % world.MAPS.values()[h % world.MAPS.size()]
+		mode_desc.text += "  ·  " + tr("Today's map: %s") % tr(world.MAPS.values()[h % world.MAPS.size()])
 	for mb in modes_row.get_children():
 		var on: bool = mb.text == world.MODES[mode_id].name
 		var st := _style(YELLOW if on else Color(1, 1, 1, 0.16), 18)
@@ -1967,7 +1994,7 @@ func _refresh_menu() -> void:
 		for k in ["font_color", "font_hover_color", "font_pressed_color"]:
 			mb.add_theme_color_override(k, Color("#5a3200") if on else Color.WHITE)
 	wallet_label.text = str(wallet)
-	level_label.text = "Level %d  ·  %s" % [prog.level, player_name]
+	level_label.text = tr("Level %d  ·  %s") % [prog.level, tr(player_name)]
 	level_bar.set_meta("fill", float(prog.xp) / Progress.need(prog.level))
 	level_bar.queue_redraw()
 	prog.ensure_day(world.today())
@@ -2123,6 +2150,7 @@ func _load() -> void:
 	Gfx.show_fps = c.get_value("settings", "show_fps", false)
 	big_stick = c.get_value("settings", "big_stick", false)
 	controls = c.get_value("settings", "controls", "stick")
+	I18n.lang = c.get_value("settings", "lang", "")
 	Patterns.on = c.get_value("settings", "colorblind", false)
 	set_meta("music", c.get_value("settings", "music", true))
 	set_meta("muted", c.get_value("settings", "muted", false))
@@ -2154,6 +2182,7 @@ func _save() -> void:
 	c.set_value("settings", "show_fps", Gfx.show_fps)
 	c.set_value("settings", "big_stick", big_stick)
 	c.set_value("settings", "controls", controls)
+	c.set_value("settings", "lang", I18n.lang)
 	c.set_value("settings", "colorblind", Patterns.on)
 	c.set_value("settings", "music", music.enabled)
 	c.set_value("settings", "muted", sfx.muted)
