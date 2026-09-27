@@ -54,7 +54,7 @@ A territory game inspired by Paper.io.
 - **Daily missions:** 3 new missions every day with coin rewards.
 - **Weekly quest chain:** 5 quests a week (2 easy, 2 medium, 1 hard) that unlock one after another and pay 50, 75, 100, 150 and 300 coins.
 - **Holiday events:** Halloween Bash (October), Winter Fest (10 Dec to 6 Jan) and Hearts Week (5 to 16 Feb) each bring a map look (with bats, snow or petals) and turn the map's coins into pumpkins, gifts or hearts. Collect enough to keep that event's skin (Pumpkin, Snowman or Cupid). The home screen announces each event two weeks ahead.
-- **Smarter bots:** they gang up on a runaway leader, and hunters lie in wait at the edge of their land to pounce on your trail.
+- **Smarter bots:** they gang up on a runaway leader, hunters lie in wait at the edge of their land to pounce on your trail, and bots leave room to turn near walls and the sea so they rarely trap themselves.
 - **Hype moments:** an announcer calls out DOUBLE KO!, TRIPLE KO!, RAMPAGE!, MEGA LOOP!, GIGA LOOP!, CLOSE CALL!, SHUTDOWN! (knocking out the leader), COMEBACK!, milestones and the last 10 seconds. Quick back-to-back loops build a combo that pays bonus coins. The bot that knocked you out is marked for REVENGE! next game. Wins end in slow motion, and the results show a podium plus a nudge when you were close to something.
 - **Player card:** make a picture of your profile (character, pet, level, rank, clan and best numbers) to save and share.
 - **Clans:** start a clan with a name, a 2-4 letter tag, an emblem and a colour. Your tag shows on your name (and on your teammates in Teams), every game earns clan points that level the clan up, and each week your clan races a rival clan in a clan war worth 250 coins.
@@ -108,8 +108,26 @@ python3 -m http.server 8000
 
 ## Publish online (free)
 
-This repo has a GitHub Actions workflow (`.github/workflows/pages.yml`) that publishes the games with GitHub Pages.
+This repo has a GitHub Actions workflow (`.github/workflows/pages.yml`) that publishes the games with GitHub Pages every time this branch is pushed. **Pages has to be switched on once by the repo owner**, otherwise every run fails with "Get Pages site failed".
 
 1. On GitHub, open **Settings → Pages**.
 2. Under **Build and deployment → Source**, choose **GitHub Actions**.
-3. Push to this branch (or run the workflow from the **Actions** tab). The game link appears in the workflow run and on the Pages settings page.
+3. Open the **Actions** tab, pick **Deploy to GitHub Pages** and click **Run workflow** (or just push again).
+
+The games are then at **https://maxdflamegaming-byte.github.io/New-game/** (Color Claim at `/New-game/color-claim/`). From there they can be installed to a phone's home screen and played offline. Only the game folders are published, not the tests.
+
+## Tests
+
+Browser tests drive Color Claim (and a little of Glow Survivors) in headless Chromium with [Playwright](https://playwright.dev). There are 20 suites and about 400 checks: game rules, bots, every mode and map, menus and layouts at phone and tablet sizes, saving, the GIF replay, and an audit that plays 67 bots-only games and checks the board stays consistent.
+
+```sh
+npm install                  # installs Playwright (once)
+npx playwright install chromium
+npm test                     # every suite, about 4 minutes
+node tests/run.js phase-p    # only suites whose name contains "phase-p"
+```
+
+- `tests/run.js` runs the suites one by one, serves the repo on port 8765 while they run, and exits non-zero if anything fails.
+- `tests/suites/` has one file per suite; each prints a `PASS` or `FAIL` line per check.
+- Screenshots land in `tests/output/` (not committed).
+- Two checks decode images with Python and Pillow (`pip install pillow`).

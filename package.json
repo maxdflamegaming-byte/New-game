@@ -1,0 +1,11 @@
+{
+  "name": "new-game",
+  "private": true,
+  "description": "Simple, fun browser games in plain HTML, CSS and JavaScript",
+  "scripts": {
+    "test": "node tests/run.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.1"
+  }
+}

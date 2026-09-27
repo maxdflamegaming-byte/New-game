@@ -1439,6 +1439,14 @@ function touchesOwnTrail(p, x, y) {
     (y > 0 && trail[i - N] === p.id) || (y < N - 1 && trail[i + N] === p.id);
 }
 
+// Is a wall, the sea or the map edge right next to this cell? Squares need room to
+// turn, so a bot outside its land that hugs a wall can get squeezed into its own trail.
+function besideWall(x, y) {
+  if (x <= 0 || y <= 0 || x >= N - 1 || y >= N - 1) return true;
+  const i = y * N + x;
+  return !!(wall[i - 1] || wall[i + 1] || wall[i - N] || wall[i + N]);
+}
+
 function bfsHome(p, padded) {
   bfsGen++;
   const start = p.cy * N + p.cx;
@@ -1450,7 +1458,7 @@ function bfsHome(p, padded) {
     const j = y * N + x;
     if (bfsMark[j] === bfsGen || trail[j] === p.id || wall[j]) return;
     const nearHead = Math.abs(x - p.cx) <= 2 && Math.abs(y - p.cy) <= 2;
-    if (padded && !nearHead && touchesOwnTrail(p, x, y)) return;
+    if (padded && !nearHead && (touchesOwnTrail(p, x, y) || (owner[j] !== p.id && besideWall(x, y)))) return;
     if (padded && !nearHead && (saws.length || traps.length) && nearSaw(x + 0.5, y + 0.5, 2.2)) return;
     if (!nearHead && portals.length && nearPortal(x + 0.5, y + 0.5, 1.8)) return;
     bfsMark[j] = bfsGen;
@@ -1530,6 +1538,12 @@ function clearLine(ax, ay, bx, by) {
   return true;
 }
 
+// Like clearLine, but with room either side: a turning square swings wider than the line
+function clearLane(ax, ay, bx, by, r) {
+  const len = Math.hypot(bx - ax, by - ay) || 1, ox = -(by - ay) / len * r, oy = (bx - ax) / len * r;
+  return clearLine(ax, ay, bx, by) && clearLine(ax + ox, ay + oy, bx + ox, by + oy) && clearLine(ax - ox, ay - oy, bx - ox, by - oy);
+}
+
 // Will a saw run into this loop (you -> A -> B -> back) in the next few seconds?
 function sawCrosses(p, A, B) {
   if (!saws.length && !portals.length && !traps.length) return false;
@@ -1586,7 +1600,8 @@ function planLoop(p) {
     const A = { x: c(p.x + Math.cos(a) * len), y: c(p.y + Math.sin(a) * len) };
     const B = { x: c(A.x + Math.cos(a + Math.PI / 2) * wid), y: c(A.y + Math.sin(a + Math.PI / 2) * wid) };
     if (!stormSafe(A.x, A.y, 3) || !stormSafe(B.x, B.y, 3) || sawCrosses(p, A, B)) continue;
-    if (clearLine(p.x, p.y, A.x, A.y) && clearLine(A.x, A.y, B.x, B.y) && clearLine(B.x, B.y, p.x, p.y)) {
+    const r = tries < 8 ? 1 : 0; // keep a cell from walls and the sea if we can
+    if (clearLane(p.x, p.y, A.x, A.y, r) && clearLane(A.x, A.y, B.x, B.y, r) && clearLane(B.x, B.y, p.x, p.y, r)) {
       p.wp = [A, B];
       p.mode = 'loop';
       return;
@@ -1720,7 +1735,11 @@ function steerBot(p, dt) {
       p.routeTimer = 0.1;
     }
     if (p.route && p.route.length) {
-      const i = p.route[Math.min(2, p.route.length - 1)];
+      // Aim a few cells down the route, but never past a wall corner (clipping it
+      // would slide us sideways, maybe into our own trail)
+      let k = Math.min(2, p.route.length - 1);
+      while (k > 0 && !clearLine(p.x, p.y, (p.route[k] % N) + 0.5, Math.floor(p.route[k] / N) + 0.5)) k--;
+      const i = p.route[k];
       target = { x: (i % N) + 0.5, y: Math.floor(i / N) + 0.5 };
     } else {
       target = nearestOwn(p);
@@ -1729,13 +1748,15 @@ function steerBot(p, dt) {
   if (target) p.desired = Math.atan2(target.y - p.y, target.x - p.x);
 
   // Last-moment safety: never steer into our own trail. Try nearby directions and
-  // keep whichever survives longest.
-  if (p.trail.length && safeSteps(p, p.desired) < 10) {
+  // keep whichever survives longest. Looking 0.8 s ahead spots a dead end by the sea
+  // or a wall while there's still room to turn.
+  const LOOK = 16;
+  if (p.trail.length && safeSteps(p, p.desired, LOOK) < LOOK) {
     let bestDir = p.desired, bestSteps = -1;
     for (const off of [0.5, -0.5, 1, -1, 1.5, -1.5, 2, -2, 2.6, -2.6, Math.PI]) {
-      const n = safeSteps(p, p.desired + off);
+      const n = safeSteps(p, p.desired + off, LOOK);
       if (n > bestSteps) { bestSteps = n; bestDir = p.desired + off; }
-      if (n >= 10) break;
+      if (n >= LOOK) break;
     }
     p.desired = bestDir;
   }
