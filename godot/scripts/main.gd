@@ -26,6 +26,7 @@ var owned := {"skin": ["plain"], "trail": ["none"], "pet": ["none"]} # bought in
 var equipped := {"skin": "plain", "trail": "none", "pet": "none"} # what you're wearing
 var prog := Progress.new() # levels, missions, streak, trophies and stats
 var difficulty := "normal"
+var boss_kind := "king" # which boss the Boss Battle brings (the Queen and Wizard unlock)
 var vibration := true
 var big_stick := false
 var player_name := "You"
@@ -99,7 +100,9 @@ var over_stats: Label
 var over_best: Label
 var over_coins: Label
 var wallet_label: Label
-var maps_row: HBoxContainer
+var maps_row: HFlowContainer
+var boss_row: HBoxContainer
+var _storm_warned := false
 var modes_row: HFlowContainer
 var mode_desc: Label
 var best_label: Label
@@ -154,6 +157,11 @@ func _ready() -> void:
 	world.coin_taken.connect(_on_coin)
 	world.boss_hit.connect(_on_boss_hit)
 	world.guards_called.connect(_on_guards)
+	world.teleported.connect(_on_teleported)
+	world.storm_coming.connect(_on_storm_coming)
+	world.storm_hit.connect(_on_storm_hit)
+	world.trap_dropped.connect(_on_trap)
+	world.blinked.connect(_on_blinked)
 	_build_ui()
 	_start_demo()
 
@@ -166,6 +174,7 @@ func _start_demo() -> void:
 	_split_off()
 	world.looks = equipped
 	world.difficulty = "normal"
+	world.boss_kind = "king"
 	world.setup(my_color, player_name, true, map_id)
 	view.rebuild()
 	_snap_camera()
@@ -184,6 +193,7 @@ func start_game(mode := "") -> void:
 	play_mode = mode if mode != "" else mode_id
 	world.looks = equipped
 	world.difficulty = difficulty
+	world.boss_kind = boss_kind if boss_unlocked(boss_kind) else "king"
 	world.setup(my_color, player_name, false, map_id, play_mode)
 	view.rebuild()
 	if world.p2:
@@ -206,6 +216,7 @@ func start_game(mode := "") -> void:
 	_lives_lost = 0
 	_king_hits = 0
 	_tut_step = 1 if play_mode == "tutorial" else 0
+	_storm_warned = false
 	_update_tutorial()
 	_show(null)
 	hud.visible = true
@@ -286,7 +297,7 @@ func _check_end() -> void:
 			_lose("The other team claimed %d%% first." % int(goal), 0.6)
 	elif m.get("boss", false):
 		if world.king and not world.king.alive:
-			_win("You defeated the King!")
+			_win("You defeated the %s!" % world.king.name)
 	elif m.has("time"):
 		var left: float = m.time - play_time
 		if left <= 10 and ceili(left) != _tick and left > 0:
@@ -381,7 +392,7 @@ func _game_over(won: bool, reason: String, who: Player = null) -> void:
 			bests[key] = score
 		var earned: int = roundi(score * 2) + world.me.kills * 5 + (50 if won else 0) + world.coins_picked
 		if won and world.mode.get("boss", false):
-			earned += 100
+			earned += world.BOSSES[world.boss_kind].bonus
 		var mult: float = world.DIFFICULTY[difficulty].coins
 		earned = roundi(earned * mult)
 		wallet += earned
@@ -392,6 +403,7 @@ func _game_over(won: bool, reason: String, who: Player = null) -> void:
 			"mode": play_mode, "map": world.map_id, "won": won, "pct": score, "kos": world.me.kills,
 			"powerups": _power_count, "coins": world.coins_picked / world.COIN_VALUE, "time": play_time,
 			"best_loop": _best_loop, "king_hits": _king_hits, "lives_lost": _lives_lost, "multi_ko": _multi,
+			"boss": world.boss_kind,
 			"wallet": wallet,
 		}, world.today())
 		over_coins.text = "+%d coins" % earned + ("  (x%s %s)" % [str(mult), world.DIFFICULTY[difficulty].name] if mult != 1.0 else "")
@@ -596,7 +608,10 @@ func _on_knocked_out(v: Player, killer: Player, how: String, _lost: PackedInt32A
 		sfx.play("death")
 		shake = 1.0
 		_vibrate(300)
-		var reason := "You crossed your own trail!" if killer == me \
+		var reason := "A saw got you!" if how == "saw" \
+			else "The storm caught you!" if how == "storm" \
+			else "You hit one of the Queen's traps!" if how == "trap" \
+			else "You crossed your own trail!" if killer == me \
 			else "%s swallowed all your land!" % killer.name if how == "swallow" \
 			else "You bumped into %s outside your land!" % killer.name if how == "bump" \
 			else "The %s cut your trail!" % killer.name if killer.is_boss \
@@ -637,14 +652,62 @@ func _on_boss_hit(k: Player, by: Player) -> void:
 	view.float_text(k.pos + Vector2(0, -3), "-1 heart", Color("#ff5d73"), Color.WHITE, 1.3)
 	if k.hp == 1:
 		_callout("LAST HEART!", Color("#ff5d73"))
-		_toast("The King is furious!")
+		_toast("The %s is furious!" % k.name)
+
+
+## The Queen unlocks when you've beaten the King, the Wizard when you've beaten the Queen
+func boss_unlocked(kind: String) -> bool:
+	match kind:
+		"queen":
+			return prog.stats.king_wins >= 1
+		"wizard":
+			return prog.stats.queen_wins >= 1
+	return true
+
+
+func _on_teleported(p: Player, _from: Vector2, _to: Vector2) -> void:
+	if p == world.me and state != "menu":
+		sfx.play("portal")
+		_vibrate(20)
+
+
+func _on_storm_coming(_r: float) -> void:
+	if state == "menu":
+		return
+	sfx.play("warn")
+	_toast("The storm is closing in! Get inside the red ring")
+
+
+func _on_storm_hit(_r: float) -> void:
+	if state == "menu":
+		return
+	sfx.play("storm")
+	shake = maxf(shake, 0.6)
+	_vibrate(60)
+
+
+func _on_trap(_k: Player, at: Vector2) -> void:
+	if state == "menu":
+		return
+	if at.distance_to(world.me.pos) < 18:
+		sfx.play("trap")
+	if not _storm_warned:
+		_storm_warned = true # (shared flag: one hint per game is enough)
+		_toast("The Queen drops spiky traps. Don't touch them!")
+
+
+func _on_blinked(k: Player, _from: Vector2, _to: Vector2) -> void:
+	if state == "menu":
+		return
+	sfx.play("blink")
+	_toast("The %s blinked home! Cut his trail from further away" % k.name)
 
 
 func _on_guards(_k: Player) -> void:
 	if state == "menu":
 		return
 	sfx.play("roar")
-	_toast("The King calls for guards!")
+	_toast("The %s calls for guards!" % _k.name)
 
 
 const PICK_TOASTS := {
@@ -1041,7 +1104,7 @@ func _update_mode_pill() -> void:
 		parts.append(_label("vs", 22, MUTED, 0, INK, font_med))
 		parts.append(_label("%.1f%%" % world.team_pct(1), 26, Color("#d6304a")))
 	elif m.get("boss", false) and world.king:
-		parts.append(_label("King", 26, Color("#d6304a")))
+		parts.append(_label(world.king.name, 26, Color("#d6304a")))
 		for i in world.king.max_hp:
 			parts.append(_icon(Art.HEART, 26, Color("#ff3c50") if i < world.king.hp else Color("#d5dbe8")))
 		parts.append(_label("  You", 26, INK))
@@ -1623,13 +1686,16 @@ func _build_menu(safe: Vector4) -> void:
 	mode_desc.custom_minimum_size.x = 600
 	col.add_child(mode_desc)
 	col.add_child(_label("MAP", 22, Color(1, 1, 1, 0.75)))
-	maps_row = HBoxContainer.new()
-	maps_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	maps_row.add_theme_constant_override("separation", 8)
+	maps_row = HFlowContainer.new()
+	maps_row.alignment = FlowContainer.ALIGNMENT_CENTER
+	maps_row.add_theme_constant_override("h_separation", 8)
+	maps_row.add_theme_constant_override("v_separation", 8)
+	maps_row.custom_minimum_size.x = 620
 	col.add_child(maps_row)
 	for id in world.MAPS:
 		var mb := Button.new()
 		mb.text = world.MAPS[id]
+		mb.set_meta("id", id)
 		mb.focus_mode = Control.FOCUS_NONE
 		mb.add_theme_font_override("font", font)
 		mb.add_theme_font_size_override("font_size", 22)
@@ -1639,6 +1705,26 @@ func _build_menu(safe: Vector4) -> void:
 			sfx.play("tap")
 			_start_demo())
 		maps_row.add_child(mb)
+	# The bosses (shown for the Boss Battle): beat one to unlock the next
+	boss_row = HBoxContainer.new()
+	boss_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	boss_row.add_theme_constant_override("separation", 8)
+	col.add_child(boss_row)
+	for id in world.BOSSES:
+		var bb := Button.new()
+		bb.text = world.BOSSES[id].name
+		bb.set_meta("id", id)
+		bb.focus_mode = Control.FOCUS_NONE
+		bb.add_theme_font_override("font", font)
+		bb.add_theme_font_size_override("font_size", 22)
+		bb.pressed.connect(func():
+			if not boss_unlocked(id):
+				return
+			boss_kind = id
+			_save()
+			sfx.play("tap")
+			_refresh_menu())
+		boss_row.add_child(bb)
 	col.add_child(_label("BOTS", 22, Color(1, 1, 1, 0.75)))
 	diff_row = HBoxContainer.new()
 	diff_row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -1743,6 +1829,28 @@ func _refresh_menu() -> void:
 	if difficulty != "normal":
 		best_label.text += "   ·   Coins x%s" % str(world.DIFFICULTY[difficulty].coins)
 	mode_desc.text = world.MODES[mode_id].desc
+	boss_row.visible = mode_id == "boss"
+	if mode_id == "boss":
+		if not boss_unlocked(boss_kind):
+			boss_kind = "king"
+		var next: String = {"king": "queen", "queen": "wizard"}.get(boss_kind, "")
+		mode_desc.text = "%s: %d hearts · you have 3 lives" % [world.BOSSES[boss_kind].name, world.BOSSES[boss_kind].hearts]
+		if next != "" and not boss_unlocked(next):
+			mode_desc.text += "  ·  Beat the %s to unlock the %s" % [world.BOSSES[boss_kind].name, world.BOSSES[next].name]
+		for bb in boss_row.get_children():
+			var id: String = bb.get_meta("id")
+			var open := boss_unlocked(id)
+			var on: bool = id == boss_kind
+			var st := _style(Color("#ff5d73") if on else Color(1, 1, 1, 0.16 if open else 0.06), 18)
+			st.content_margin_left = 16
+			st.content_margin_right = 16
+			st.content_margin_top = 6
+			st.content_margin_bottom = 6
+			for k in ["normal", "hover", "pressed", "disabled"]:
+				bb.add_theme_stylebox_override(k, st)
+			for k in ["font_color", "font_hover_color", "font_pressed_color", "font_disabled_color"]:
+				bb.add_theme_color_override(k, Color.WHITE if open else Color(1, 1, 1, 0.35))
+			bb.text = world.BOSSES[id].name if open else "%s (locked)" % world.BOSSES[id].name
 	if mode_id == "daily":
 		var h: int = absi(world.today().hash())
 		mode_desc.text += "  ·  Today's map: %s" % world.MAPS.values()[h % world.MAPS.size()]
@@ -1778,7 +1886,7 @@ func _refresh_menu() -> void:
 			db.add_theme_color_override(k, INK if on else Color.WHITE)
 	for mb in maps_row.get_children():
 		mb.disabled = mode_id == "daily"
-		var picked: bool = mb.text == world.MAPS[map_id] and mode_id != "daily"
+		var picked: bool = mb.get_meta("id") == map_id and mode_id != "daily"
 		var st := _style(Color.WHITE if picked else Color(1, 1, 1, 0.16), 18)
 		st.content_margin_left = 16
 		st.content_margin_right = 16
@@ -1898,6 +2006,7 @@ func _load() -> void:
 			prog.stats.best_pct = maxf(prog.stats.best_pct, bests[k])
 		prog.tutorial_done = games > 0
 	difficulty = c.get_value("player", "difficulty", "normal")
+	boss_kind = c.get_value("player", "boss", "king")
 	if not world_difficulties().has(difficulty):
 		difficulty = "normal"
 	player_name = c.get_value("player", "name", "You")
@@ -1930,6 +2039,7 @@ func _save() -> void:
 		c.set_value("shop", "using_" + kind, equipped[kind])
 	c.set_value("progress", "data", prog.to_dict())
 	c.set_value("player", "difficulty", difficulty)
+	c.set_value("player", "boss", boss_kind)
 	c.set_value("player", "name", player_name)
 	c.set_value("settings", "vibration", vibration)
 	c.set_value("settings", "gfx", Gfx.level)

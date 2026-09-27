@@ -11,6 +11,11 @@ signal painted(p: Player, cells: PackedInt32Array)
 signal coin_taken(p: Player, at: Vector2)
 signal boss_hit(king: Player, by: Player)
 signal guards_called(king: Player)
+signal teleported(p: Player, from: Vector2, to: Vector2)
+signal storm_coming(radius: float)
+signal storm_hit(radius: float)
+signal trap_dropped(boss: Player, at: Vector2)
+signal blinked(boss: Player, from: Vector2, to: Vector2)
 
 const N := 80
 const SPEED := 7.5 # cells per second
@@ -44,7 +49,25 @@ const KING_HEARTS := 5
 
 const MAPS := {
 	"square": "Square", "round": "Round", "pillars": "Pillars", "maze": "Maze", "islands": "Islands",
+	"saws": "Saw Mill", "storm": "Storm", "conveyor": "Conveyor", "portals": "Portals",
 }
+
+## The Boss Battle's bosses: beat one to unlock the next
+const BOSSES := {
+	"king": {"name": "King", "color": "#3b3f58", "hearts": 5, "bonus": 100},
+	"queen": {"name": "Queen", "color": "#8e2f6b", "hearts": 6, "bonus": 150},
+	"wizard": {"name": "Wizard", "color": "#3d2a7a", "hearts": 7, "bonus": 200},
+}
+
+# Hazard maps
+const BELT_SPEED := 3.5 # cells per second a conveyor belt carries you
+const BELT_DIRS := [Vector2.ZERO, Vector2.RIGHT, Vector2.LEFT, Vector2.DOWN, Vector2.UP]
+const STORM_FIRST := 40.0 # seconds before the storm first closes in
+const STORM_EVERY := 25.0
+const STORM_WARN := 5.0 # the next ring shows this long before it closes
+const STORM_STEP := 7.0 # cells it closes in each time
+const STORM_MIN := 13.0
+const SAW_SPEED := 4.5
 
 ## Power-ups appear on the map; anyone (bots too) can grab them
 const POWERUPS := {
@@ -82,6 +105,16 @@ var freezer: Player = null # whoever has Freeze running
 var coins_picked := 0 # by you, this game
 var looks := {} # your skin, trail and pet from the shop
 var difficulty := "normal"
+var boss_kind := "king" # which boss the Boss Battle brings
+var portals := [] # [[a, b], ...]: step into one end and pop out of the other
+var saws := [] # {corners, d, speed, pos, spin}: blades running round their tracks
+var belt := PackedByteArray() # per cell: 0 none, else an index into BELT_DIRS
+var avoid := PackedByteArray() # cells bots keep out of (portals)
+var tracks := PackedByteArray() # cells next to a saw's track: bots don't plan loops across them
+var storm_r := 0.0 # the storm's safe circle (0 = no storm)
+var storm_next := 0.0 # where it closes in to next (while the warning shows)
+var storm_timer := 0.0
+var traps := [] # {pos, life, owner}: the Queen's spiky traps
 
 var _setting_up := false # no spawn events while a game is being set up
 var _power_timer := 3.0
@@ -95,6 +128,9 @@ func _init() -> void:
 	land.resize(N * N)
 	trail.resize(N * N)
 	wall.resize(N * N)
+	belt.resize(N * N)
+	avoid.resize(N * N)
+	tracks.resize(N * N)
 	_seen.resize(N * N)
 	_stack.resize(N * N)
 	counts.resize(16)
@@ -128,6 +164,7 @@ func setup(my_color: int, my_name: String, demo := false, map := "square", mode_
 	land_version += 1
 	powerups.clear()
 	coins.clear()
+	traps.clear()
 	freezer = null
 	coins_picked = 0
 	_power_timer = 3.0
@@ -236,8 +273,60 @@ func set_land(i: int, id: int) -> void:
 
 func _build_map() -> void:
 	wall.fill(0)
+	belt.fill(0)
+	avoid.fill(0)
+	tracks.fill(0)
+	portals.clear()
+	saws.clear()
+	storm_r = 0.0
+	storm_next = 0.0
 	var c := N / 2.0
 	match map_id:
+		"saws":
+			# Four blades running round square tracks, one in each corner of the map
+			var q := [[0.11, 0.11], [0.61, 0.11], [0.11, 0.61], [0.61, 0.61]]
+			for k in 4:
+				var a := Vector2(roundi(N * q[k][0]), roundi(N * q[k][1])) + Vector2(0.5, 0.5)
+				var s := roundi(N * 0.28)
+				var corners := [a, a + Vector2(s, 0), a + Vector2(s, s), a + Vector2(0, s)]
+				saws.append({"corners": corners, "d": k * 22.0, "speed": SAW_SPEED * (1 if k % 2 == 0 else -1), "pos": a, "spin": 0.0})
+				for e in 4:
+					var from: Vector2 = corners[e]
+					var to: Vector2 = corners[(e + 1) % 4]
+					for t in int(from.distance_to(to)) + 1:
+						var pt := from.move_toward(to, t)
+						for oy in range(-1, 2):
+							for ox in range(-1, 2):
+								var x := int(pt.x) + ox
+								var y := int(pt.y) + oy
+								if x >= 0 and y >= 0 and x < N and y < N:
+									tracks[y * N + x] = 1
+		"storm":
+			storm_r = N * 0.75
+			storm_timer = STORM_FIRST
+		"conveyor":
+			# Two belts across and two down, each three cells wide
+			for y in range(roundi(N * 0.19), roundi(N * 0.19) + 3):
+				for x in range(8, N - 8):
+					belt[y * N + x] = 1
+			for y in range(roundi(N * 0.78), roundi(N * 0.78) + 3):
+				for x in range(8, N - 8):
+					belt[y * N + x] = 2
+			for x in range(roundi(N * 0.19), roundi(N * 0.19) + 3):
+				for y in range(roundi(N * 0.28), roundi(N * 0.72)):
+					belt[y * N + x] = 3
+			for x in range(roundi(N * 0.78), roundi(N * 0.78) + 3):
+				for y in range(roundi(N * 0.28), roundi(N * 0.72)):
+					belt[y * N + x] = 4
+		"portals":
+			var f := func(fx: float, fy: float) -> Vector2: return Vector2(roundi(N * fx) + 0.5, roundi(N * fy) + 0.5)
+			portals = [[f.call(0.18, 0.18), f.call(0.82, 0.82)], [f.call(0.82, 0.18), f.call(0.18, 0.82)], [f.call(0.5, 0.13), f.call(0.5, 0.87)]]
+			for pair in portals:
+				for end in pair:
+					for y in range(int(end.y) - 2, int(end.y) + 3):
+						for x in range(int(end.x) - 2, int(end.x) + 3):
+							if x >= 0 and y >= 0 and x < N and y < N and Vector2(x + 0.5, y + 0.5).distance_to(end) < 2.2:
+								avoid[y * N + x] = 1
 		"round":
 			var r := N / 2.0 - 1
 			for y in N:
@@ -382,6 +471,7 @@ func spawn(p: Player, fx := -1, fy := -1) -> bool:
 	p.alive = true
 	p.trail = PackedInt32Array()
 	p.path.clear()
+	p.path_breaks.clear()
 	p.wp.clear()
 	p.mode = "idle"
 	p.think = randf_range(0.2, 1.0)
@@ -407,7 +497,7 @@ func kill(victim: Player, killer: Player, how := "cut") -> void:
 	if killer and killer.harmless and killer != victim:
 		return
 	# A shield stops other players, but not your own mistakes or losing all your land
-	if victim.shield > 0 and killer != victim and how != "swallow":
+	if victim.shield > 0 and killer != victim and how != "swallow" and how != "storm":
 		return
 	if victim.is_boss and victim.hp > 1:
 		_hurt_king(victim, killer, how)
@@ -420,6 +510,7 @@ func kill(victim: Player, killer: Player, how := "cut") -> void:
 			lost.append(i)
 	victim.trail = PackedInt32Array()
 	victim.path.clear()
+	victim.path_breaks.clear()
 	for i in N * N:
 		if land[i] == victim.id:
 			set_land(i, 0)
@@ -447,6 +538,7 @@ func capture(p: Player) -> void:
 		set_land(i, p.id)
 	p.trail = PackedInt32Array()
 	p.path.clear()
+	p.path_breaks.clear()
 
 	_seen.fill(0)
 	var top := 0
@@ -640,6 +732,16 @@ func move(p: Player, dt: float) -> void:
 			p.path.append(before)
 		if p.path[p.path.size() - 1].distance_to(p.pos) >= 0.3:
 			p.path.append(p.pos)
+	if p.alive and belt[p.cell.y * N + p.cell.x]:
+		_ride_belt(p, dt)
+	if p.alive and not portals.is_empty():
+		p.portal_cd = maxf(0.0, p.portal_cd - dt)
+		if p.portal_cd <= 0:
+			for pair in portals:
+				for k in 2:
+					if p.pos.distance_to(pair[k]) < 0.8:
+						_teleport(p, pair[k], pair[1 - k])
+						return
 
 
 func _step(p: Player, dt: float) -> void:
@@ -660,9 +762,14 @@ func _step(p: Player, dt: float) -> void:
 			nx = p.pos.x
 			ny = p.pos.y
 	p.blocked = is_equal_approx(nx, p.pos.x) and is_equal_approx(ny, p.pos.y)
-	p.pos = Vector2(nx, ny)
-	var cx := int(nx)
-	var cy := int(ny)
+	_arrive(p, Vector2(nx, ny))
+
+
+## Puts a player at `to` (a small step away) and visits the cells it crossed
+func _arrive(p: Player, to: Vector2) -> void:
+	p.pos = to
+	var cx := int(to.x)
+	var cy := int(to.y)
 	if cx == p.cell.x and cy == p.cell.y:
 		return
 	# Diagonal step: also visit a corner cell, so trails never have gaps to slip through
@@ -725,8 +832,223 @@ func update(dt: float) -> void:
 		if p.is_bot:
 			bots.steer(p, dt)
 		move(p, dt)
+		if p.is_boss and p.alive:
+			_boss_power(p, dt)
 	check_bumps()
 	_update_items(dt)
+	_update_hazards(dt)
+
+
+# ---------- Hazard maps ----------
+
+func center() -> Vector2:
+	return Vector2(N / 2.0, N / 2.0)
+
+
+## Conveyor: the belt carries you along (walls still stop you)
+func _ride_belt(p: Player, dt: float) -> void:
+	var push: Vector2 = BELT_DIRS[belt[p.cell.y * N + p.cell.x]] * BELT_SPEED * dt
+	var to := p.pos + push
+	if is_wall_at(to.x, to.y):
+		return
+	var before := p.pos
+	_arrive(p, to.clamp(Vector2(0.01, 0.01), Vector2(N - 0.01, N - 0.01)))
+	if p.alive and p.trail.size() > 0 and not p.path.is_empty() and p.path[p.path.size() - 1].distance_to(p.pos) >= 0.3:
+		p.path.append(p.pos)
+	elif p.alive and p.trail.size() > 0 and p.path.is_empty():
+		p.path.append(before)
+
+
+## Portals: pop out of the twin, heading the same way, trail and all
+func _teleport(p: Player, from: Vector2, to: Vector2) -> void:
+	var exit := to + Vector2.from_angle(p.angle) * 1.3
+	if is_wall_at(exit.x, exit.y):
+		exit = to
+	p.portal_cd = 1.2
+	p.pos = exit
+	if p.trail.size() > 0:
+		p.path_breaks.append(p.path.size())
+		p.path.append(exit)
+	var cx := int(exit.x)
+	var cy := int(exit.y)
+	if cx != p.cell.x or cy != p.cell.y:
+		visit(p, cx, cy)
+		p.cell = Vector2i(cx, cy)
+	if p.is_bot:
+		p.route = null
+		p.wp.clear()
+		p.think = 0.0
+	teleported.emit(p, from, exit)
+
+
+func _update_hazards(dt: float) -> void:
+	# Saw Mill: a blade cuts any trail it runs over, and anyone it hits outside their land
+	for s in saws:
+		s.d = fposmod(s.d + s.speed * dt, _loop_length(s.corners))
+		s.pos = _along(s.corners, s.d)
+		s.spin += dt * 14.0
+		var cx := int(s.pos.x)
+		var cy := int(s.pos.y)
+		for oy in range(-1, 2):
+			for ox in range(-1, 2):
+				var x := cx + ox
+				var y := cy + oy
+				if x < 0 or y < 0 or x >= N or y >= N:
+					continue
+				if Vector2(x + 0.5, y + 0.5).distance_to(s.pos) > 1.2:
+					continue
+				var t := trail[y * N + x]
+				if t and players[t] and players[t].alive:
+					kill(players[t], null, "saw")
+		for p in players:
+			if p and p.alive and p.pos.distance_to(s.pos) < 1.3 * p.size and land[p.cell.y * N + p.cell.x] != p.id:
+				kill(p, null, "saw")
+	# Storm: a warning ring, then everything outside it is lost
+	if storm_r > 0:
+		storm_timer -= dt
+		if storm_next == 0.0 and storm_timer <= STORM_WARN and storm_r > STORM_MIN:
+			storm_next = maxf(STORM_MIN, storm_r - STORM_STEP)
+			storm_coming.emit(storm_next)
+		if storm_timer <= 0:
+			if storm_next > 0:
+				_close_storm(storm_next)
+			storm_next = 0.0
+			storm_timer = STORM_EVERY
+	# The Queen's traps: step on one outside your land and you're out
+	for t in traps:
+		t.life -= dt
+		if t.life <= 0:
+			continue
+		for p in players:
+			if p and p.alive and p != t.owner and not p.is_boss and p.pos.distance_to(t.pos) < 0.9 \
+					and land[p.cell.y * N + p.cell.x] != p.id:
+				kill(p, null, "trap")
+				if not p.alive:
+					t.life = 0.0
+	traps = traps.filter(func(t): return t.life > 0)
+
+
+func _close_storm(r: float) -> void:
+	storm_r = r
+	var c := center()
+	var hit := {}
+	for y in N:
+		for x in N:
+			var i := y * N + x
+			if wall[i] == 2 or Vector2(x + 0.5, y + 0.5).distance_to(c) <= r:
+				continue
+			if trail[i]:
+				hit[trail[i]] = true
+			if land[i]:
+				set_land(i, 0)
+			wall[i] = 2
+			play_cells -= 1
+	for id in hit:
+		if players[id] and players[id].alive:
+			kill(players[id], null, "storm")
+	for p in players:
+		if p == null or not p.alive:
+			continue
+		if wall[p.cell.y * N + p.cell.x] != 0 or counts[p.id] == 0:
+			kill(p, null, "storm")
+		# A boss survives a hit, but not standing in the storm: he moves somewhere safe
+		if p.alive and wall[p.cell.y * N + p.cell.x] != 0:
+			p.alive = false
+			if spawn(p) and p.is_boss:
+				_grow_kingdom(p)
+	land_version += 1
+	map_version += 1
+	storm_hit.emit(r)
+
+
+## Inside the storm's safe circle (with `margin` to spare)? Always true without a storm.
+func inside_storm(q: Vector2, margin := 0.0) -> bool:
+	if storm_r <= 0:
+		return true
+	var r := storm_next if storm_next > 0 else storm_r
+	return q.distance_to(center()) <= r - margin
+
+
+func trap_near(q: Vector2, r := 1.3) -> bool:
+	for t in traps:
+		if t.pos.distance_to(q) < r:
+			return true
+	return false
+
+
+func _loop_length(corners: Array) -> float:
+	var total := 0.0
+	for k in corners.size():
+		total += corners[k].distance_to(corners[(k + 1) % corners.size()])
+	return total
+
+
+## The point `d` cells along a closed loop of corners
+func _along(corners: Array, d: float) -> Vector2:
+	for k in corners.size():
+		var a: Vector2 = corners[k]
+		var b: Vector2 = corners[(k + 1) % corners.size()]
+		var l := a.distance_to(b)
+		if d <= l:
+			return a.lerp(b, d / l)
+		d -= l
+	return corners[0]
+
+
+# ---------- Boss powers ----------
+
+func _boss_power(k: Player, dt: float) -> void:
+	k.power_timer -= dt
+	if k.power_timer > 0:
+		return
+	match k.boss_kind:
+		"queen":
+			# She drops spiky traps behind her while she's out of her land
+			if k.trail.size() > 2 and traps.size() < 14:
+				traps.append({"pos": k.pos, "life": 14.0, "owner": k})
+				k.power_timer = 1.6 if k.rage else 2.4
+				trap_dropped.emit(k, k.pos)
+		"wizard":
+			# Get close while he's out, and he blinks home, taking his trail with him
+			if k.trail.size() >= 3:
+				for h in humans():
+					if h.alive and h.pos.distance_to(k.pos) < 7.5:
+						_blink(k)
+						k.power_timer = 5.0 if k.rage else 7.0
+						return
+
+
+func _blink(k: Player) -> void:
+	var from := k.pos
+	for i in k.trail:
+		if trail[i] == k.id:
+			trail[i] = 0
+	k.trail = PackedInt32Array()
+	k.path.clear()
+	k.path_breaks.clear()
+	# Somewhere in his land, as far from you as he can find
+	var best := -1
+	var best_d := -1.0
+	for tries in 300:
+		var i := randi() % (N * N)
+		if land[i] != k.id:
+			continue
+		var q := Vector2(i % N + 0.5, i / N + 0.5)
+		var d := INF
+		for h in humans():
+			if h.alive:
+				d = minf(d, q.distance_to(h.pos))
+		if d > best_d:
+			best_d = d
+			best = i
+	if best >= 0:
+		k.pos = Vector2(best % N + 0.5, best / N + 0.5)
+		k.cell = Vector2i(best % N, best / N)
+	k.wp.clear()
+	k.mode = "idle"
+	k.route = null
+	k.shield = 1.0
+	blinked.emit(k, from, k.pos)
 
 
 # ---------- Boss Battle: the King ----------
@@ -745,12 +1067,15 @@ func _tune(b: Player) -> void:
 
 
 func _spawn_king() -> void:
-	var k := Player.new(players.size(), "King", Color("#3b3f58"), true)
+	var kind: String = boss_kind if BOSSES.has(boss_kind) else "king"
+	var b: Dictionary = BOSSES[kind]
+	var k := Player.new(players.size(), b.name, Color(b.color), true)
 	bots.give_personality(k, "hunter")
 	k.is_boss = true
+	k.boss_kind = kind
 	k.size = 1.7
-	k.hp = KING_HEARTS
-	k.max_hp = KING_HEARTS
+	k.hp = b.hearts
+	k.max_hp = b.hearts
 	k.greed = 55
 	k.aggro = 0.7
 	k.loop_scale = 1.7
@@ -786,6 +1111,7 @@ func _hurt_king(k: Player, by: Player, how: String) -> void:
 			trail[i] = 0
 	k.trail = PackedInt32Array()
 	k.path.clear()
+	k.path_breaks.clear()
 	k.shield = 2.5
 	k.wp.clear()
 	k.mode = "idle"

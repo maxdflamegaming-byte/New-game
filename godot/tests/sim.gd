@@ -15,13 +15,28 @@ func _init() -> void:
 	var modes: Array = w.MODES.keys()
 	var boss_hits := [0]
 	w.boss_hit.connect(func(_k, _by): boss_hits[0] += 1)
+	var events := {}
+	var count := func(k: String): events[k] = events.get(k, 0) + 1
+	w.teleported.connect(func(_p, _a, _b): count.call("teleports"))
+	w.storm_hit.connect(func(_r): count.call("storm closed in"))
+	w.trap_dropped.connect(func(_k, _at): count.call("traps dropped"))
+	w.blinked.connect(func(_k, _a, _b): count.call("wizard blinks"))
+	w.knocked_out.connect(func(_v, k, how, _lost): if k == null: count.call("knocked out by " + how))
+	# Every mode (maps rotating), then long games on each hazard map and against each boss
+	var games := []
 	for game in modes.size() + 2:
-		var map: String = w.MAPS.keys()[game % w.MAPS.size()]
-		w.setup(game % 8, "", true, map, modes[game % modes.size()])
+		games.append([modes[game % modes.size()], w.MAPS.keys()[game % w.MAPS.size()], 60.0, "king"])
+	for map in ["saws", "storm", "conveyor", "portals"]:
+		games.append(["classic", map, 150.0 if map != "storm" else 240.0, "king"])
+	games.append(["boss", "square", 120.0, "queen"])
+	games.append(["boss", "pillars", 120.0, "wizard"])
+	for game in games.size():
+		w.boss_kind = games[game][3]
+		w.setup(game % 8, "", true, games[game][1], games[game][0])
 		if w.p2:
 			w.p2.is_bot = true
 			w.bots.give_personality(w.p2, "explorer")
-		for f in 60 * 60:
+		for f in int(games[game][2] * 60):
 			w.update(1.0 / 60)
 			frames += 1
 			for h in w.humans():
@@ -66,7 +81,11 @@ func _init() -> void:
 			sizes.append("%s %.1f%%" % [p.name, w.pct(p)])
 	print("frames=%d time=%dms (%.2f ms/frame) knockouts=%s" % [frames, ms, float(ms) / frames, knockouts])
 	print("sizes: ", ", ".join(sizes))
-	print("power-ups grabbed: ", picked, "  coins left: ", w.coins.size(), "  King hit: ", boss_hits[0])
+	print("power-ups grabbed: ", picked, "  coins left: ", w.coins.size(), "  boss hits: ", boss_hits[0])
+	print("hazards: ", events)
+	for need in ["teleports", "storm closed in", "traps dropped", "wizard blinks", "knocked out by saw"]:
+		if not events.has(need):
+			issues["never happened: " + need] = 1
 	print("ISSUES: ", issues if issues else "none")
 	w.free()
 	quit(1 if issues else 0)

@@ -88,7 +88,7 @@ func _bfs_home(p: Player, padded: bool):
 			if nx < 0 or ny < 0 or nx >= n or ny >= n:
 				continue
 			var j := ny * n + nx
-			if _mark[j] == _gen or w.trail[j] == p.id or w.wall[j]:
+			if _mark[j] == _gen or w.trail[j] == p.id or w.wall[j] or (w.avoid[j] and w.land[j] != p.id):
 				continue
 			if padded and (absi(nx - p.cell.x) > 2 or absi(ny - p.cell.y) > 2):
 				if _touches_own_trail(p, nx, ny) or (w.land[j] != p.id and _beside_wall(nx, ny)):
@@ -138,6 +138,8 @@ func safe_steps(p: Player, desired: float, steps := LOOK, dt := 0.05) -> int:
 			return k
 		if w.trail[fy * n + fx] == p.id:
 			return k
+		if not w.traps.is_empty() and w.trap_near(Vector2(x, y)):
+			return k
 		if w.land[fy * n + fx] == p.id:
 			return steps # made it home
 		cx = fx
@@ -160,6 +162,10 @@ func _clear_line(a: Vector2, b: Vector2) -> bool:
 	for k in steps + 1:
 		var q := a.lerp(b, float(k) / maxi(steps, 1))
 		if w.is_wall_at(q.x, q.y):
+			return false
+		# Keep plans out of portals and the storm (but let a bot that's already there leave)
+		var i: int = int(q.y) * w.N + int(q.x)
+		if q.distance_to(a) > 2.0 and (w.avoid[i] or w.tracks[i] or not w.inside_storm(q, 2.0)):
 			return false
 	return true
 
@@ -212,6 +218,13 @@ func _closest_trail_point(p: Player, o: Player) -> Vector2:
 
 func think(p: Player) -> void:
 	var outside := p.trail.size() > 0
+	# Storm coming: get inside the next ring
+	if w.storm_next > 0 and not w.inside_storm(p.pos, 3.0):
+		var c: Vector2 = w.center()
+		p.wp = [c + (p.pos - c).normalized() * maxf(0.0, w.storm_next * 0.5)]
+		p.mode = "storm"
+		p.route = null
+		return
 	# Head home if an enemy gets close while the trail is out, or if we got greedy
 	if outside and p.mode != "home":
 		var threat := false
@@ -220,6 +233,9 @@ func think(p: Player) -> void:
 				if o and not w.allies(o, p) and o.alive and o.pos.distance_to(p.pos) < p.flee:
 					threat = true
 					break
+			for s in w.saws:
+				if s.pos.distance_to(p.pos) < 6.0:
+					threat = true
 		var greed := minf(p.greed, 22) if w.map_id == "islands" else p.greed
 		if threat or p.trail.size() > greed:
 			go_home(p)

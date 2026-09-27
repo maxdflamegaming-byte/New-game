@@ -16,7 +16,7 @@ const MISSIONS := {
 	"time5": {"text": "Play for 5 minutes", "goal": 300, "stat": "time", "reward": 60, "time": true},
 	"timed": {"text": "Finish a Timed game", "goal": 1, "stat": "mode_timed", "reward": 60},
 	"teams": {"text": "Win a Teams game", "goal": 1, "stat": "win_teams", "reward": 120},
-	"boss": {"text": "Knock a heart off the King", "goal": 1, "stat": "king_hits", "reward": 80},
+	"boss": {"text": "Knock a heart off a boss", "goal": 1, "stat": "king_hits", "reward": 80},
 	"daily": {"text": "Play today's Daily", "goal": 1, "stat": "mode_daily", "reward": 60},
 }
 
@@ -33,7 +33,9 @@ const TROPHIES := {
 	"modes": {"name": "Try Everything", "desc": "Play every mode"},
 	"maps": {"name": "Globetrotter", "desc": "Play on every map"},
 	"king": {"name": "King Slayer", "desc": "Beat the King"},
-	"flawless": {"name": "Flawless", "desc": "Beat the King without losing a life"},
+	"queen": {"name": "Queen Slayer", "desc": "Beat the Queen"},
+	"wizard": {"name": "Wizard Slayer", "desc": "Beat the Wizard"},
+	"flawless": {"name": "Flawless", "desc": "Beat a boss without losing a life"},
 	"teams": {"name": "Team Player", "desc": "Win a Teams game"},
 	"clock": {"name": "Beat the Clock", "desc": "Win a Timed game"},
 	"quick": {"name": "Speed Run", "desc": "Win a game in under 2 minutes"},
@@ -47,7 +49,7 @@ const TROPHIES := {
 const TROPHY_COINS := 25
 const STREAK_COINS := [20, 30, 40, 60, 80, 100, 150] # day 1..7, then 100 a day
 const ALL_MODES := ["classic", "timed", "daily", "teams", "boss", "duo"]
-const ALL_MAPS := ["square", "round", "pillars", "maze", "islands"]
+const ALL_MAPS := ["square", "round", "pillars", "maze", "islands", "saws", "storm", "conveyor", "portals"]
 
 var xp := 0 # towards the next level
 var level := 1
@@ -63,7 +65,7 @@ var tutorial_done := false
 static func blank_stats() -> Dictionary:
 	return {
 		"games": 0, "wins": 0, "kos": 0, "time": 0.0, "powerups": 0, "coins": 0,
-		"best_pct": 0.0, "best_loop": 0.0, "king_wins": 0, "modes": [], "maps": [],
+		"best_pct": 0.0, "best_loop": 0.0, "king_wins": 0, "queen_wins": 0, "wizard_wins": 0, "modes": [], "maps": [],
 	}
 
 
@@ -105,7 +107,9 @@ func finish(s: Dictionary, today: String) -> Array:
 		stats.best_pct = maxf(stats.best_pct, s.get("pct", 0.0))
 		stats.best_loop = maxf(stats.best_loop, s.get("best_loop", 0.0))
 		if won and mode == "boss":
-			stats.king_wins += 1
+			var key: String = s.get("boss", "king") + "_wins"
+			if stats.has(key):
+				stats[key] += 1
 		out.append_array(_streak(today))
 		out.append_array(_missions(s, today))
 		out.append_array(_gain_xp(xp_for(s)))
@@ -185,6 +189,8 @@ func check_trophies(s: Dictionary = {}) -> Array:
 		"modes": ALL_MODES.all(func(m): return stats.modes.has(m)),
 		"maps": ALL_MAPS.all(func(m): return stats.maps.has(m)),
 		"king": stats.king_wins >= 1,
+		"queen": stats.queen_wins >= 1,
+		"wizard": stats.wizard_wins >= 1,
 		"flawless": solo and won and mode == "boss" and s.get("lives_lost", 1) == 0,
 		"teams": solo and won and mode == "teams",
 		"clock": solo and won and mode == "timed",

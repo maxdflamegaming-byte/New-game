@@ -107,6 +107,12 @@ func _run() -> void:
 			continue
 		var parts: PackedStringArray = m.split(":")
 		main.mode_id = parts[0] if parts.size() > 1 and parts[0] != "looks" else "classic"
+		# queen:MAP and wizard:MAP are Boss Battles against those bosses
+		if parts[0] == "queen" or parts[0] == "wizard" or parts[0] == "boss":
+			main.prog.stats.king_wins = maxi(1, main.prog.stats.king_wins)
+			main.prog.stats.queen_wins = maxi(1, main.prog.stats.queen_wins)
+			main.boss_kind = "king" if parts[0] == "boss" else parts[0]
+			main.mode_id = "boss"
 		if parts[0] == "looks":
 			main.equipped = {"skin": "galaxy", "trail": "fire", "pet": "chick"}
 		main.map_id = parts[-1]
@@ -116,6 +122,10 @@ func _run() -> void:
 			h.is_bot = true # let the game play itself
 			w.bots.give_personality(h, "explorer")
 		await _wait(8.0)
+		if w.map_id == "storm":
+			w._close_storm(40.0) # show the storm closed in once, with the next ring coming
+			w.storm_next = 33.0
+			w.storm_timer = 99.0
 		w.me.shield = 30.0
 		# Put some power-ups and coins near you, and show a few effects
 		var at: Vector2 = w.me.pos

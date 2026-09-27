@@ -101,9 +101,29 @@ func _draw() -> void:
 		extra.append(Color(1, 1, 1, p.hit_flash * 0.8))
 	Cosmetics.draw_square(self, Vector2(0, bob), s, p.color, p.dark, p.skin, Vector2.from_angle(p.angle), t,
 			p.turning * 0.14, p.squash, p.blink < 0, extra)
-	if leader or p.is_boss:
+	var top := -CELL * (2.3 + 0.6 * p.size) + sin(t * 4.0) * 2.0
+	if p.boss_kind == "queen":
+		# A tiara with a pink gem
+		var w := CELL * 1.3
+		var pts := PackedVector2Array()
+		for k in 7:
+			pts.append(Vector2(-w / 2 + k * w / 6, top + w * (0.55 if k % 2 == 0 else 0.15) + (0.0 if k != 3 else -w * 0.15)))
+		pts.append(Vector2(w / 2, top + w * 0.8))
+		pts.append(Vector2(-w / 2, top + w * 0.8))
+		draw_colored_polygon(pts, Color("#ffc93c"))
+		draw_polyline(pts + PackedVector2Array([pts[0]]), Color("#c98a00"), 3.0, true)
+		draw_circle(Vector2(0, top + w * 0.5), w * 0.12, Color("#ff5d9e"), true, -1, true)
+	elif p.boss_kind == "wizard":
+		# A tall pointy hat with stars
+		var w := CELL * 1.5
+		var base := top + w * 0.95
+		draw_colored_polygon(PackedVector2Array([Vector2(-w * 0.45, base), Vector2(w * 0.12, top - w * 0.35), Vector2(w * 0.45, base)]), Color("#5b3fb0"))
+		draw_rect(Rect2(-w * 0.6, base - w * 0.08, w * 1.2, w * 0.16), Color("#3d2a7a"))
+		for q in [Vector2(-0.1, 0.45), Vector2(0.12, 0.15), Vector2(0.05, 0.7)]:
+			draw_circle(Vector2(q.x * w, top + q.y * w), w * 0.06, Color("#ffd23f"), true, -1, true)
+	elif leader or p.is_boss:
 		var w := CELL * (1.0 if not p.is_boss else 1.4)
-		draw_texture_rect(_crown, Rect2(-w / 2, -CELL * (2.3 + 0.6 * p.size) + sin(t * 4.0) * 2.0, w, w), false)
+		draw_texture_rect(_crown, Rect2(-w / 2, top, w, w), false)
 	if threat:
 		var pulse := 1.0 + 0.15 * sin(t * 14.0)
 		var c := Vector2(CELL * 1.3, -CELL * 1.3)

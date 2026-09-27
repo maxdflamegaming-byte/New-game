@@ -356,6 +356,112 @@ func _run() -> void:
 	main._to_menu()
 	await process_frame
 
+	# Hazard maps
+	main.map_id = "portals"
+	await _play()
+	var hme: Player = w.me
+	hme.shield = 99.0
+	var gate: Vector2 = w.portals[0][0]
+	var twin: Vector2 = w.portals[0][1]
+	hme.pos = gate + Vector2(0.3, 0)
+	hme.cell = Vector2i(int(hme.pos.x), int(hme.pos.y))
+	hme.trail.append(hme.cell.y * w.N + hme.cell.x) # pretend we're out on a trail
+	w.trail[hme.cell.y * w.N + hme.cell.x] = hme.id
+	hme.path = PackedVector2Array([hme.pos - Vector2(2, 0), hme.pos])
+	hme.portal_cd = 0.0
+	w.move(hme, 0.001)
+	ok("Portals: step in one, pop out of its twin, and the trail is drawn in two pieces", hme.pos.distance_to(twin) < 2.0 and hme.path_breaks.size() == 1, str(hme.pos))
+	main.map_id = "conveyor"
+	await _play()
+	hme = w.me
+	var belt_cell := -1
+	for c in w.N * w.N:
+		if w.belt[c] == 1 and w.belt[c - w.N] == 1 and w.belt[c + w.N] == 1 and w.land[c] == 0:
+			belt_cell = c
+			break
+	hme.pos = Vector2(belt_cell % w.N + 0.5, belt_cell / w.N + 0.5)
+	hme.cell = Vector2i(belt_cell % w.N, belt_cell / w.N)
+	hme.angle = -PI / 2
+	hme.desired = -PI / 2
+	var x0: float = hme.pos.x
+	w.move(hme, 0.1)
+	ok("Conveyor: a belt carries you along", hme.pos.x - x0 > w.BELT_SPEED * 0.1 * 0.9, "%.2f" % (hme.pos.x - x0))
+	main.map_id = "saws"
+	await _play()
+	var victim: Player = w.players[3]
+	victim.shield = 0.0
+	var saw_pos: Vector2 = w.saws[0].pos
+	var sc: int = int(saw_pos.y) * w.N + int(saw_pos.x)
+	w.land[sc] = 0
+	w.trail[sc] = victim.id
+	victim.trail.append(sc)
+	w._update_hazards(0.0)
+	ok("Saw Mill: a blade cuts the trail it runs over", not victim.alive)
+	main.map_id = "storm"
+	await _play()
+	hme = w.me
+	var outsider: Player = w.players[2]
+	outsider.pos = Vector2(3.5, 3.5)
+	outsider.cell = Vector2i(3, 3)
+	outsider.shield = 99.0
+	var cells_before: int = w.play_cells
+	w._close_storm(20.0)
+	var land_outside := 0
+	for c in w.N * w.N:
+		if w.wall[c] == 2 and (w.land[c] or w.trail[c]):
+			land_outside += 1
+	ok("Storm: closing in shrinks the map, and shields don't help outside it", w.play_cells < cells_before and land_outside == 0 and not outsider.alive and hme.alive)
+	main.map_id = "square"
+
+	# The Queen and the Wizard
+	var boss_prog: Progress = main.prog
+	main.prog = Progress.new()
+	ok("The Queen is locked until you beat the King", not main.boss_unlocked("queen") and not main.boss_unlocked("wizard"))
+	main.prog.stats.king_wins = 1
+	ok("Beating the King unlocks the Queen", main.boss_unlocked("queen") and not main.boss_unlocked("wizard"))
+	main.boss_kind = "queen"
+	await _play("boss")
+	ok("The Boss Battle brings the boss you picked", w.king.boss_kind == "queen" and w.king.max_hp == 6)
+	w.king.power_timer = 0.0
+	for k in 3:
+		w.king.trail.append(k)
+	w._boss_power(w.king, 0.1)
+	w.king.trail.clear()
+	ok("The Queen drops traps while she's out", w.traps.size() == 1)
+	hme = w.me
+	hme.shield = 0.0
+	w.traps[0].pos = hme.pos
+	w._update_hazards(0.0)
+	ok("A trap can't hurt you on your own land", hme.alive)
+	var far := Vector2i(hme.cell.x + 12, hme.cell.y)
+	hme.pos = Vector2(far) + Vector2(0.5, 0.5)
+	hme.cell = far
+	w.traps[0].pos = hme.pos
+	w._update_hazards(0.0)
+	await _wait(1.4)
+	ok("Outside it, a trap costs a life", hme.lives == 2)
+	main.prog.stats.queen_wins = 1
+	main.boss_kind = "wizard"
+	await _play("boss")
+	var wiz: Player = w.king
+	for k in 4:
+		var c: int = (wiz.cell.y + 8) * w.N + wiz.cell.x + k
+		w.trail[c] = wiz.id
+		wiz.trail.append(c)
+	w.me.pos = wiz.pos + Vector2(3, 0)
+	wiz.power_timer = 0.0
+	w._boss_power(wiz, 0.1)
+	ok("The Wizard blinks home when you get close, taking his trail", wiz.boss_kind == "wizard" and wiz.trail.is_empty())
+	main.boss_kind = "king"
+	main.prog = boss_prog
+	await _play()
+	w.me.shield = 0.0
+	w.kill(w.me, null, "saw")
+	await _wait(1.3)
+	ok("A hazard knockout says what happened", main.state == "over" and main.over_reason.text == "A saw got you!", main.over_reason.text)
+	main._to_menu()
+	await process_frame
+
 	# The shop
 	main._to_menu()
 	await process_frame

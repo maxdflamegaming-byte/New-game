@@ -63,7 +63,7 @@ func refresh() -> void:
 		["Knockouts", str(s.kos)], ["Best claim", "%.1f%%" % s.best_pct],
 		["Biggest loop", "%.1f%%" % s.best_loop], ["Time played", "%dh %02dm" % [hours, mins] if hours else "%dm" % mins],
 		["Power-ups", str(s.powerups)], ["Coins picked up", str(s.coins)],
-		["Kings beaten", str(s.king_wins)], ["Best streak", "%d day%s" % [p.streak, "" if p.streak == 1 else "s"]],
+		["Bosses beaten", str(s.king_wins + s.queen_wins + s.wizard_wins)], ["Best streak", "%d day%s" % [p.streak, "" if p.streak == 1 else "s"]],
 	]
 	for r in rows:
 		var cell := HBoxContainer.new()

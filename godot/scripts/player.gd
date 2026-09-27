@@ -16,6 +16,8 @@ var turning := 0.0 # -1..1, how hard it's turning this frame
 var alive := false
 var trail := PackedInt32Array()
 var path := PackedVector2Array() # where it actually drove while outside its land (for drawing)
+var path_breaks := PackedInt32Array() # where the path jumps (through a portal): a new piece starts
+var portal_cd := 0.0 # a moment after using a portal before the next one works
 var kills := 0
 var respawn := 0.0
 var shield := 0.0
@@ -33,6 +35,8 @@ var max_hp := 0
 var rage := false
 var hit_flash := 0.0
 var size := 1.0 # drawn size (the King is bigger)
+var boss_kind := "" # king, queen or wizard
+var power_timer := 2.0 # the Queen's traps and the Wizard's blink
 var harmless := false # the tutorial's practice bot can't knock you out
 
 # Looks from the shop

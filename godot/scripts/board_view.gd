@@ -12,12 +12,14 @@ const PILLAR := Color("#6b7690")
 const PILLAR_DARK := Color("#4a5369")
 const WATER := Color("#56b6e2")
 const SHORE := Color("#3f8fb8")
+const STORM := Color("#4b416e")
+const PORTAL_COLORS := [Color("#ff8c42"), Color("#b06bff"), Color("#2ec4b6")]
 
 var w
 var font: Font
 var tex_px := 64
 var views := {} # player id -> PlayerView
-var lines := {} # player id -> [glow, rope, shine] Line2Ds
+var lines := {} # player id -> one [glow, rope, shine] set of Line2Ds per piece of trail
 var danger := 0.0
 
 var _floor: Node2D
@@ -25,6 +27,7 @@ var _water: Node2D
 var _items: Node2D
 var _land: Node2D
 var _fx: Node2D
+var _hazards: Node2D # portals, belts' arrows, the storm's ring, traps
 var _glows: Node2D # additive: halos under the squares
 var _air: Node2D # additive: floating specks of light
 var _trails: Node2D
@@ -32,6 +35,8 @@ var _actors: Node2D
 var _top: Node2D
 var _land_version := -1
 var _map_version := -1
+var _hazards_drawn := false
+var _belt_marks := [] # [pos, dir]: where the arrows on the conveyor belts go
 var _waves := PackedVector2Array() # spots on the sea where wave crests roll
 var _icons := {}
 var _coin: Texture2D
@@ -58,7 +63,7 @@ func setup(world, ui_font: Font, px: int) -> void:
 	_coin = Art.tex(Art.COIN, 96)
 	for k in Art.ICONS:
 		_icons[k] = Art.tex(Art.ICONS[k], 96)
-	for n in ["_floor", "_water", "_land", "_fx", "_glows", "_trails", "_items", "_actors", "_top", "_air"]:
+	for n in ["_floor", "_water", "_land", "_fx", "_hazards", "_glows", "_trails", "_items", "_actors", "_top", "_air"]:
 		var node := Node2D.new()
 		node.name = n
 		add_child(node)
@@ -68,6 +73,10 @@ func setup(world, ui_font: Font, px: int) -> void:
 	_fx.draw.connect(_draw_fx)
 	_water.draw.connect(_draw_water)
 	_items.draw.connect(_draw_items)
+	_hazards.draw.connect(_draw_hazards)
+	w.teleported.connect(_on_teleported)
+	w.blinked.connect(_on_blinked)
+	w.storm_hit.connect(func(_r): _floor.queue_redraw())
 	_glows.material = _add_mat
 	_glows.draw.connect(_draw_glows)
 	_air.material = _add_mat
@@ -108,17 +117,7 @@ func _ensure_views() -> void:
 	for p in w.players:
 		if p == null or views.has(p.id):
 			continue
-		var ropes := []
-		for k in 3:
-			var l := Line2D.new()
-			l.joint_mode = Line2D.LINE_JOINT_ROUND
-			l.begin_cap_mode = Line2D.LINE_CAP_ROUND
-			l.end_cap_mode = Line2D.LINE_CAP_ROUND
-			l.antialiased = true
-			l.width = CELL * [1.35, 0.8, 0.2][k] * p.size
-			_trails.add_child(l)
-			ropes.append(l)
-		lines[p.id] = ropes
+		lines[p.id] = [_make_ropes(p)]
 		var v := preload("res://scripts/player_view.gd").new()
 		v.setup(p, tex_px, font, w)
 		_actors.add_child(v)
@@ -144,6 +143,11 @@ func _process(dt: float) -> void:
 	if w.map_id == "islands" and (Gfx.level > Gfx.LOW or Engine.get_process_frames() % 3 == 0):
 		_water.queue_redraw()
 	_items.queue_redraw()
+	if not w.portals.is_empty() or w.storm_r > 0 or not w.traps.is_empty() or w.map_id == "conveyor":
+		_hazards.queue_redraw()
+	elif _hazards_drawn:
+		_hazards.queue_redraw() # clear what's left from the last map
+	_hazards_drawn = not w.portals.is_empty() or w.storm_r > 0 or not w.traps.is_empty() or w.map_id == "conveyor"
 	_update_trails()
 	# Effects fade out
 	for f in _flashes:
@@ -173,45 +177,70 @@ func _process(dt: float) -> void:
 		views[id].frozen = w.freezer != null and w.freezer.id != id
 
 
+## A trail is drawn as three ropes: a soft glow, the rope and a shine along it
+func _make_ropes(p: Player) -> Array:
+	var ropes := []
+	for k in 3:
+		var l := Line2D.new()
+		l.joint_mode = Line2D.LINE_JOINT_ROUND
+		l.begin_cap_mode = Line2D.LINE_CAP_ROUND
+		l.end_cap_mode = Line2D.LINE_CAP_ROUND
+		l.antialiased = true
+		l.width = CELL * [1.35, 0.8, 0.2][k] * p.size
+		_trails.add_child(l)
+		ropes.append(l)
+	return ropes
+
+
 func _update_trails() -> void:
 	var t := Time.get_ticks_msec() / 1000.0
 	for p in w.players:
 		if p == null:
 			continue
-		var ropes: Array = lines[p.id]
-		if not p.alive or p.trail.is_empty():
-			for l in ropes:
-				l.visible = false
-			continue
-		var pts := PackedVector2Array()
-		for q in p.path:
-			pts.append(q * CELL)
-		if pts.is_empty():
-			for l in ropes:
-				l.visible = false
-			continue
-		pts.append(p.pos * CELL)
+		var sets: Array = lines[p.id]
+		# The path in pieces: a portal jump starts a new piece
+		var pieces := []
+		if p.alive and not p.trail.is_empty() and not p.path.is_empty():
+			var start := 0
+			for b in p.path_breaks:
+				if b > start and b <= p.path.size():
+					pieces.append(p.path.slice(start, b))
+					start = b
+			var last: PackedVector2Array = p.path.slice(start)
+			last.append(p.pos)
+			pieces.append(last)
+		while sets.size() < pieces.size():
+			sets.append(_make_ropes(p))
 		var col: Color = p.color
 		if p == w.me and danger > 0:
 			col = Color("#ff3c50").lerp(p.color, 0.35 - 0.35 * sin(t * 18.0))
-		for k in 3:
-			var l: Line2D = ropes[k]
-			l.visible = k == 1 or Gfx.level > Gfx.LOW
-			if not l.visible:
+		for si in sets.size():
+			var ropes: Array = sets[si]
+			if si >= pieces.size() or pieces[si].size() < 2:
+				for l in ropes:
+					l.visible = false
 				continue
-			l.points = pts
-			l.default_color = [Color(col, 0.2), Color(col, 0.65), Color(1, 1, 1, 0.35)][k]
-			# The Rainbow trail from the shop: colours flowing along the rope
-			if p.trail_fx == "rainbow" and k < 2 and not (p == w.me and danger > 0):
-				if l.gradient == null:
-					l.gradient = Gradient.new()
-					l.gradient.offsets = PackedFloat32Array([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
-				var cols := PackedColorArray()
-				for i in 6:
-					cols.append(Color(Cosmetics.rainbow(-t, i / 5.0), [0.3, 0.85][k]))
-				l.gradient.colors = cols
-			elif l.gradient:
-				l.gradient = null
+			var pts := PackedVector2Array()
+			for q in pieces[si]:
+				pts.append(q * CELL)
+			for k in 3:
+				var l: Line2D = ropes[k]
+				l.visible = k == 1 or Gfx.level > Gfx.LOW
+				if not l.visible:
+					continue
+				l.points = pts
+				l.default_color = [Color(col, 0.2), Color(col, 0.65), Color(1, 1, 1, 0.35)][k]
+				# The Rainbow trail from the shop: colours flowing along the rope
+				if p.trail_fx == "rainbow" and k < 2 and not (p == w.me and danger > 0):
+					if l.gradient == null:
+						l.gradient = Gradient.new()
+						l.gradient.offsets = PackedFloat32Array([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+					var cols := PackedColorArray()
+					for i in 6:
+						cols.append(Color(Cosmetics.rainbow(-t, i / 5.0), [0.3, 0.85][k]))
+					l.gradient.colors = cols
+				elif l.gradient:
+					l.gradient = null
 
 
 # ---------- Board and land ----------
@@ -221,15 +250,17 @@ func _draw_floor() -> void:
 	var size := n * CELL
 	var wall: PackedByteArray = w.wall
 	var islands: bool = w.map_id == "islands"
-	var open_board: bool = w.map_id != "round" and not islands
-	# Far background (the sea on Islands), then a soft shadow and a rim under a square board
-	_floor.draw_rect(Rect2(-size, -size, size * 3, size * 3), WATER if islands else BG)
+	var storm: bool = w.map_id == "storm"
+	var open_board: bool = w.map_id != "round" and not islands and not storm
+	# Far background (the sea on Islands, dark clouds on Storm), then a soft shadow and a rim
+	# under a square board
+	_floor.draw_rect(Rect2(-size, -size, size * 3, size * 3), WATER if islands else STORM if storm else BG)
 	if open_board:
 		for k in range(4, 0, -1):
 			var g := CELL * 0.4 * k
 			_floor.draw_rect(Rect2(-6 - g, -6 + CELL * 0.5 + g * 0.6, size + 12 + g * 2, size + 12 + g), Color(0.08, 0.1, 0.18, 0.05))
 		_floor.draw_rect(Rect2(-6, -6 + CELL * 0.45, size + 12, size + 12), EDGE)
-	elif not islands:
+	elif w.map_id == "round":
 		_floor.draw_circle(Vector2(size / 2, size / 2 + CELL * 0.45), size / 2 - CELL * 0.6, EDGE, true, -1, true)
 	# Open ground: a raised edge where it meets the sea or the outside, then the checker
 	for y in n:
@@ -253,6 +284,39 @@ func _draw_floor() -> void:
 		for x in range(y % 2, n, 2):
 			if wall[y * n + x] != 2:
 				_floor.draw_rect(Rect2(x * CELL, y * CELL, CELL, CELL), CHECK)
+	# Conveyor belts: dark strips with rails along their edges
+	_belt_marks.clear()
+	if w.map_id == "conveyor":
+		for y in n:
+			for x in n:
+				var b: int = w.belt[y * n + x]
+				if b == 0:
+					continue
+				_floor.draw_rect(Rect2(x * CELL, y * CELL, CELL, CELL), Color("#7d879c"))
+				var dir: Vector2 = w.BELT_DIRS[b]
+				var side := Vector2i(int(dir.orthogonal().x), int(dir.orthogonal().y))
+				var a := Vector2i(x, y) + side
+				var c := Vector2i(x, y) - side
+				var inside_a: bool = a.x >= 0 and a.y >= 0 and a.x < n and a.y < n and w.belt[a.y * n + a.x] == b
+				var inside_c: bool = c.x >= 0 and c.y >= 0 and c.x < n and c.y < n and w.belt[c.y * n + c.x] == b
+				if inside_a and inside_c and (x + y) % 2 == 0:
+					_belt_marks.append([Vector2(x + 0.5, y + 0.5), dir])
+				for e in [[inside_a, side], [inside_c, -side]]:
+					if not e[0]:
+						var off: Vector2 = Vector2(e[1]) * CELL * 0.42
+						var mid := Vector2(x + 0.5, y + 0.5) * CELL + off
+						var half := dir * CELL * 0.5
+						_floor.draw_line(mid - half, mid + half, Color("#5b6378"), CELL * 0.16)
+	# Saw tracks: rails the blades run along
+	for s in w.saws:
+		var corners: Array = s.corners
+		for e in corners.size():
+			var a: Vector2 = corners[e] * CELL
+			var b: Vector2 = corners[(e + 1) % corners.size()] * CELL
+			_floor.draw_line(a, b, Color("#c3cadb"), CELL * 0.7, true)
+			_floor.draw_dashed_line(a, b, Color("#8d97ab"), CELL * 0.16, CELL * 0.5, true, true)
+		for q in corners:
+			_floor.draw_circle(q * CELL, CELL * 0.35, Color("#c3cadb"), true, -1, true)
 	# Foam on the water side of every shore
 	if islands:
 		var f := CELL * 0.22
@@ -328,6 +392,21 @@ func _draw_items() -> void:
 			var a := t * 2.5 + k * TAU / 3
 			var sp := at + Vector2.from_angle(a) * r * 1.45
 			_items.draw_texture_rect(_spark, Rect2(sp - Vector2(r, r) * 0.2, Vector2(r, r) * 0.4), false, Color(1, 1, 1, 0.9))
+	# Saw blades, spinning as they run round their tracks
+	for sw in w.saws:
+		var at: Vector2 = sw.pos * CELL
+		var r := CELL * 1.35
+		var teeth := PackedVector2Array()
+		for k in 24:
+			var a: float = sw.spin + k * TAU / 24.0
+			teeth.append(at + Vector2.from_angle(a) * (r if k % 2 == 0 else r * 0.78))
+		_items.draw_circle(at + Vector2(0, CELL * 0.25), r, Color(0.06, 0.08, 0.16, 0.18), true, -1, true)
+		_items.draw_colored_polygon(teeth, Color("#aeb8cc"))
+		_items.draw_circle(at, r * 0.7, Color("#dfe5f0"), true, -1, true)
+		for k in 3:
+			var a: float = sw.spin * 1.0 + k * TAU / 3.0
+			_items.draw_line(at + Vector2.from_angle(a) * r * 0.2, at + Vector2.from_angle(a) * r * 0.62, Color("#9aa4b8"), CELL * 0.12, true)
+		_items.draw_circle(at, r * 0.2, Color("#ff5d73"), true, -1, true)
 	for co in w.coins:
 		if co.life < 3 and int(co.life * 8) % 2:
 			continue
@@ -607,3 +686,66 @@ func _draw_air() -> void:
 		var a := 0.22 + 0.18 * sin(m.phase * 1.7)
 		var s: float = m.size * (1.0 + 0.2 * sin(m.phase * 2.3))
 		_air.draw_texture_rect(_glow, Rect2(m.pos - Vector2(s, s) / 2, Vector2(s, s)), false, Color(1, 0.96, 0.8, a))
+
+
+# ---------- Hazards ----------
+
+func _draw_hazards() -> void:
+	var t := Time.get_ticks_msec() / 1000.0
+	# Conveyor: arrows sliding along the belts
+	var shift := fmod(t * w.BELT_SPEED, 2.0)
+	for m in _belt_marks:
+		var dir: Vector2 = m[1]
+		var at: Vector2 = (m[0] + dir * (shift - 1.0)) * CELL
+		var side := dir.orthogonal() * CELL * 0.45
+		_hazards.draw_polyline(PackedVector2Array([at - dir * CELL * 0.3 + side, at + dir * CELL * 0.2, at - dir * CELL * 0.3 - side]), Color(1, 1, 1, 0.55), CELL * 0.16, true)
+	# Portals: swirling rings, a colour for each pair
+	for k in w.portals.size():
+		var col: Color = PORTAL_COLORS[k % PORTAL_COLORS.size()]
+		for end in w.portals[k]:
+			var at: Vector2 = end * CELL
+			var pulse := 1.0 + 0.08 * sin(t * 5.0)
+			_hazards.draw_circle(at, CELL * 2.3 * pulse, Color(col, 0.16), true, -1, true)
+			_hazards.draw_circle(at, CELL * 1.6, col, true, -1, true)
+			_hazards.draw_circle(at, CELL * 1.3, col.darkened(0.5), true, -1, true)
+			_hazards.draw_circle(at, CELL * 0.7, col.darkened(0.78), true, -1, true)
+			for a in 4:
+				var start := t * 3.5 + a * TAU / 4.0
+				_hazards.draw_arc(at, CELL * (0.45 + 0.22 * a), start, start + 2.2, 20, col.lightened(0.15 + 0.15 * a), CELL * 0.18, true)
+	# Storm: the next ring pulses red, with the doomed band shaded
+	if w.storm_r > 0 and w.storm_next > 0:
+		var c: Vector2 = w.center() * CELL
+		var pulse := 0.5 + 0.5 * sin(t * 8.0)
+		var band: float = (w.storm_r - w.storm_next) * CELL
+		_hazards.draw_arc(c, w.storm_next * CELL + band / 2, 0, TAU, 128, Color(1, 0.25, 0.35, 0.12 + 0.1 * pulse), band, true)
+		_hazards.draw_arc(c, w.storm_next * CELL, 0, TAU, 128, Color(1, 0.3, 0.4, 0.6 + 0.4 * pulse), CELL * 0.3, true)
+	# The Queen's traps: spiky, and blinking before they vanish
+	for tr in w.traps:
+		if tr.life < 2.0 and int(tr.life * 8) % 2:
+			continue
+		var at: Vector2 = tr.pos * CELL
+		var spikes := PackedVector2Array()
+		for k in 16:
+			var a: float = k * TAU / 16.0 + t
+			spikes.append(at + Vector2.from_angle(a) * CELL * (0.75 if k % 2 == 0 else 0.4))
+		_hazards.draw_colored_polygon(spikes, Color("#8e2f6b"))
+		_hazards.draw_circle(at, CELL * 0.28, Color("#ff5d9e"), true, -1, true)
+
+
+func _on_teleported(p: Player, from: Vector2, to: Vector2) -> void:
+	var col: Color = PORTAL_COLORS[0]
+	for k in w.portals.size():
+		for end in w.portals[k]:
+			if end.distance_to(from) < 1.5:
+				col = PORTAL_COLORS[k % PORTAL_COLORS.size()]
+	burst(from, col, 18, 260.0)
+	burst(to, col, 24, 320.0)
+	_rings.append({"pos": to, "color": col, "life": 0.6, "size": 4.0})
+	if views.has(p.id):
+		p.squash = 1.0
+
+
+func _on_blinked(k: Player, from: Vector2, to: Vector2) -> void:
+	burst(from, Color("#b06bff"), 30, 380.0)
+	burst(to, Color("#b06bff"), 30, 380.0)
+	_rings.append({"pos": to, "color": Color("#b06bff"), "life": 0.6, "size": 7.0})
