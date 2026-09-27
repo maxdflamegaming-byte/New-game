@@ -1,6 +1,11 @@
 # Checks the Godot version of Color Claim ("Color Claim HD") on every push that changes
-# godot/. The Android APK is only built (and put on the Releases page) when the workflow is
-# run by hand from the Actions tab ("Run workflow").
+# godot/. When the workflow is run by hand from the Actions tab ("Run workflow"), it also
+# builds the game and puts it on the Releases page:
+#   - ColorClaimHD-1.0.N.apk  to install on a phone directly
+#   - ColorClaimHD-1.0.N.aab  the App Bundle to upload to Google Play
+# Both are signed with the upload key from the repo's secrets (ANDROID_KEYSTORE_BASE64 and
+# ANDROID_KEYSTORE_PASSWORD; see store/PUBLISHING.md). Until those secrets exist, the build is
+# signed with the old public test key and only the APK is kept (as a test build).
 name: Build Color Claim HD (Godot)
 
 on:
@@ -19,7 +24,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GODOT_VERSION: 4.4.1
+  GODOT_VERSION: 4.7.2
 
 jobs:
   apk:
@@ -57,42 +62,96 @@ jobs:
           rm "Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
           ls "$dir"
 
+      - name: Get the Android 16 SDK (API 36), which Google Play requires
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          sdkmanager="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdkmanager" --licenses > /dev/null || true
+          "$sdkmanager" --install "platforms;android-36" "build-tools;36.1.0" "platform-tools" "ndk;29.0.14206865" > /dev/null
+          ls "$ANDROID_SDK_ROOT/platforms"
+
       - name: Tell Godot where the Android SDK and Java are
         if: github.event_name == 'workflow_dispatch'
         run: |
           mkdir -p "$HOME/.config/godot"
-          for f in editor_settings-4.tres editor_settings-4.4.tres; do
+          for f in editor_settings-4.tres "editor_settings-${GODOT_VERSION%.*}.tres"; do
             printf '[gd_resource type="EditorSettings" format=3]\n\n[resource]\nexport/android/android_sdk_path = "%s"\nexport/android/java_sdk_path = "%s"\n' \
               "$ANDROID_SDK_ROOT" "$JAVA_HOME" > "$HOME/.config/godot/$f"
           done
 
-      - name: Export the APK
+      - name: Pick the signing key
         if: github.event_name == 'workflow_dispatch'
         env:
-          GODOT_ANDROID_KEYSTORE_RELEASE_PATH: ${{ github.workspace }}/android/app/color-claim.keystore
-          GODOT_ANDROID_KEYSTORE_RELEASE_USER: colorclaim
-          GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD: colorclaim
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
-          # Every build gets a higher version, so a new APK installs over the old one
-          sed -i "s/^version\/code=.*/version\/code=${{ github.run_number }}/; s/^version\/name=.*/version\/name=\"0.${{ github.run_number }}\"/" godot/export_presets.cfg
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.keystore"
+            echo "::add-mask::$KEYSTORE_PASSWORD"
+            {
+              echo "GODOT_ANDROID_KEYSTORE_RELEASE_PATH=$RUNNER_TEMP/upload.keystore"
+              echo "GODOT_ANDROID_KEYSTORE_RELEASE_USER=upload"
+              echo "GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD=$KEYSTORE_PASSWORD"
+              echo "PLAY_READY=1"
+            } >> "$GITHUB_ENV"
+            echo "Signing with the upload key from the repo's secrets."
+          else
+            echo "::warning::The upload key isn't in the repo's secrets yet (see store/PUBLISHING.md), so this is a test build signed with the old public test key. Only the APK is kept; no Google Play bundle this time."
+            {
+              echo "GODOT_ANDROID_KEYSTORE_RELEASE_PATH=$GITHUB_WORKSPACE/android/app/color-claim.keystore"
+              echo "GODOT_ANDROID_KEYSTORE_RELEASE_USER=colorclaim"
+              echo "GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD=colorclaim"
+              echo "PLAY_READY=0"
+            } >> "$GITHUB_ENV"
+          fi
+
+      - name: Export the APK and the App Bundle
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          # Every build gets a higher version, so a new one installs over the old one
+          v="1.0.${{ github.run_number }}"
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+          sed -i "s/^version\/code=.*/version\/code=${{ github.run_number }}/; s/^version\/name=.*/version\/name=\"$v\"/" godot/export_presets.cfg
           mkdir -p build
-          "$HOME/godot" --headless --path godot --export-release "Android" "$GITHUB_WORKSPACE/build/ColorClaimHD-0.${{ github.run_number }}.apk"
+          "$HOME/godot" --headless --path godot --export-release "Android" "$GITHUB_WORKSPACE/build/ColorClaimHD-$v.apk"
+          test -s "build/ColorClaimHD-$v.apk"
+          # The App Bundle is always built (so the Gradle build is checked), but only kept
+          # when it's signed with your upload key
+          "$HOME/godot" --headless --path godot --install-android-build-template --export-release "Android Play" "$GITHUB_WORKSPACE/build/ColorClaimHD-$v.aab"
+          test -s "build/ColorClaimHD-$v.aab"
           ls -la build
-          test -s "build/ColorClaimHD-0.${{ github.run_number }}.apk"
+
+      - name: Check what was built
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          apksigner="$(ls -d "$ANDROID_SDK_ROOT"/build-tools/36.1.0)/apksigner"
+          "$apksigner" verify --print-certs build/*.apk | head -5
+          aapt2="$(ls -d "$ANDROID_SDK_ROOT"/build-tools/36.1.0)/aapt2"
+          "$aapt2" dump badging build/*.apk | grep -E "^package|sdkVersion|targetSdkVersion"
+          jarsigner -verify build/*.aab | tail -1
+          unzip -p build/*.aab base/manifest/AndroidManifest.xml > /dev/null && echo "The bundle has a manifest"
+          if [ "$PLAY_READY" != "1" ]; then
+            rm build/*.aab # signed with the test key: not for Google Play
+          fi
 
       - uses: actions/upload-artifact@v4
         if: github.event_name == 'workflow_dispatch'
         with:
-          name: ColorClaimHD-apk
-          path: build/*.apk
+          name: ColorClaimHD-build
+          path: build/*
 
       - name: Put it on the Releases page
         if: github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "color-claim-hd-v0.${{ github.run_number }}" build/*.apk \
+          if [ "$PLAY_READY" = "1" ]; then
+            notes="Color Claim HD $VERSION. **ColorClaimHD-$VERSION.apk**: install it on an Android phone. **ColorClaimHD-$VERSION.aab**: the App Bundle to upload to Google Play (Play Console -> Test and release). Both are signed with your upload key."
+          else
+            notes="Color Claim HD $VERSION (test build). Download **ColorClaimHD-$VERSION.apk** on your Android phone and open it. No Google Play bundle yet: add the upload key to the repo's secrets first (see store/PUBLISHING.md)."
+          fi
+          gh release create "color-claim-hd-v$VERSION" build/* \
             --target "${{ github.sha }}" \
-            --title "Color Claim HD 0.${{ github.run_number }} (Godot, Android)" \
+            --title "Color Claim HD $VERSION" \
             --latest \
-            --notes "The Godot version of Color Claim: full-resolution graphics and smooth play. Download **ColorClaimHD-0.${{ github.run_number }}.apk** below on your Android phone or tablet and open it. It installs next to the older Color Claim app, so you can compare them. Newer versions install over older ones and keep your progress."
+            --notes "$notes"
