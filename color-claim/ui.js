@@ -29,6 +29,8 @@ const UI_ICONS = {
   duo: '<circle cx="8" cy="8" r="3.3" fill="currentColor"/><circle cx="16.5" cy="8" r="3.3" fill="currentColor" opacity="0.65"/><path d="M1.5 20a6.5 6.5 0 0 1 13 0z" fill="currentColor"/><path d="M10 20a6.5 6.5 0 0 1 13 0z" fill="currentColor" opacity="0.65"/>',
   team: '<circle cx="12" cy="7" r="3.2" fill="currentColor"/><circle cx="5" cy="9" r="2.5" fill="currentColor" opacity="0.65"/><circle cx="19" cy="9" r="2.5" fill="currentColor" opacity="0.65"/><path d="M6 21a6 6 0 0 1 12 0z" fill="currentColor"/><path d="M0.5 20a4.5 4.5 0 0 1 7-3.7M23.5 20a4.5 4.5 0 0 0-7-3.7" fill="none" stroke="currentColor" stroke-width="1.8" opacity="0.65"/>',
   puzzle: '<path d="M4 8h4a2.2 2.2 0 1 1 4 0h4v4a2.2 2.2 0 1 1 0 4v4H4v-4a2.2 2.2 0 1 0 0-4z" fill="currentColor"/>',
+  custom: '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><circle cx="16" cy="6" r="2.6" fill="currentColor"/><circle cx="10" cy="12" r="2.6" fill="currentColor"/><circle cx="18" cy="18" r="2.6" fill="currentColor"/>',
+  share: '<path d="M12 3v12M7 8l5-5 5 5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>',
   boss: '<path d="M3 8l4.5 4L12 4l4.5 8L21 8l-2 12H5z" fill="currentColor"/><circle cx="12" cy="15" r="1.8" fill="#fff"/>',
 };
 

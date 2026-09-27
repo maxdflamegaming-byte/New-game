@@ -1115,3 +1115,26 @@ h3 { font-size: 16px; font-weight: 600; color: var(--muted); letter-spacing: 0.0
   .dock-btn { flex-direction: row; justify-content: center; gap: 6px; }
   .dock-btn .badge { position: static; }
 }
+
+/* ---------- Phase O: custom rules, holiday banner, player card ---------- */
+.rules { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; background: #f6f8fc; border-radius: 16px; }
+.rules.hidden { display: none; }
+.rule-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+#menu .rule-row .seg-btn { padding: 6px 10px; font-size: 13px; background: #fff; border-radius: 10px; }
+#menu .rule-row .seg-btn.picked { background: var(--ink); color: #fff; }
+.holiday-banner { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 14px; color: #fff; border-radius: 18px; box-shadow: var(--lift); text-align: left; }
+.holiday-banner.hidden { display: none; }
+.holiday-banner canvas { width: 44px; height: 44px; flex: none; }
+.holiday-banner > span { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+.holiday-banner b { font-family: var(--display); font-size: 17px; }
+.holiday-banner small { font-size: 12px; opacity: 0.95; }
+.holiday-banner .xpbar { width: 100%; background: rgba(255, 255, 255, 0.3); }
+.holiday-banner .xpbar span { background: #fff; }
+.holiday-banner.halloween { background: linear-gradient(120deg, #4b2a73, #ff8c1a); }
+.holiday-banner.winter { background: linear-gradient(120deg, #3f7fd0, #9fd3f5); }
+.holiday-banner.hearts { background: linear-gradient(120deg, #ff4f8b, #ffb3cf); }
+.holiday-banner.soon { opacity: 0.92; }
+.card-btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; width: 100%; max-width: 560px; font-size: 18px; }
+.card-btn .ui-icon { width: 20px; height: 20px; }
+.card-result { z-index: 20; max-height: calc(100% - 32px); overflow-y: auto; }
+.card-result img { max-height: 70vh; width: auto; max-width: 100%; }

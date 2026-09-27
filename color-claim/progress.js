@@ -149,7 +149,7 @@ function finishRun(won, score) {
     ...runSnapshot(won), powerups: run.powerups, coinsPicked: run.coinsPicked, diff: gameDiffId,
   });
   const clanResult = addClanPoints(score, won);
-  const earned = Math.round((Math.round(score * 2) + me.kills * 5 + (won ? 50 : 0)) * (eventOn('double') ? 2 : 1) * gameDiff.coins);
+  const earned = Math.round((Math.round(score * 2) + me.kills * 5 + (won ? 50 : 0)) * (eventOn('double') ? 2 : 1) * gameDiff.coins * (gameModeId === 'custom' ? 0.5 : 1));
   addCoins(earned);
   const fresh = [...run.trophies, ...checkAchievements(runSnapshot(won))];
   const xpGain = Math.round((score * 10 + me.kills * 30 + (won ? 150 : 0) + playTime / 2) * (eventOn('xp') ? 1.5 : 1));
@@ -568,6 +568,149 @@ function buildUpgrades() {
     box.appendChild(li);
   }
 }
+
+// ---------- Holiday events ----------
+// During an event the map's coins become pumpkins, gifts or hearts. Pick up enough of them
+// and you keep that event's skin for good.
+let holidayProgress = loadJSON('color-claim-holidays', {});
+function collectHolidayItem() {
+  const h = holidayNow();
+  if (!h) return;
+  const n = (holidayProgress[h.id] || 0) + 1;
+  holidayProgress[h.id] = n;
+  save('color-claim-holidays', JSON.stringify(holidayProgress));
+  if (n === h.goal && !ownedSkins.includes(h.skin)) {
+    ownedSkins.push(h.skin);
+    save('color-claim-owned-skins', JSON.stringify(ownedSkins));
+    const name = SKINS.find(sk => sk.id === h.skin).name;
+    toast(`${h.name}: ${name} skin unlocked!`);
+    Sfx.play('trophy');
+  }
+}
+
+function renderHoliday() {
+  const box = $('holiday-banner'), h = holidayNow(), soon = !h && holidaySoon();
+  box.classList.toggle('hidden', !h && !soon);
+  if (h) {
+    const n = Math.min(h.goal, holidayProgress[h.id] || 0), done = ownedSkins.includes(h.skin), skin = SKINS.find(sk => sk.id === h.skin).name;
+    box.className = `holiday-banner ${h.id}`;
+    box.innerHTML = `<canvas width="72" height="72"></canvas><span><b>${h.name}</b><small>${done ? `${skin} skin unlocked! Keep collecting ${h.items} for coins.` : `Collect ${h.items} on the map: ${n} / ${h.goal} for the ${skin} skin`} · ${h.daysLeft} day${h.daysLeft === 1 ? '' : 's'} left</small>`
+      + `<span class="xpbar wide"><span style="width:${(n / h.goal) * 100}%"></span></span></span>`;
+    drawHolidayItem(box.querySelector('canvas').getContext('2d'), h.item, 36, 38, 22, 0);
+  } else if (soon) {
+    box.className = `holiday-banner soon ${soon.id}`;
+    box.innerHTML = `<canvas width="72" height="72"></canvas><span><b>${soon.name}</b><small>Starts in ${soon.days} day${soon.days === 1 ? '' : 's'}: a new map look and a skin to collect</small></span>`;
+    drawHolidayItem(box.querySelector('canvas').getContext('2d'), soon.item, 36, 38, 22, 0);
+  }
+}
+
+// ---------- Player card ----------
+// A picture of your profile (character, rank, clan and best numbers) to save and share
+async function makePlayerCard() {
+  if (document.fonts && document.fonts.ready) await Promise.race([document.fonts.ready, new Promise(r => setTimeout(r, 1500))]);
+  const W0 = 900, H0 = 1200, c = document.createElement('canvas');
+  c.width = W0;
+  c.height = H0;
+  const g = c.getContext('2d'), look = myLook(), color = look.color;
+  const font = (w, px) => `${w} ${px}px Fredoka, Nunito, system-ui, sans-serif`;
+  // Background: your colour, with soft squares
+  const bg = g.createLinearGradient(0, 0, 0, H0);
+  bg.addColorStop(0, shade(color, 0.35));
+  bg.addColorStop(1, shade(color, -0.35));
+  g.fillStyle = bg;
+  g.fillRect(0, 0, W0, H0);
+  for (let i = 0; i < 26; i++) {
+    const a = noise1(i + 3), b = noise1(i + 33), sz = 30 + noise1(i + 333) * 70;
+    g.save();
+    g.translate(a * W0, b * H0);
+    g.rotate(a * 6);
+    g.fillStyle = 'rgba(255, 255, 255, 0.1)';
+    g.beginPath();
+    g.roundRect(-sz / 2, -sz / 2, sz, sz, sz * 0.2);
+    g.fill();
+    g.restore();
+  }
+  g.textAlign = 'center';
+  g.fillStyle = '#fff';
+  g.font = font(700, 64);
+  g.fillText('COLOR CLAIM', W0 / 2, 110);
+  // Card
+  g.fillStyle = 'rgba(255, 255, 255, 0.96)';
+  g.beginPath();
+  g.roundRect(60, 160, W0 - 120, H0 - 240, 48);
+  g.fill();
+  // Character and pet
+  g.fillStyle = alpha(color, 0.18);
+  g.beginPath();
+  g.arc(W0 / 2, 360, 150, 0, TAU);
+  g.fill();
+  g.save();
+  g.translate(W0 / 2, 350);
+  g.rotate(-Math.PI / 2);
+  drawBody(g, look, 170, 0.3);
+  g.restore();
+  if (myPet !== 'none') drawPet(g, myPet, W0 / 2 + 150, 450, 80, 0.4, -1);
+  g.fillStyle = '#1f2744';
+  g.font = font(700, 70);
+  g.fillText(myName || 'Player', W0 / 2, 600);
+  // Tags: level, rank, clan, badge
+  const r = rankInfo(rp), lv = levelInfo(xp);
+  const tags = [[`Level ${lv.lvl}`, '#7d4fd6'], [r.label, shade(r.color, -0.25)]];
+  if (clan) tags.push([`[${clan.tag}] ${clan.name}`, shade(COLORS[clan.color], -0.2)]);
+  if (badgeName()) tags.push([`🏆 ${badgeName()}`, '#8a5b00']);
+  g.font = font(600, 30);
+  const widths = tags.map(([t]) => g.measureText(t).width + 44), total = widths.reduce((a, b) => a + b, 0) + (tags.length - 1) * 14;
+  let x = W0 / 2 - total / 2;
+  tags.forEach(([t, col], i) => {
+    g.fillStyle = alpha(col, 0.12);
+    g.beginPath();
+    g.roundRect(x, 640, widths[i], 54, 27);
+    g.fill();
+    g.fillStyle = col;
+    g.fillText(t, x + widths[i] / 2, 677);
+    x += widths[i] + 14;
+  });
+  // Numbers
+  const got = ACHIEVEMENTS.filter(a => achieved[a.id]).length;
+  const cells = [['Games', stats.games], ['Wins', stats.wins], ['Best claim', `${stats.bestPct.toFixed(1)}%`], ['Knockouts', stats.kills], ['Trophies', `${got}/${ACHIEVEMENTS.length}`], ['Best streak', streak.best || 0]];
+  cells.forEach(([k, v], i) => {
+    const cx = 196 + (i % 3) * 254, cy = 760 + Math.floor(i / 3) * 170;
+    g.fillStyle = '#f1f4fa';
+    g.beginPath();
+    g.roundRect(cx - 116, cy - 10, 232, 140, 28);
+    g.fill();
+    g.fillStyle = '#1f2744';
+    g.font = font(700, String(v).length > 5 ? 46 : 56);
+    g.fillText(String(v), cx, cy + 66);
+    g.fillStyle = '#6b7690';
+    g.font = font(600, 26);
+    g.fillText(k, cx, cy + 106);
+  });
+  g.fillStyle = 'rgba(255, 255, 255, 0.85)';
+  g.font = font(600, 28);
+  g.fillText(new Date().toLocaleDateString(), W0 / 2, H0 - 36);
+  return new Promise(res => c.toBlob(res, 'image/png'));
+}
+
+let cardUrl = null, cardBlob = null;
+$('profile-card-btn').addEventListener('click', async () => {
+  $('profile-card-btn').disabled = true;
+  cardBlob = await makePlayerCard();
+  $('profile-card-btn').disabled = false;
+  if (!cardBlob) return;
+  if (cardUrl) URL.revokeObjectURL(cardUrl);
+  cardUrl = URL.createObjectURL(cardBlob);
+  $('card-img').src = cardUrl;
+  $('card-save').href = cardUrl;
+  $('card-result').classList.remove('hidden');
+  Sfx.play('coin');
+});
+$('card-close').addEventListener('click', () => $('card-result').classList.add('hidden'));
+$('card-save').addEventListener('click', e => {
+  if (!viewerDownloads || !cardBlob) return; // normal browsers use the link itself
+  e.preventDefault();
+  viewerDownloads.save({ filename: 'color-claim-player-card.png', data: cardBlob }).catch(() => { /* declined or not available */ });
+});
 
 // ---------- Home screen hero and profile ----------
 const myLook = () => ({ color: COLORS[myColor], dark: shade(COLORS[myColor], -0.28), skin: mySkin, blink: 1, hueOff: 200 });
@@ -1038,6 +1181,7 @@ function openScreen(id) {
   if (id === 'rank') buildRank();
   if (id === 'upgrades') buildUpgrades();
   if (id === 'profile') buildProfile();
+  if (id === 'menu') renderHoliday();
   if (id === 'clan') { clanForm = null; buildClan(); }
   if (id === 'missions') buildQuests();
   if (id === 'editor') editorLoadSlot(editor.slot);
@@ -1115,7 +1259,7 @@ function buildLocker() {
     : lockerTab === 'skins'
     ? SKINS.map(sk => ({
       id: sk.id, name: sk.name, canvas: skinPreview(sk.id), open: isUnlocked(sk), equipped: sk.id === mySkin,
-      price: sk.price || SKIN_PRICE, how: sk.need && sk.need.text, season: sk.need && sk.need.stat === 'season',
+      price: sk.price || SKIN_PRICE, how: sk.need && sk.need.text, season: sk.need && (sk.need.stat === 'season' || sk.need.stat === 'holiday'), holiday: sk.need && sk.need.stat === 'holiday',
       equip: () => { mySkin = sk.id; save('color-claim-skin', sk.id); },
       buy: () => { ownedSkins.push(sk.id); save('color-claim-owned-skins', JSON.stringify(ownedSkins)); },
     }))
@@ -1139,7 +1283,7 @@ function buildLocker() {
       btn.textContent = 'Use';
       btn.addEventListener('click', () => { it.equip(); buildLocker(); });
     } else if (it.season) {
-      btn.textContent = 'Season reward';
+      btn.textContent = it.holiday ? 'Event reward' : 'Season reward';
       btn.disabled = true;
     } else if (it.locked) {
       btn.innerHTML = `${Icons.lock} Locked`;
@@ -1157,6 +1301,7 @@ function buildLocker() {
       });
     }
     card.appendChild(btn);
+    if (!it.open && it.holiday) card.insertAdjacentHTML('beforeend', `<span class="how">${it.how}</span>`);
     if (!it.open && it.how && !it.season) card.insertAdjacentHTML('beforeend', `<span class="how">${it.locked ? '' : 'or: '}${it.how}</span>`);
     box.appendChild(card);
   }
@@ -1306,6 +1451,7 @@ renderEvent();
 renderRankNav();
 renderStreak();
 renderClanNav();
+renderHoliday();
 applyA11y();
 {
   const war = settleClanWar();

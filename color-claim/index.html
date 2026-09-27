@@ -58,6 +58,13 @@
       <button id="photo-done" class="secondary">Done</button>
     </div>
   </div>
+  <div id="card-result" class="photo-result card-result hidden">
+    <img id="card-img" alt="Your player card">
+    <div class="photo-row">
+      <a id="card-save" class="nav-btn" download="color-claim-player-card.png">Save card</a>
+      <button id="card-close" class="nav-btn">Close</button>
+    </div>
+  </div>
   <div id="photo-result" class="photo-result hidden">
     <img id="photo-img" alt="Your photo">
     <div class="photo-row">
@@ -114,8 +121,10 @@
           <div class="seg chip-row" id="maps" aria-label="Map"></div>
           <div class="diff-row"><span class="setup-label inline">Bots</span><div class="seg" id="diffs" aria-label="Bot difficulty"></div></div>
           <div class="seg hidden" id="bosses" aria-label="Boss"></div>
+          <div id="rules" class="rules hidden" aria-label="Custom rules"></div>
           <p id="mode-desc" class="small"></p>
         </div>
+        <div id="holiday-banner" class="holiday-banner hidden"></div>
         <div id="event-banner" class="event-banner"></div>
         <button id="play-btn">Play</button>
         <p class="small best-line"><b id="menu-best"></b></p>
@@ -147,6 +156,7 @@
       <div id="swatches"></div>
     </div>
     <div id="profile-stats" class="profile-stats"></div>
+    <button id="profile-card-btn" class="card-btn" data-icon="share"><span>Make my player card</span></button>
     <div class="tile-grid">
       <button class="tile nav-btn" data-open="trophies" data-icon="trophy"><span>Trophies</span></button>
       <button class="tile nav-btn" data-open="stats" data-icon="stats"><span>Stats</span></button>

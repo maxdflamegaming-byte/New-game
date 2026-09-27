@@ -103,6 +103,7 @@ const MODES = {
   cup: { name: 'Cup', desc: '3 two-minute rounds on different maps · most points wins the cup', size: 80, win: 0, time: 120, powerups: 5, cup: true },
   duo: { name: '2 Players', desc: 'Same keyboard: Player 1 uses WASD, Player 2 the arrow keys · first to 40% (or last one standing) wins', size: 80, win: 40, powerups: 5, duo: true },
   team: { name: 'Teams', desc: 'You + 3 bots vs 4 bots · first team to 50% wins', size: 80, win: 50, powerups: 5, teams: true },
+  custom: { name: 'Custom', desc: 'Your own rules: speed, bots, power-ups, map size and goal', size: 80, win: 50, powerups: 4, custom: true },
   puzzle: { name: 'Puzzle', desc: 'A new little puzzle every day', size: 40, win: 0, time: 30, powerups: 0, puzzle: true },
   boss: { name: 'Boss Battle', desc: "Just you and the King · cut his trail to hit him · knock off all his hearts to win", size: 64, win: 0, powerups: 4, boss: true },
 };
@@ -464,6 +465,10 @@ const SKINS = [
   // Shop only
   { id: 'galaxy', name: 'Galaxy', price: 250, need: { stat: 'shop', n: Infinity, text: '' } },
   { id: 'lava', name: 'Lava', price: 250, need: { stat: 'shop', n: Infinity, text: '' } },
+  // Holiday event rewards
+  { id: 'pumpkin', name: 'Pumpkin', need: { stat: 'holiday', n: Infinity, text: 'Halloween Bash reward' } },
+  { id: 'snowman', name: 'Snowman', need: { stat: 'holiday', n: Infinity, text: 'Winter Fest reward' } },
+  { id: 'cupid', name: 'Cupid', need: { stat: 'holiday', n: Infinity, text: 'Hearts Week reward' } },
 ];
 
 // Power-ups appear on the map; anyone (bots too) can grab them
@@ -522,6 +527,20 @@ function dailyPuzzle(key = todayKey()) {
   return { kind, goal, time: 30, bots: 2, text: `Claim ${goal}% with a single loop in 30 seconds` };
 }
 let puzzle = null, puzzleStars = 0;
+
+// Custom games: pick the speed, number of bots, power-ups, map size and goal.
+// They pay half coins and aren't ranked.
+const RULES = {
+  speed: { label: 'Speed', options: [['slow', 'Slow'], ['normal', 'Normal'], ['fast', 'Fast']] },
+  bots: { label: 'Bots', options: [[2, '2'], [4, '4'], [7, '7']] },
+  power: { label: 'Power-ups', options: [['none', 'None'], ['normal', 'Normal'], ['lots', 'Lots']] },
+  size: { label: 'Map size', options: [['small', 'Small'], ['normal', 'Normal'], ['giant', 'Giant']] },
+  goal: { label: 'Goal', options: [['25', '25%'], ['50', '50%'], ['75', '75%'], ['timed', '3:00']] },
+};
+let customRules = { speed: 'normal', bots: 7, power: 'normal', size: 'normal', goal: '50' };
+try { Object.assign(customRules, JSON.parse(load('color-claim-rules', '{}'))); } catch { /* bad saved data */ }
+let ruleSpeed = 1;
+const rulesText = r => `${RULES.speed.options.find(o => o[0] === r.speed)[1]} speed · ${r.bots} bots · ${RULES.power.options.find(o => o[0] === r.power)[1].toLowerCase()} power-ups · ${r.size} map · ${r.goal === 'timed' ? '3:00 timer' : `claim ${r.goal}%`}`;
 const puzzleProgress = () => (puzzle.kind === 'claim' ? pct(me) : puzzle.kind === 'ko' ? me.kills : run.bigLoop);
 const starText = n => '★'.repeat(n) + '☆'.repeat(3 - n);
 
@@ -568,19 +587,120 @@ const THEMES = {
   snow: { name: 'Snow', bg: '#bcd3e6', edge: '#8fb0cc', floor: '#fbfdff', check: '#eef5fb', pillar: '#a9c4dc', pillarDark: '#7d9cb8', fx: 'snow', water: '#8fcbe6' },
   garden: { name: 'Garden', bg: '#bfe0b0', edge: '#8fbf7c', floor: '#f6fbf1', check: '#e9f5e0', pillar: '#7fae6a', pillarDark: '#5b8a48', fx: 'petals', water: '#6ccbd9' },
   desert: { name: 'Desert', bg: '#e8cf9e', edge: '#cfae72', floor: '#fdf6e8', check: '#f6ead2', pillar: '#c99a5b', pillarDark: '#a47640', fx: 'sand', water: '#5fc2d6' },
+  spooky: { name: 'Spooky', bg: '#2a1f3d', edge: '#4b3566', floor: '#fbf6ff', check: '#f1e8fb', pillar: '#6b4f8a', pillarDark: '#4a3566', fx: 'bats', water: '#4a2f7a', holiday: true },
+  frosty: { name: 'Frosty', bg: '#a9cbe6', edge: '#7ea6c8', floor: '#fdfeff', check: '#eef6fc', pillar: '#b7d3ea', pillarDark: '#86a9c8', fx: 'snow', water: '#7cc0e6', holiday: true },
+  candy: { name: 'Candy', bg: '#ffd1e3', edge: '#f5a3c4', floor: '#fff8fb', check: '#ffeef5', pillar: '#ff9ec4', pillarDark: '#e0709e', fx: 'petals', water: '#ff9ecb', holiday: true },
   space: { name: 'Space', bg: '#1d2342', edge: '#3a4270', floor: '#eef0fb', check: '#e2e6f7', pillar: '#6b6fa8', pillarDark: '#474b80', fx: 'stars', water: '#4a5fb8' },
 };
+// Holiday events: a map look, a special thing to collect on the map, and a skin to earn
+const HOLIDAYS = [
+  { id: 'halloween', name: 'Halloween Bash', start: [10, 1], end: [11, 2], theme: 'spooky', item: 'pumpkin', items: 'pumpkins', skin: 'pumpkin', goal: 40 },
+  { id: 'winter', name: 'Winter Fest', start: [12, 10], end: [1, 6], theme: 'frosty', item: 'gift', items: 'gifts', skin: 'snowman', goal: 40 },
+  { id: 'hearts', name: 'Hearts Week', start: [2, 5], end: [2, 16], theme: 'candy', item: 'heart', items: 'hearts', skin: 'cupid', goal: 30 },
+];
+let holidayClock = null; // tests can pretend it's another day
+const nowDate = () => (holidayClock ? new Date(holidayClock) : new Date());
+// When holiday h is on around day d (events that run over New Year may have started last year)
+function holidayRange(h, d) {
+  for (const y of [d.getFullYear(), d.getFullYear() - 1]) {
+    const start = new Date(y, h.start[0] - 1, h.start[1]);
+    const end = new Date(h.end[0] < h.start[0] ? y + 1 : y, h.end[0] - 1, h.end[1], 23, 59, 59);
+    if (d >= start && d <= end) return { start, end };
+  }
+  return null;
+}
+let holidayCache = { at: 0, clock: null, value: null };
+function holidayNow() {
+  const t = performance.now();
+  if (t - holidayCache.at < 1000 && holidayCache.clock === holidayClock) return holidayCache.value;
+  holidayCache = { at: t, clock: holidayClock, value: findHoliday() };
+  return holidayCache.value;
+}
+function findHoliday() {
+  const d = nowDate();
+  for (const h of HOLIDAYS) {
+    const r = holidayRange(h, d);
+    if (r) return { ...h, daysLeft: Math.ceil((r.end - d) / 86400000) };
+  }
+  return null;
+}
+// The next holiday within two weeks, for a "coming soon" banner
+function holidaySoon() {
+  const d = nowDate();
+  for (const h of HOLIDAYS) {
+    for (const y of [d.getFullYear(), d.getFullYear() + 1]) {
+      const start = new Date(y, h.start[0] - 1, h.start[1]), days = Math.ceil((start - d) / 86400000);
+      if (days > 0 && days <= 14) return { ...h, days };
+    }
+  }
+  return null;
+}
+
 // January to December
 const SEASON_THEMES = ['snow', 'snow', 'garden', 'garden', 'garden', 'desert', 'desert', 'desert', 'space', 'space', 'space', 'snow'];
 const seasonTheme = () => SEASON_THEMES[new Date().getMonth()];
-const themeId = () => (THEMES[settings.theme] ? settings.theme : seasonTheme());
+const themeId = () => (THEMES[settings.theme] ? settings.theme : (holidayNow() || {}).theme || seasonTheme());
 const theme = () => THEMES[themeId()];
 const noise1 = i => { const v = Math.sin(i * 12.9898) * 43758.5453; return v - Math.floor(v); };
+
+// Pumpkins, gifts and hearts (drawn centred on x, y with radius r)
+function drawHolidayItem(g, item, x, y, r, t) {
+  g.save();
+  g.translate(x, y);
+  g.rotate(Math.sin(t * 3) * 0.15);
+  if (item === 'pumpkin') {
+    g.fillStyle = '#c25a00';
+    g.beginPath(); g.ellipse(0, r * 0.12, r, r * 0.8, 0, 0, TAU); g.fill();
+    g.fillStyle = '#ff8c1a';
+    g.beginPath(); g.ellipse(0, 0, r, r * 0.8, 0, 0, TAU); g.fill();
+    g.fillStyle = 'rgba(160, 70, 0, 0.5)';
+    g.fillRect(-r * 0.08, -r * 0.8, r * 0.16, r * 1.6);
+    g.fillStyle = '#3f8f3a';
+    g.fillRect(-r * 0.1, -r * 1.05, r * 0.2, r * 0.35);
+    g.fillStyle = '#3d1f00';
+    g.beginPath(); g.moveTo(-r * 0.5, -r * 0.05); g.lineTo(-r * 0.25, -r * 0.35); g.lineTo(-r * 0.05, -r * 0.05); g.fill();
+    g.beginPath(); g.moveTo(r * 0.5, -r * 0.05); g.lineTo(r * 0.25, -r * 0.35); g.lineTo(r * 0.05, -r * 0.05); g.fill();
+    g.fillRect(-r * 0.4, r * 0.2, r * 0.8, r * 0.14);
+  } else if (item === 'gift') {
+    g.fillStyle = '#d6304a';
+    g.fillRect(-r * 0.8, -r * 0.6, r * 1.6, r * 1.4);
+    g.fillStyle = '#ffd23f';
+    g.fillRect(-r * 0.14, -r * 0.6, r * 0.28, r * 1.4);
+    g.fillRect(-r * 0.8, -r * 0.05, r * 1.6, r * 0.24);
+    g.beginPath(); g.ellipse(-r * 0.3, -r * 0.75, r * 0.3, r * 0.18, -0.4, 0, TAU); g.ellipse(r * 0.3, -r * 0.75, r * 0.3, r * 0.18, 0.4, 0, TAU); g.fill();
+  } else {
+    g.fillStyle = '#ff4f8b';
+    g.beginPath();
+    g.moveTo(0, r * 0.85);
+    g.bezierCurveTo(-r * 1.4, -r * 0.1, -r * 0.6, -r * 1.1, 0, -r * 0.4);
+    g.bezierCurveTo(r * 0.6, -r * 1.1, r * 1.4, -r * 0.1, 0, r * 0.85);
+    g.fill();
+    g.fillStyle = 'rgba(255, 255, 255, 0.6)';
+    g.beginPath(); g.arc(-r * 0.4, -r * 0.4, r * 0.15, 0, TAU); g.fill();
+  }
+  g.restore();
+}
 
 // Falling snow, petals or blowing sand over the map (screen space); stars behind the board
 function drawWeather() {
   const fx = theme().fx;
   if (!fx || fx === 'stars') return;
+  if (fx === 'bats') {
+    ctx.fillStyle = 'rgba(42, 31, 61, 0.55)';
+    for (let i = 0; i < 9; i++) {
+      const a = noise1(i + 5), b = noise1(i + 55), c = noise1(i + 555);
+      const x = (a * W + time * (40 + c * 40)) % (W + 80) - 40, y = b * H * 0.7 + Math.sin(time * 2 + i) * 20;
+      const flap = Math.sin(time * 14 + i * 3) * 6, sz = 6 + c * 6;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.quadraticCurveTo(x - sz, y - sz * 0.6 - flap, x - sz * 1.8, y + flap * 0.3);
+      ctx.quadraticCurveTo(x - sz, y, x, y + sz * 0.35);
+      ctx.quadraticCurveTo(x + sz, y, x + sz * 1.8, y + flap * 0.3);
+      ctx.quadraticCurveTo(x + sz, y - sz * 0.6 - flap, x, y);
+      ctx.fill();
+    }
+    return;
+  }
   const n = fx === 'sand' ? 40 : fx === 'snow' ? 70 : 30;
   for (let i = 0; i < n; i++) {
     const a = noise1(i + 1), b = noise1(i + 101), c = noise1(i + 201);
@@ -878,7 +998,7 @@ function capture(p) {
 
 // ---------- Movement ----------
 function speedOf(p) {
-  let v = SPEED;
+  let v = SPEED * ruleSpeed;
   if (p.isBoss) v *= p.rage ? 1.28 : 1.12;
   else if (p.isBot) v *= gameDiff.speed;
   if (eventOn('speed')) v *= 1.2;
@@ -1034,6 +1154,7 @@ function updateMapCoins(dt) {
         const value = COIN_VALUE * (eventOn('double') ? 2 : 1);
         run.coinsPicked += value;
         addCoins(value);
+        collectHolidayItem();
         floats.push({ x: c.x, y: c.y - 1, text: `+${value}`, life: 0.8, gold: true });
         Sfx.play('coin');
       }
@@ -1045,7 +1166,7 @@ function updateMapCoins(dt) {
 function updatePowerups(dt) {
   powerTimer -= dt;
   if (powerTimer <= 0) {
-    const frenzy = eventOn('frenzy');
+    const frenzy = eventOn('frenzy') || (gameMode.custom && customRules.power === 'lots');
     powerTimer = frenzy ? rand(3, 5) : rand(6, 10);
     if (powerups.length < gameMode.powerups * (frenzy ? 2 : 1)) spawnPowerup();
   }
@@ -1068,6 +1189,22 @@ function updatePowerups(dt) {
 }
 
 // The Giant: a big, fast boss bot that arrives once you're doing well, and hunts your trail
+// A clear leader (12%+ and half as big again as anyone else) gets ganged up on
+let gangLeader = null, gangTimer = 0, gangWarned = false;
+function updateGang(dt) {
+  gangTimer -= dt;
+  if (gangTimer > 0) return;
+  gangTimer = 0.5;
+  const ranked = players.filter(p => p && p.alive && !p.isBoss).sort((a, b) => counts[b.id] - counts[a.id]);
+  const [a, b] = ranked;
+  gangLeader = a && pct(a) >= 12 && (!b || counts[a.id] >= counts[b.id] * 1.5) && !gameMode.teams && !gameMode.duo && !gameMode.tutorial ? a : null;
+  if (gangLeader === me && !gangWarned && state === 'play') {
+    gangWarned = true;
+    toast("You're in the lead! The bots are teaming up on you");
+    Sfx.play('warn');
+  }
+}
+
 let giant = null;
 function giantDue() {
   if (giant || !me.alive || gameMode.duo || gameMode.cup || gameMode.tutorial || gameMode.boss) return false;
@@ -1460,9 +1597,42 @@ function think(p) {
     for (const o of players) {
       if (!o || allies(o, p) || !o.alive || o.trail.length < 4 || o.fx.shield > 0) continue;
       const bold = o === me ? growth : 0;
-      if (dist(o, p) < 14 + bold * 12 + gameDiff.range && Math.random() < (p.aggro + bold * 0.4) * gameDiff.aggro) {
+      // Everyone gangs up on a runaway leader: they look further and go for it more often
+      const gang = gangLeader === o && !p.isBoss ? 1 : 0;
+      const lurking = p.mode === 'lurk' ? 0.5 : 0; // an ambusher pounces
+      if (dist(o, p) < 14 + bold * 12 + gang * 12 + gameDiff.range && Math.random() < (p.aggro + bold * 0.4 + gang * 0.45 + lurking) * gameDiff.aggro) {
         p.wp = [closestTrailPoint(p, o)];
         p.mode = 'hunt';
+        if (gang && o === me && Math.random() < 0.2) botEmote(p, 'grr');
+        return;
+      }
+    }
+  }
+
+  // Ambush: hunters (and every Hard bot now and then) wait at the edge of their own land
+  // nearest their target, safe at home, ready to pounce when a trail appears
+  if (!outside && !p.isBoss && p.mode === 'lurk') {
+    p.lurkTime -= gameDiff.think;
+    if (p.lurkTime > 0) {
+      if (!p.wp.length && p.lurkSpot) p.wp = [p.lurkSpot];
+      return;
+    }
+    p.mode = 'idle';
+    p.wp = [];
+  } else if (!outside && !p.isBoss && p.mode !== 'lurk' && p.mode !== 'grab' && (p.persona === 'hunter' || gameDiffId === 'hard') && Math.random() < 0.06) {
+    const target = gangLeader && gangLeader !== p && !allies(gangLeader, p) ? gangLeader : me;
+    if (target && target.alive && !allies(target, p) && dist(target, p) < 32) {
+      let best = null, bestD = Infinity;
+      for (let i = 0; i < N * N; i++) {
+        if (owner[i] !== p.id) continue;
+        const d = Math.hypot((i % N) + 0.5 - target.x, Math.floor(i / N) + 0.5 - target.y);
+        if (d < bestD) { bestD = d; best = i; }
+      }
+      if (best !== null) {
+        p.lurkSpot = { x: (best % N) + 0.5, y: Math.floor(best / N) + 0.5 };
+        p.wp = [p.lurkSpot];
+        p.mode = 'lurk';
+        p.lurkTime = rand(4, 8);
         return;
       }
     }
@@ -1691,6 +1861,26 @@ function buildPickers() {
   const picked = $('modes').querySelector('.picked');
   if (picked && picked.scrollIntoView && $('menu').classList.contains('show')) picked.scrollIntoView({ block: 'nearest', inline: 'center' });
   seg('diffs', DIFFICULTY, myDiff, id => { myDiff = id; save('color-claim-diff', id); buildPickers(); });
+  const rulesBox = $('rules');
+  rulesBox.classList.toggle('hidden', !MODES[myMode].custom);
+  rulesBox.innerHTML = '';
+  for (const [key, rule] of Object.entries(RULES)) {
+    const row = document.createElement('div');
+    row.className = 'rule-row';
+    row.innerHTML = `<span class="setup-label inline">${rule.label}</span>`;
+    const box = document.createElement('div');
+    box.className = 'seg';
+    box.dataset.rule = key;
+    for (const [val, text] of rule.options) {
+      const b = document.createElement('button');
+      b.className = 'seg-btn' + (val === customRules[key] ? ' picked' : '');
+      b.textContent = text;
+      b.addEventListener('click', () => { customRules[key] = val; save('color-claim-rules', JSON.stringify(customRules)); buildPickers(); });
+      box.appendChild(b);
+    }
+    row.appendChild(box);
+    rulesBox.appendChild(row);
+  }
   const bossBox = $('bosses');
   bossBox.classList.toggle('hidden', !MODES[myMode].boss);
   if (!bossOpen(myBoss)) myBoss = 'king';
@@ -1710,7 +1900,7 @@ function buildPickers() {
   if (!allMaps[myMap]) myMap = 'square';
   seg('maps', allMaps, daily ? fixedMap(myMode) : myMap, id => { myMap = id; save('color-claim-map', id); buildPickers(); }, daily || MODES[myMode].cup);
   const ranked = RANKED_MODES.includes(myMode) && (daily || !myMap.startsWith('custom'));
-  $('mode-desc').textContent = MODES[myMode].desc + (MODES[myMode].boss ? ` · ${BOSSES[myBoss].name}: ${BOSSES[myBoss].desc}` : '') + (ranked ? ' · Ranked' : '') + (MODES[myMode].puzzle ? ` · Today: ${dailyPuzzle().text} · best ${starText(Number(load(`color-claim-puzzle-${todayKey()}`, 0)) || 0)}`
+  $('mode-desc').textContent = (MODES[myMode].custom ? `${rulesText(customRules)} · half coins, not ranked` : MODES[myMode].desc) + (MODES[myMode].boss ? ` · ${BOSSES[myBoss].name}: ${BOSSES[myBoss].desc}` : '') + (ranked ? ' · Ranked' : '') + (MODES[myMode].puzzle ? ` · Today: ${dailyPuzzle().text} · best ${starText(Number(load(`color-claim-puzzle-${todayKey()}`, 0)) || 0)}`
       : daily ? ` · ${MODES[myMode].weekly ? "This week's" : "Today's"} map: ${MAPS[fixedMap(myMode)].name}` : '')
     + (myDiff !== 'normal' ? ` · ${DIFFICULTY[myDiff].name} bots pay ×${DIFFICULTY[myDiff].coins} coins` : '')
     + (!daily && myMap.startsWith('custom') && MODES[myMode].size !== CUSTOM_SIZE ? ' · Custom maps are always normal size' : '');
@@ -1736,6 +1926,15 @@ function startGame() {
   if (gameMode.puzzle) {
     puzzle = dailyPuzzle();
     gameMode = { ...gameMode, time: puzzle.time, desc: puzzle.text };
+  }
+  ruleSpeed = 1;
+  if (gameMode.custom) {
+    const r = customRules, timed = r.goal === 'timed';
+    gameMode = {
+      ...gameMode, size: { small: 50, normal: 80, giant: 120 }[r.size] || 80, win: timed ? 0 : Number(r.goal), time: timed ? 180 : undefined,
+      powerups: { none: 0, normal: 4, lots: 9 }[r.power], desc: rulesText(r),
+    };
+    ruleSpeed = { slow: 0.8, normal: 1, fast: 1.35 }[r.speed] || 1;
   }
   gameDiffId = cfg.diff;
   gameDiff = DIFFICULTY[cfg.diff];
@@ -1774,7 +1973,7 @@ function startGame() {
     players.push(p2);
   }
   const botColors = COLORS.filter((_, i) => !taken.includes(i));
-  const names = BOT_NAMES.slice().sort(() => random() - 0.5).slice(0, gameMode.tutorial || gameMode.boss ? 0 : puzzle ? puzzle.bots : botColors.length);
+  const names = BOT_NAMES.slice().sort(() => random() - 0.5).slice(0, gameMode.tutorial || gameMode.boss ? 0 : puzzle ? puzzle.bots : gameMode.custom ? Math.min(botColors.length, customRules.bots) : botColors.length);
   names.forEach((name, i) => players.push(makePlayer(players.length, name, botColors[i], true, SKINS[randInt(0, SKINS.length - 1)].id)));
   // Personalities: a mix of hunters, turtles, explorers, collectors and wildcards
   const mix = PERSONA_MIX.slice().sort(() => random() - 0.5);
@@ -1806,6 +2005,9 @@ function startGame() {
   }
   for (const p of players) if (p && p.isBot) spawn(p);
   king = null;
+  gangLeader = null;
+  gangWarned = false;
+  gangTimer = 0;
   lives = gameMode.boss ? 3 : 1;
   if (gameMode.boss) spawnKing();
   if (p2) { cam2.x = p2.x; cam2.y = p2.y; cam2.zoom = 0.8; }
@@ -1928,7 +2130,7 @@ function endGame(won, reason) {
     if (beat) challengeBeaten();
   }
   // Offer a challenge code for this game (not for 2 players, the Cup or custom maps)
-  const shareable = !gameMode.duo && !gameMode.cup && !gameMode.boss && !gameMode.puzzle && !gameMapId.startsWith('custom');
+  const shareable = !gameMode.duo && !gameMode.cup && !gameMode.boss && !gameMode.puzzle && !gameMode.custom && !gameMapId.startsWith('custom');
   $('challenge-share').classList.toggle('hidden', !shareable);
   $('challenge-code').classList.add('hidden');
   lastChallenge = shareable ? { seed: gameSeed, mode: gameMode.daily ? 'classic' : gameMode.weekly ? 'timed' : gameModeId, map: gameMapId, diff: gameDiffId, score } : null;
@@ -2537,6 +2739,7 @@ function showScreen(id) {
 }
 
 function updateMenuBest() {
+  if (typeof renderHoliday === 'function' && state === 'menu') renderHoliday();
   const b = bestFor(myMode);
   $('menu-best').textContent = `${myMode === 'daily' ? "Today's best" : myMode === 'weekly' ? "This week's best" : MODES[myMode].name + ' best'}: ${b.toFixed(1)}%`;
 }
@@ -2652,6 +2855,7 @@ function update(dt) {
     }
   }
   checkBumps();
+  updateGang(dt);
   updateHazards(dt);
   if (king || traps.length) updateBoss(dt);
   emoteCooldown -= dt;
@@ -2933,6 +3137,9 @@ function drawCrown(x, y, w) {
 function skinColors(look, t) {
   if (look.skin === 'galaxy') return ['#262b58', '#141836'];
   if (look.skin === 'lava') return ['#ff6a2b', '#9c2f10'];
+  if (look.skin === 'pumpkin') return ['#ff8c1a', '#c25a00'];
+  if (look.skin === 'snowman') return ['#f7fbff', '#b9cadb'];
+  if (look.skin === 'cupid') return ['#ff7ab8', '#d9468a'];
   if (look.skin !== 'rainbow') return [look.color, look.dark];
   const h = (t * 120 + look.hueOff) % 360;
   return [`hsl(${h}, 85%, 62%)`, `hsl(${h}, 70%, 42%)`];
@@ -3056,6 +3263,35 @@ function drawBody(g, look, s, t) {
     g.moveTo(-s * 0.45, -s * 0.1); g.lineTo(-s * 0.15, -s * 0.2); g.lineTo(s * 0.05, s * 0.1);
     g.moveTo(-s * 0.2, s * 0.45); g.lineTo(-s * 0.05, s * 0.2);
     g.stroke();
+  } else if (skin === 'pumpkin') { // ridges and a stem
+    g.strokeStyle = 'rgba(160, 70, 0, 0.45)';
+    g.lineWidth = s * 0.06;
+    for (const k of [-0.25, 0, 0.25]) {
+      g.beginPath();
+      g.moveTo(-s / 2, k * s);
+      g.quadraticCurveTo(0, k * s * 1.4, s / 2, k * s);
+      g.stroke();
+    }
+    g.fillStyle = '#3f8f3a';
+    g.fillRect(-s / 2, -s * 0.06, s * 0.14, s * 0.12);
+  } else if (skin === 'snowman') { // coal buttons and a carrot nose
+    for (const k of [-0.3, 0, 0.3]) circ(-s * 0.28, k * s, s * 0.05, '#26304a');
+    g.fillStyle = '#ff8c1a';
+    g.beginPath();
+    g.moveTo(s * 0.34, -s * 0.05);
+    g.lineTo(s * 0.5, 0);
+    g.lineTo(s * 0.34, s * 0.05);
+    g.fill();
+  } else if (skin === 'cupid') { // little floating hearts
+    for (const [dx, dy, k] of [[-0.3, -0.28, 0], [-0.25, 0.25, 1], [0.05, 0.36, 2]]) {
+      const hs = s * (0.1 + 0.02 * Math.sin(t * 4 + k)), hx = dx * s, hy = dy * s;
+      g.fillStyle = 'rgba(255, 255, 255, 0.7)';
+      g.beginPath();
+      g.moveTo(hx, hy + hs * 0.7);
+      g.bezierCurveTo(hx - hs * 1.2, hy - hs * 0.1, hx - hs * 0.5, hy - hs, hx, hy - hs * 0.35);
+      g.bezierCurveTo(hx + hs * 0.5, hy - hs, hx + hs * 1.2, hy - hs * 0.1, hx, hy + hs * 0.7);
+      g.fill();
+    }
   } else if (skin === 'crystal') {
     // Gem facets
     g.fillStyle = 'rgba(255, 255, 255, 0.45)';
@@ -3519,11 +3755,16 @@ function drawWorld(focus, c) {
   if (gameMapId === 'belts') drawBelts(c0, c1, r0, r1, x0, y0, true);
   drawHazards(x0, y0);
 
-  // Gold coins spin (and blink before they vanish)
+  // Gold coins spin (and blink before they vanish). During a holiday they're pumpkins, gifts or hearts.
+  const hol = holidayNow();
   for (const c of mapCoins) {
     const px = c.x * CELL - x0, py = c.y * CELL - y0 + Math.sin(time * 3 + c.x) * CELL * 0.1;
     if (px < -30 || py < -30 || px > W + 30 || py > H + 30) continue;
     if (c.life < 3 && Math.floor(c.life * 8) % 2) continue;
+    if (hol) {
+      drawHolidayItem(ctx, hol.item, px, py, CELL * 0.55 * Math.min(1, c.age * 4), time + c.x);
+      continue;
+    }
     const r = CELL * 0.45 * Math.min(1, c.age * 4), w = Math.max(0.15, Math.abs(Math.cos(time * 4 + c.x)));
     ctx.fillStyle = '#c98a00';
     ctx.beginPath();

@@ -26,6 +26,7 @@ A territory game inspired by Paper.io.
   | Cup | 3 two-minute rounds on 3 different maps; points for your finishing place each round (10, 7, 5…); most points wins a coin prize |
   | 2 Players | Two people on one keyboard (WASD vs arrow keys) with a split screen. First to 40%, or last one standing, wins |
   | Teams | You + 3 bots vs 4 bots; teammates can't cut, bump or steal from each other. First team to 50% wins |
+  | Custom | Your own rules: speed (slow, normal or fast), 2, 4 or 7 bots, power-ups (none, normal or lots), map size (small, normal or giant) and the goal (25%, 50%, 75% or a 3:00 timer). Half coins, not ranked |
   | Puzzle | A new little puzzle every day on a small map with a timer: claim X%, knock out N bots, or claim X% in a single loop. Up to 3 stars for speed, and coins for new stars |
   | Boss Battle | You (with 3 lives) against a boss: cut its trail to knock off its hearts (3 / 5 / 7 by difficulty). At half health it calls 2 guards, and on its last heart it speeds up. Beat the **King** to unlock the **Queen** (drops spiky traps, +1 heart), then the **Wizard** (blinks home and wipes his trail when you get close, +2 hearts) |
 
@@ -52,6 +53,9 @@ A territory game inspired by Paper.io.
 - **Photo mode:** from the pause screen, zoom, add a filter (Warm, Cool, Mono, Retro, Pop) and stickers, then save a framed picture.
 - **Daily missions:** 3 new missions every day with coin rewards.
 - **Weekly quest chain:** 5 quests a week (2 easy, 2 medium, 1 hard) that unlock one after another and pay 50, 75, 100, 150 and 300 coins.
+- **Holiday events:** Halloween Bash (October), Winter Fest (10 Dec to 6 Jan) and Hearts Week (5 to 16 Feb) each bring a map look (with bats, snow or petals) and turn the map's coins into pumpkins, gifts or hearts. Collect enough to keep that event's skin (Pumpkin, Snowman or Cupid). The home screen announces each event two weeks ahead.
+- **Smarter bots:** they gang up on a runaway leader, and hunters lie in wait at the edge of their land to pounce on your trail.
+- **Player card:** make a picture of your profile (character, pet, level, rank, clan and best numbers) to save and share.
 - **Clans:** start a clan with a name, a 2-4 letter tag, an emblem and a colour. Your tag shows on your name (and on your teammates in Teams), every game earns clan points that level the clan up, and each week your clan races a rival clan in a clan war worth 250 coins.
 - **Daily streak:** the first game each day pays coins, more for every day in a row (20 up to 150 on day 7, then 100 a day). Day 7 unlocks the Star Sprite pet.
 - **Pets:** a little friend follows your square: Chick, Slime, Bat, Kitty (Silver rank), Dragon (Gold), UFO (Platinum) and Star Sprite (7-day streak). Some bots bring pets too.
