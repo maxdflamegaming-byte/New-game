@@ -29,8 +29,10 @@ func refresh() -> void:
 		Gfx.show_fps = not Gfx.show_fps
 		m._apply_gfx())
 	var hz := Gfx.screen_hz()
-	var about_gfx: Label = m._label(tr(["Low: 720p and fewer effects, for older phones.", "Medium: full resolution, lighter effects.",
-			"High: full resolution, all effects, smoother edges.", "Ultra: sharpest edges, extra glow and sparkle."][Gfx.level])
+	var about_gfx: Label = m._label(tr(["Low: 720p with simple effects. The smoothest on older phones.",
+			"Medium: 720p, light rims on the land, glowing trails and capture flashes.",
+			"High: full resolution, shaded land, trail shadows, glows and floating lights.",
+			"Ultra: everything in High, plus neon trails, shining land and the most sparkle."][Gfx.level])
 			+ ("  " + tr("Your screen is running at %d Hz.") % hz if hz > 0 else "")
 			+ ("  " + tr("90 and 120 FPS need a 90 or 120 Hz screen, and use more battery.") if Gfx.fps > 60 else ""),
 			22, m.MUTED, 0, m.INK, m.font_med)

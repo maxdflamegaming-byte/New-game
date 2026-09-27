@@ -332,12 +332,16 @@ func _run() -> void:
 	var gfx_before := [Gfx.level, Gfx.fps, Gfx.show_fps]
 	Gfx.level = Gfx.LOW
 	main._apply_gfx()
-	ok("Low draws at 720p with no anti-aliasing and fewer particles", root.content_scale_mode == Window.CONTENT_SCALE_MODE_VIEWPORT and root.msaa_2d == Viewport.MSAA_DISABLED and Gfx.particles(40) < 20 and not main.vignette.visible)
+	ok("Low draws at 720p with fewer particles", root.content_scale_mode == Window.CONTENT_SCALE_MODE_VIEWPORT and Gfx.particles(40) < 20 and not main.vignette.visible)
+	Gfx.level = Gfx.MEDIUM
+	main._apply_gfx()
+	ok("Medium draws at 720p too", root.content_scale_mode == Window.CONTENT_SCALE_MODE_VIEWPORT)
 	Gfx.level = Gfx.ULTRA
 	Gfx.fps = 120
 	Gfx.show_fps = true
 	main._apply_gfx()
-	ok("Ultra draws at full resolution with 4x anti-aliasing and more particles", root.content_scale_mode == Window.CONTENT_SCALE_MODE_CANVAS_ITEMS and root.msaa_2d == Viewport.MSAA_4X and Gfx.particles(40) > 40 and main.vignette.visible)
+	ok("Ultra draws at full resolution with more particles", root.content_scale_mode == Window.CONTENT_SCALE_MODE_CANVAS_ITEMS and Gfx.particles(40) > 40 and main.vignette.visible)
+	ok("The Android frame-rate call and MSAA are gone (they crashed or did nothing)", root.msaa_2d == Viewport.MSAA_DISABLED and not Gfx.new().has_method("_request_refresh_rate"))
 	ok("120 FPS lifts the frame cap and Show FPS shows the counter", Engine.max_fps == 120 and main.fps_label.get_parent().visible)
 	Gfx.level = Gfx.MEDIUM
 	Gfx.fps = 90
@@ -347,6 +351,14 @@ func _run() -> void:
 	Gfx.fps = 60
 	main._load()
 	ok("Graphics settings are saved", Gfx.level == Gfx.MEDIUM and Gfx.fps == 90 and not Gfx.show_fps)
+	var old_save := ConfigFile.new()
+	old_save.load(main.SAVE_PATH)
+	old_save.set_value("settings", "gfx", Gfx.ULTRA)
+	old_save.erase_section_key("settings", "gfx_v")
+	old_save.save(main.SAVE_PATH)
+	main._load()
+	ok("A save from before the new levels starts again from the safe default", Gfx.level == Gfx.default_level() and Gfx.level <= Gfx.MEDIUM)
+	main._save()
 	await _play()
 	w.me.fx.speed = 0.0
 	for gl in 4:

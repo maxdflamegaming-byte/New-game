@@ -21,11 +21,13 @@ var tex_px := 64
 var views := {} # player id -> PlayerView
 var lines := {} # player id -> one [glow, rope, shine] set of Line2Ds per piece of trail
 var danger := 0.0
+var cull := true # skip drawing squares that are off screen (off in 2 Players, with two cameras)
 
 var _floor: Node2D
 var _water: Node2D
 var _items: Node2D
-var _land: Node2D
+var _land: Node2D # drawn by a shader from land_grid
+var _pattern: Node2D # colourblind patterns over the land
 var _fx: Node2D
 var _hazards: Node2D # portals, belts' arrows, the storm's ring, traps
 var _glows: Node2D # additive: halos under the squares
@@ -49,6 +51,15 @@ var _glow: Texture2D
 var _tile: Texture2D
 var _spark: Texture2D
 var _add_mat: CanvasItemMaterial
+var _checker: Texture2D
+var _gfx_seen := -1
+var _cam_view := Rect2() # the part of the world on screen, for skipping what's off it
+## One texel per cell, for the land shader and the minimap
+var land_grid := Shaders.Grid.new()
+var trail_grid := Shaders.Grid.new()
+var wall_grid := Shaders.Grid.new()
+var pal_img := Image.create(16, 2, false, Image.FORMAT_RGBA8)
+var pal_tex := ImageTexture.create_from_image(pal_img)
 
 
 func setup(world, ui_font: Font, px: int) -> void:
@@ -63,13 +74,21 @@ func setup(world, ui_font: Font, px: int) -> void:
 	_coin = Art.tex(Art.COIN, 96)
 	for k in Art.ICONS:
 		_icons[k] = Art.tex(Art.ICONS[k], 96)
-	for n in ["_floor", "_water", "_land", "_fx", "_hazards", "_glows", "_trails", "_items", "_actors", "_top", "_air"]:
+	var ck := Image.create(64, 64, false, Image.FORMAT_RGBA8)
+	ck.fill(FLOOR)
+	ck.fill_rect(Rect2i(0, 0, 32, 32), CHECK)
+	ck.fill_rect(Rect2i(32, 32, 32, 32), CHECK)
+	_checker = ImageTexture.create_from_image(ck)
+	for n in ["_floor", "_water", "_land", "_pattern", "_fx", "_hazards", "_glows", "_trails", "_items", "_actors", "_top", "_air"]:
 		var node := Node2D.new()
 		node.name = n
 		add_child(node)
 		set(n, node)
 	_floor.draw.connect(_draw_floor)
 	_land.draw.connect(_draw_land)
+	_land.material = Shaders.material(Shaders.LAND)
+	_pattern.draw.connect(_draw_pattern)
+	_floor.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED # the checker tiles
 	_fx.draw.connect(_draw_fx)
 	_water.draw.connect(_draw_water)
 	_items.draw.connect(_draw_items)
@@ -82,8 +101,8 @@ func setup(world, ui_font: Font, px: int) -> void:
 	_air.material = _add_mat
 	_air.draw.connect(_draw_air)
 	_items.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-	_land.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED # colourblind patterns tile
-	_land.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	_pattern.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED # colourblind patterns tile
+	_pattern.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	w.captured.connect(_on_captured)
 	w.picked.connect(_on_picked)
 	w.painted.connect(_on_painted)
@@ -136,11 +155,14 @@ func _process(dt: float) -> void:
 	if w.map_version != _map_version:
 		_map_version = w.map_version
 		_find_waves()
+		wall_grid.set_bytes(w.N, w.wall)
 		_floor.queue_redraw()
 		_water.queue_redraw() # clears the waves when leaving Islands
-	if w.land_version != _land_version:
+	if w.land_version != _land_version or Gfx.level != _gfx_seen:
 		_land_version = w.land_version
-		_land.queue_redraw()
+		_gfx_seen = Gfx.level
+		_update_land()
+	_cam_view = get_viewport().get_canvas_transform().affine_inverse() * get_viewport_rect()
 	# Low redraws the waves less often
 	if w.map_id == "islands" and (Gfx.level > Gfx.LOW or Engine.get_process_frames() % 3 == 0):
 		_water.queue_redraw()
@@ -174,21 +196,38 @@ func _process(dt: float) -> void:
 	for p in w.players:
 		if p and p.alive and (leader == null or w.counts[p.id] > w.counts[leader.id]):
 			leader = p
+	var seen := _cam_view.grow(CELL * 6)
 	for id in views:
-		views[id].leader = leader != null and leader.id == id
-		views[id].frozen = w.freezer != null and w.freezer.id != id
+		var v = views[id]
+		v.leader = leader != null and leader.id == id
+		v.frozen = w.freezer != null and w.freezer.id != id
+		v.on_screen = not cull or seen.has_point(v.p.pos * CELL)
 
 
-## A trail is drawn as three ropes: a soft glow, the rope and a shine along it
+## A trail is drawn as up to five ropes, more at higher graphics levels:
+## a shadow on the ground (High), a soft glow (Medium), the rope itself, a shine along it
+## (Medium) and a bright neon halo (Ultra)
+const SHADOW := 0
+const GLOW := 1
+const ROPE := 2
+const SHINE := 3
+const NEON := 4
+const ROPE_WIDTHS := [0.8, 1.35, 0.8, 0.2, 2.4]
+const ROPE_MIN_LEVEL := [Gfx.HIGH, Gfx.MEDIUM, Gfx.LOW, Gfx.MEDIUM, Gfx.ULTRA]
+
+
 func _make_ropes(p: Player) -> Array:
 	var ropes := []
-	for k in 3:
+	for k in 5:
 		var l := Line2D.new()
 		l.joint_mode = Line2D.LINE_JOINT_ROUND
 		l.begin_cap_mode = Line2D.LINE_CAP_ROUND
 		l.end_cap_mode = Line2D.LINE_CAP_ROUND
-		l.antialiased = true
-		l.width = CELL * [1.35, 0.8, 0.2][k] * p.size
+		l.width = CELL * ROPE_WIDTHS[k] * p.size
+		if k == SHADOW:
+			l.position = Vector2(0, CELL * 0.28)
+		if k == NEON:
+			l.material = _add_mat
 		_trails.add_child(l)
 		ropes.append(l)
 	return ropes
@@ -196,6 +235,7 @@ func _make_ropes(p: Player) -> Array:
 
 func _update_trails() -> void:
 	var t := Time.get_ticks_msec() / 1000.0
+	var smooth := Gfx.level > Gfx.LOW
 	for p in w.players:
 		if p == null:
 			continue
@@ -225,15 +265,16 @@ func _update_trails() -> void:
 			var pts := PackedVector2Array()
 			for q in pieces[si]:
 				pts.append(q * CELL)
-			for k in 3:
+			for k in 5:
 				var l: Line2D = ropes[k]
-				l.visible = k == 1 or Gfx.level > Gfx.LOW
+				l.visible = Gfx.level >= ROPE_MIN_LEVEL[k]
 				if not l.visible:
 					continue
 				l.points = pts
-				l.default_color = [Color(col, 0.2), Color(col, 0.65), Color(1, 1, 1, 0.35)][k]
+				l.antialiased = smooth
+				l.default_color = [Color(0.06, 0.08, 0.16, 0.16), Color(col, 0.2), Color(col, 0.65), Color(1, 1, 1, 0.35), Color(col, 0.22)][k]
 				# Colourblind mode: the pattern runs along the middle of the rope
-				if k == 2:
+				if k == SHINE:
 					var patterned: bool = Patterns.on
 					if patterned and l.texture == null:
 						l.texture = Patterns.tile(Patterns.index_of(p, w.COLORS))
@@ -246,13 +287,13 @@ func _update_trails() -> void:
 					if patterned:
 						l.default_color = Color(0.06, 0.08, 0.16, 0.35)
 				# The Rainbow trail from the shop: colours flowing along the rope
-				if p.trail_fx == "rainbow" and k < 2 and not (p == w.me and danger > 0):
+				if p.trail_fx == "rainbow" and (k == GLOW or k == ROPE) and not (p == w.me and danger > 0):
 					if l.gradient == null:
 						l.gradient = Gradient.new()
 						l.gradient.offsets = PackedFloat32Array([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
 					var cols := PackedColorArray()
 					for i in 6:
-						cols.append(Color(Cosmetics.rainbow(-t, i / 5.0), [0.3, 0.85][k]))
+						cols.append(Color(Cosmetics.rainbow(-t, i / 5.0), [0.3, 0.85][k - GLOW]))
 					l.gradient.colors = cols
 				elif l.gradient:
 					l.gradient = null
@@ -269,7 +310,8 @@ func _draw_floor() -> void:
 	var open_board: bool = w.map_id != "round" and not islands and not storm
 	# Far background (the sea on Islands, dark clouds on Storm), then a soft shadow and a rim
 	# under a square board
-	_floor.draw_rect(Rect2(-size, -size, size * 3, size * 3), WATER if islands else STORM if storm else BG)
+	# The far background is the screen's clear colour (no need to paint the whole screen)
+	RenderingServer.set_default_clear_color(WATER if islands else STORM if storm else BG)
 	if open_board:
 		for k in range(4, 0, -1):
 			var g := CELL * 0.4 * k
@@ -293,12 +335,10 @@ func _draw_floor() -> void:
 			var e := x
 			while e + 1 < n and wall[y * n + e + 1] != 2:
 				e += 1
-			_floor.draw_rect(Rect2(x * CELL, y * CELL, (e - x + 1) * CELL, CELL), FLOOR)
+			# Floor and checker in one: a tiled 2 x 2 cell texture, lined up across the board
+			var r := Rect2(x * CELL, y * CELL, (e - x + 1) * CELL, CELL)
+			_floor.draw_texture_rect_region(_checker, r, r)
 			x = e + 1
-	for y in n:
-		for x in range(y % 2, n, 2):
-			if wall[y * n + x] != 2:
-				_floor.draw_rect(Rect2(x * CELL, y * CELL, CELL, CELL), CHECK)
 	# Conveyor belts: dark strips with rails along their edges
 	_belt_marks.clear()
 	if w.map_id == "conveyor":
@@ -433,74 +473,61 @@ func _draw_items() -> void:
 		_items.draw_set_transform(Vector2.ZERO)
 
 
+## New land (or new graphics settings): refresh the land texture, the palette and the shader
+func _update_land() -> void:
+	land_grid.set_bytes(w.N, w.land)
+	for p in w.players:
+		if p and p.id < 16:
+			pal_img.set_pixel(p.id, 0, p.color)
+			pal_img.set_pixel(p.id, 1, p.dark)
+	pal_tex.update(pal_img)
+	var m: ShaderMaterial = _land.material
+	m.set_shader_parameter("ids", land_grid.tex)
+	m.set_shader_parameter("pal", pal_tex)
+	m.set_shader_parameter("n", float(w.N))
+	m.set_shader_parameter("rims", 1.0 if Gfx.level >= Gfx.MEDIUM else 0.0)
+	m.set_shader_parameter("shade", 1.0 if Gfx.level >= Gfx.HIGH else 0.0)
+	m.set_shader_parameter("shine", 1.0 if Gfx.level >= Gfx.ULTRA else 0.0)
+	_land.queue_redraw()
+	if Patterns.on or _pattern_drawn:
+		_pattern.queue_redraw()
+
+
+## All the land in one rectangle; the shader paints each cell (see Shaders.LAND)
 func _draw_land() -> void:
+	if land_grid.tex == null:
+		return
+	var n: int = w.N
+	_land.draw_texture_rect(land_grid.tex, Rect2(0, 0, n * CELL, (n + LAND_DEPTH) * CELL), false)
+
+
+const LAND_DEPTH := 0.3 # the raised edge under the land, in cells (the shader's `depth`)
+var _pattern_drawn := false
+
+
+## Colourblind mode: each player's pattern over their land, lined up across the board
+func _draw_pattern() -> void:
+	_pattern_drawn = Patterns.on
+	if not Patterns.on:
+		return
 	var n: int = w.N
 	var land: PackedByteArray = w.land
-	var colors := {}
-	var darks := {}
+	var tex := {}
 	for p in w.players:
 		if p:
-			colors[p.id] = p.color
-			darks[p.id] = p.dark
-	# A darker copy nudged down gives each patch a chunky raised edge...
-	_runs(land, darks, CELL * 0.3)
-	# ...then the top colour
-	_runs(land, colors, 0.0)
-	# A light rim along top and left edges
-	var rim := Color(1, 1, 1, 0.32)
+			tex[p.id] = Patterns.tile(Patterns.index_of(p, w.COLORS))
 	for y in n:
 		var x := 0
 		while x < n:
 			var id := land[y * n + x]
-			if id == 0 or (y > 0 and land[(y - 1) * n + x] == id):
-				x += 1
-				continue
-			var e := x
-			while e + 1 < n and land[y * n + e + 1] == id and not (y > 0 and land[(y - 1) * n + e + 1] == id):
-				e += 1
-			_land.draw_rect(Rect2(x * CELL, y * CELL, (e - x + 1) * CELL, CELL * 0.14), rim)
-			x = e + 1
-	# Colourblind mode: each player's pattern over their land, lined up across the board
-	if Patterns.on:
-		var tex := {}
-		for p in w.players:
-			if p:
-				tex[p.id] = Patterns.tile(Patterns.index_of(p, w.COLORS))
-		for y in n:
-			var x := 0
-			while x < n:
-				var id := land[y * n + x]
-				if id == 0:
-					x += 1
-					continue
-				var e := x
-				while e + 1 < n and land[y * n + e + 1] == id:
-					e += 1
-				var r := Rect2(x * CELL, y * CELL, (e - x + 1) * CELL, CELL)
-				_land.draw_texture_rect_region(tex[id], r, r, Color(0.06, 0.08, 0.16, 0.3))
-				x = e + 1
-	var rim2 := Color(1, 1, 1, 0.16)
-	for y in n:
-		for x in n:
-			var id := land[y * n + x]
-			if id and (x == 0 or land[y * n + x - 1] != id):
-				_land.draw_rect(Rect2(x * CELL, y * CELL, CELL * 0.1, CELL), rim2)
-
-
-## Horizontal runs of cells with the same owner, as one rectangle each
-func _runs(grid: PackedByteArray, palette: Dictionary, y_off: float) -> void:
-	var n: int = w.N
-	for y in n:
-		var x := 0
-		while x < n:
-			var id := grid[y * n + x]
 			if id == 0:
 				x += 1
 				continue
 			var e := x
-			while e + 1 < n and grid[y * n + e + 1] == id:
+			while e + 1 < n and land[y * n + e + 1] == id:
 				e += 1
-			_land.draw_rect(Rect2(x * CELL, y * CELL + y_off, (e - x + 1) * CELL, CELL), palette[id])
+			var r := Rect2(x * CELL, y * CELL, (e - x + 1) * CELL, CELL)
+			_pattern.draw_texture_rect_region(tex[id], r, r, Color(0.06, 0.08, 0.16, 0.3))
 			x = e + 1
 
 
@@ -515,15 +542,18 @@ func _draw_fx() -> void:
 		for i in f.cells:
 			_fx.draw_rect(Rect2((i % n) * CELL + (CELL - s) / 2, (i / n) * CELL + (CELL - s) / 2, s, s), c)
 	# Freshly claimed land: a bright wave rolls out from where the loop closed
+	var cell := Vector2(CELL, CELL)
 	for f in _flashes:
 		var age: float = f.max - f.life
 		var front := age * 55.0
 		var fade: float = f.life / f.max
-		for i in f.cells:
-			var d := Vector2(i % n + 0.5, i / n + 0.5).distance_to(f.origin)
+		var at: PackedVector2Array = f.at
+		var dist: PackedFloat32Array = f.dist
+		for k in at.size():
+			var d := dist[k]
 			var a := (maxf(0.0, 1.0 - absf(d - front) / 3.0) * 0.7 + (0.1 if d < front else 0.3)) * fade
 			if a > 0.03:
-				_fx.draw_rect(Rect2((i % n) * CELL, (i / n) * CELL, CELL, CELL), Color(1, 1, 1, a))
+				_fx.draw_rect(Rect2(at[k], cell), Color(1, 1, 1, a))
 	# The edge of freshly claimed land glows, then fades
 	for o in _outlines:
 		var k: float = o.life / 0.9
@@ -540,10 +570,28 @@ func _draw_fx() -> void:
 
 # ---------- Effects ----------
 
+## A flash over claimed cells, with each cell's corner and distance from `origin` worked out
+## once (Medium and up)
+func _add_flash(cells: PackedInt32Array, origin: Vector2, life: float) -> void:
+	if Gfx.level == Gfx.LOW:
+		return
+	var n: int = w.N
+	var at := PackedVector2Array()
+	var dist := PackedFloat32Array()
+	at.resize(cells.size())
+	dist.resize(cells.size())
+	for k in cells.size():
+		var i := cells[k]
+		var c := Vector2(i % n, i / n)
+		at[k] = c * CELL
+		dist[k] = (c + Vector2(0.5, 0.5)).distance_to(origin)
+	_flashes.append({"at": at, "dist": dist, "life": life, "max": life})
+
+
 func _on_captured(p: Player, cells: PackedInt32Array, gain: float) -> void:
 	if cells.is_empty():
 		return
-	_flashes.append({"cells": cells, "life": 0.8, "max": 0.8, "origin": p.pos})
+	_add_flash(cells, p.pos, 0.8)
 	if Gfx.level > Gfx.LOW:
 		_outlines.append({"lines": _edges(cells), "color": p.color, "life": 0.9})
 	if cells.size() > 15:
@@ -592,7 +640,7 @@ func _on_picked(p: Player, kind: String, at: Vector2) -> void:
 
 
 func _on_painted(p: Player, cells: PackedInt32Array) -> void:
-	_flashes.append({"cells": cells, "life": 0.6, "max": 0.6, "origin": p.pos})
+	_add_flash(cells, p.pos, 0.6)
 	_rings.append({"pos": p.pos, "color": w.POWERUPS.paint.color, "life": 0.6, "size": 9.0})
 	burst(p.pos, w.POWERUPS.paint.color, 36, 480.0)
 
@@ -677,7 +725,7 @@ func _edges(cells: PackedInt32Array) -> PackedVector2Array:
 
 ## A soft coloured glow under every square (High and Ultra; stronger on Ultra)
 func _draw_glows() -> void:
-	var strength := 0.3 if Gfx.level == Gfx.ULTRA else 0.18
+	var strength := 0.35 if Gfx.level == Gfx.ULTRA else 0.22
 	for p in w.players:
 		if p and p.alive:
 			var s: float = CELL * 3.6 * p.size
@@ -686,12 +734,12 @@ func _draw_glows() -> void:
 
 ## Specks of light drifting over the part of the board on screen
 func _update_motes(dt: float) -> void:
-	var want: int = [0, 0, 16, 34][Gfx.level]
+	var want: int = [0, 0, 12, 34][Gfx.level]
 	_air.visible = want > 0
 	if want == 0:
 		_motes.clear()
 		return
-	var view := get_viewport().get_canvas_transform().affine_inverse() * Rect2(Vector2.ZERO, get_viewport_rect().size)
+	var view := _cam_view
 	while _motes.size() < want:
 		_motes.append(_new_mote(view))
 	if _motes.size() > want:

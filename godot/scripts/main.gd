@@ -89,8 +89,6 @@ var duo_labels: Array = []
 var board_rows: Array = []
 var minimap: TextureRect
 var mm_dot: Control
-var mm_img: Image
-var mm_tex: ImageTexture
 var toast_label: Label
 var toast_panel: PanelContainer
 var _toast_tween: Tween
@@ -140,6 +138,10 @@ var flash_rect: ColorRect
 var _punch := 0.0 # a quick zoom-in when you claim land
 var _punch_k := 1.0
 var _fps_timer := 0.0
+var _pill_key := "" # what the mode pill and power-up chips show now, to skip rebuilding them
+var _chip_key := ""
+var _slow_time := 0.0 # seconds the game has run too slowly
+var _slow_told := false
 
 
 func _ready() -> void:
@@ -239,6 +241,8 @@ func start_game(mode := "") -> void:
 	_update_tutorial()
 	_show(null)
 	hud.visible = true
+	_pill_key = ""
+	_chip_key = ""
 	_update_hud()
 
 
@@ -285,6 +289,8 @@ func _process(delta: float) -> void:
 			_check_danger()
 			if not world.p2:
 				_milestones()
+			if state == "play":
+				_check_speed(delta)
 	_update_camera(dt)
 	_hud_timer -= dt
 	if hud.visible and _hud_timer <= 0:
@@ -300,6 +306,21 @@ func _process(delta: float) -> void:
 		if _fps_timer <= 0:
 			_fps_timer = 0.5
 			fps_label.text = "%d FPS" % Engine.get_frames_per_second()
+
+
+## If the game keeps running well below its frame rate, suggest a lower Quality (once)
+func _check_speed(delta: float) -> void:
+	if _slow_told or Gfx.level == Gfx.LOW or _tut_step > 0:
+		return
+	var hz := Gfx.screen_hz()
+	var target := mini(Gfx.fps, hz if hz > 0 else 60)
+	if Engine.get_frames_per_second() < target * 0.7:
+		_slow_time += delta
+	else:
+		_slow_time = maxf(0.0, _slow_time - delta)
+	if _slow_time > 8.0:
+		_slow_told = true
+		_hint("slow", tr("Running slowly? A lower Quality in Settings makes the game smoother."), true)
 
 
 ## How each mode is won or lost
@@ -526,6 +547,7 @@ func _split_on() -> void:
 		add_child(split)
 	split.visible = true
 	split.layout()
+	view.cull = false # two cameras: draw every square
 	# The main camera looks far away, so the world isn't drawn a third time
 	cam.position = Vector2(1e6, 1e6)
 	_layout_hud()
@@ -535,6 +557,7 @@ func _split_on() -> void:
 func _split_off(keep_view := false) -> void:
 	if split and not keep_view:
 		split.visible = false
+		view.cull = true
 	if hud:
 		_layout_hud()
 
@@ -566,8 +589,6 @@ func _notification(what: int) -> void:
 		_back()
 	elif what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
 		_pause()
-	elif what == NOTIFICATION_APPLICATION_RESUMED or what == NOTIFICATION_APPLICATION_FOCUS_IN:
-		Gfx.apply(get_tree()) # the screen may have been rebuilt; ask for our frame rate again
 
 
 ## New graphics settings: apply and save them
@@ -1251,9 +1272,7 @@ func _update_hud() -> void:
 	var kos := tr("1 KO") if me.kills == 1 else tr("%d KOs") % me.kills
 	status_label.text = (tr("#%d of %d") % [world.rank_of(me), world.alive_count()] + "  ·  " + kos) if me.alive else tr("Knocked out") + "  ·  " + kos
 	coin_label.text = str(wallet + world.coins_picked)
-	# Power-ups running now, with seconds left
-	for c in fx_row.get_children():
-		c.queue_free()
+	# Power-ups running now, with seconds left (rebuilt only when something changes)
 	var chips := []
 	if me.alive:
 		for k in me.fx:
@@ -1263,6 +1282,15 @@ func _update_hud() -> void:
 			chips.append(["Shield", me.shield, world.POWERUPS.shield.color])
 		if world.freezer and world.freezer != me:
 			chips.append(["Frozen!", world.freezer.fx.freeze, Color("#3fc7f5")])
+	var chip_key := ""
+	for c in chips:
+		chip_key += "%s%d," % [c[0], ceili(c[1])]
+	if chip_key != _chip_key:
+		_chip_key = chip_key
+		for c in fx_row.get_children():
+			c.queue_free()
+	else:
+		chips = []
 	for c in chips:
 		var chip := PanelContainer.new()
 		var st := _style(c[2], 12)
@@ -1299,9 +1327,23 @@ func _update_hud() -> void:
 
 ## The pill at the top: the clock, the team score, or the King's hearts and your lives
 func _update_mode_pill() -> void:
+	var m: Dictionary = world.mode
+	# Only rebuild the pill when what it shows changes
+	var key := ""
+	if m.has("time"):
+		key = "time %d" % ceilf(maxf(0.0, m.time - play_time))
+	elif m.get("teams", false):
+		key = "teams %.1f %.1f" % [world.team_pct(0), world.team_pct(1)]
+	elif m.get("boss", false) and world.king:
+		key = "boss %s %d %d %d" % [world.king.name, world.king.hp, world.king.max_hp, world.me.lives]
+	elif m.get("duo", false) or m.get("daily", false):
+		key = "%s %s" % [mode_id, world.map_id]
+	key += " " + I18n.lang
+	if key == _pill_key:
+		return
+	_pill_key = key
 	for c in mode_row.get_children():
 		c.queue_free()
-	var m: Dictionary = world.mode
 	var parts := []
 	if m.has("time"):
 		var left: float = maxf(0.0, m.time - play_time)
@@ -1349,48 +1391,19 @@ func _layout_hud() -> void:
 			duo_labels[i].position = Vector2(r.position.x + 20, r.end.y - 64)
 
 
+## The minimap is drawn by a shader from the board's cell textures (see Shaders.MINIMAP);
+## only the trails need sending over each time
 func _update_minimap() -> void:
 	var n: int = world.N
-	var lut := PackedByteArray()
-	lut.resize(16 * 4)
-	for p in world.players:
-		if p:
-			lut[p.id * 4] = int(p.color.r8)
-			lut[p.id * 4 + 1] = int(p.color.g8)
-			lut[p.id * 4 + 2] = int(p.color.b8)
-			lut[p.id * 4 + 3] = 255
-	var data := PackedByteArray()
-	data.resize(n * n * 4)
-	var land: PackedByteArray = world.land
-	var tr: PackedByteArray = world.trail
-	for i in n * n:
-		var id := land[i]
-		if id == 0:
-			id = tr[i]
-		var o := i * 4
-		if id:
-			data[o] = lut[id * 4]
-			data[o + 1] = lut[id * 4 + 1]
-			data[o + 2] = lut[id * 4 + 2]
-			data[o + 3] = 255
-		elif world.wall[i] == 1:
-			data[o] = 107
-			data[o + 1] = 118
-			data[o + 2] = 144
-			data[o + 3] = 255
-		elif world.wall[i] == 2:
-			var sea: bool = world.map_id == "islands"
-			data[o] = 124 if sea else 200
-			data[o + 1] = 199 if sea else 207
-			data[o + 2] = 232 if sea else 222
-			data[o + 3] = 255 if sea else 120
-		else:
-			data[o] = 235
-			data[o + 1] = 239
-			data[o + 2] = 248
-			data[o + 3] = 255
-	mm_img.set_data(n, n, false, Image.FORMAT_RGBA8, data)
-	mm_tex.update(mm_img)
+	view.trail_grid.set_bytes(n, world.trail)
+	var m: ShaderMaterial = minimap.material
+	m.set_shader_parameter("ids", view.land_grid.tex)
+	m.set_shader_parameter("trails", view.trail_grid.tex)
+	m.set_shader_parameter("walls", view.wall_grid.tex)
+	m.set_shader_parameter("pal", view.pal_tex)
+	m.set_shader_parameter("n", float(n))
+	m.set_shader_parameter("sea", 1.0 if world.map_id == "islands" else 0.0)
+	minimap.texture = view.trail_grid.tex
 	var me: Player = world.me
 	mm_dot.visible = me.alive
 	mm_dot.position = me.pos / n * minimap.size - mm_dot.size / 2
@@ -1584,10 +1597,8 @@ func _build_ui() -> void:
 
 	mm_card = _card()
 	hud.add_child(mm_card)
-	mm_img = Image.create(world.N, world.N, false, Image.FORMAT_RGBA8)
-	mm_tex = ImageTexture.create_from_image(mm_img)
 	minimap = TextureRect.new()
-	minimap.texture = mm_tex
+	minimap.material = Shaders.material(Shaders.MINIMAP)
 	minimap.custom_minimum_size = Vector2(150, 150)
 	minimap.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	minimap.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -2205,6 +2216,9 @@ static func _fmt_time(t: float) -> String:
 
 # ---------- Saving ----------
 
+const GFX_VERSION := 2
+
+
 func _load() -> void:
 	Gfx.level = Gfx.default_level() # until the save says otherwise
 	var c := ConfigFile.new()
@@ -2243,7 +2257,9 @@ func _load() -> void:
 		difficulty = "normal"
 	player_name = c.get_value("player", "name", "You")
 	vibration = c.get_value("settings", "vibration", true)
-	Gfx.level = clampi(c.get_value("settings", "gfx", Gfx.default_level()), 0, Gfx.LEVELS.size() - 1)
+	# The levels were reworked in graphics version 2: older saves start again from the default
+	if c.get_value("settings", "gfx_v", 1) >= GFX_VERSION:
+		Gfx.level = clampi(c.get_value("settings", "gfx", Gfx.default_level()), 0, Gfx.LEVELS.size() - 1)
 	Gfx.fps = c.get_value("settings", "fps", 60)
 	if not Gfx.FPS.has(Gfx.fps):
 		Gfx.fps = 60
@@ -2280,6 +2296,7 @@ func _save() -> void:
 	c.set_value("player", "name", player_name)
 	c.set_value("settings", "vibration", vibration)
 	c.set_value("settings", "gfx", Gfx.level)
+	c.set_value("settings", "gfx_v", GFX_VERSION)
 	c.set_value("settings", "fps", Gfx.fps)
 	c.set_value("settings", "show_fps", Gfx.show_fps)
 	c.set_value("settings", "big_stick", big_stick)

@@ -8,6 +8,7 @@ var p: Player
 var leader := false
 var threat := false
 var frozen := false
+var on_screen := true # the board skips drawing squares that are off screen
 var label: Label
 var _shadow: Texture2D
 var _crown: Texture2D
@@ -66,7 +67,8 @@ func _process(_dt: float) -> void:
 		_pet_pos = _pet_pos.lerp(goal, 1.0 - exp(-_dt * 6.0))
 		if absf(_pet_pos.x - old.x) > 0.3:
 			_pet_face = signf(_pet_pos.x - old.x)
-	queue_redraw()
+	if on_screen:
+		queue_redraw()
 
 
 func _draw() -> void:
