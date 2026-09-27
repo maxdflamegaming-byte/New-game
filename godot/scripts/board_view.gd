@@ -25,6 +25,8 @@ var _water: Node2D
 var _items: Node2D
 var _land: Node2D
 var _fx: Node2D
+var _glows: Node2D # additive: halos under the squares
+var _air: Node2D # additive: floating specks of light
 var _trails: Node2D
 var _actors: Node2D
 var _top: Node2D
@@ -36,6 +38,8 @@ var _coin: Texture2D
 var _flashes := [] # {cells, life, max, origin}
 var _fades := [] # {cells, color, life}
 var _rings := [] # {pos, color, life, size}
+var _outlines := [] # {lines, color, life}: the edge of freshly claimed land, glowing
+var _motes := [] # {pos, vel, phase, size}: specks of light floating over the board (High and Ultra)
 var _glow: Texture2D
 var _tile: Texture2D
 var _spark: Texture2D
@@ -54,7 +58,7 @@ func setup(world, ui_font: Font, px: int) -> void:
 	_coin = Art.tex(Art.COIN, 96)
 	for k in Art.ICONS:
 		_icons[k] = Art.tex(Art.ICONS[k], 96)
-	for n in ["_floor", "_water", "_land", "_fx", "_trails", "_items", "_actors", "_top"]:
+	for n in ["_floor", "_water", "_land", "_fx", "_glows", "_trails", "_items", "_actors", "_top", "_air"]:
 		var node := Node2D.new()
 		node.name = n
 		add_child(node)
@@ -64,6 +68,10 @@ func setup(world, ui_font: Font, px: int) -> void:
 	_fx.draw.connect(_draw_fx)
 	_water.draw.connect(_draw_water)
 	_items.draw.connect(_draw_items)
+	_glows.material = _add_mat
+	_glows.draw.connect(_draw_glows)
+	_air.material = _add_mat
+	_air.draw.connect(_draw_air)
 	_items.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	w.captured.connect(_on_captured)
 	w.picked.connect(_on_picked)
@@ -86,6 +94,7 @@ func rebuild() -> void:
 	_flashes.clear()
 	_fades.clear()
 	_rings.clear()
+	_outlines.clear()
 	_land_version = -1
 	_ensure_views()
 	# You're drawn last, so you're always on top
@@ -131,7 +140,8 @@ func _process(dt: float) -> void:
 	if w.land_version != _land_version:
 		_land_version = w.land_version
 		_land.queue_redraw()
-	if w.map_id == "islands":
+	# Low redraws the waves less often
+	if w.map_id == "islands" and (Gfx.level > Gfx.LOW or Engine.get_process_frames() % 3 == 0):
 		_water.queue_redraw()
 	_items.queue_redraw()
 	_update_trails()
@@ -145,7 +155,14 @@ func _process(dt: float) -> void:
 	for r in _rings:
 		r.life -= dt
 	_rings = _rings.filter(func(r): return r.life > 0)
+	for o in _outlines:
+		o.life -= dt
+	_outlines = _outlines.filter(func(o): return o.life > 0)
 	_fx.queue_redraw()
+	_update_motes(dt)
+	_glows.visible = Gfx.level >= Gfx.HIGH
+	if _glows.visible:
+		_glows.queue_redraw()
 	# The leader wears a crown
 	var leader: Player = null
 	for p in w.players:
@@ -179,7 +196,9 @@ func _update_trails() -> void:
 			col = Color("#ff3c50").lerp(p.color, 0.35 - 0.35 * sin(t * 18.0))
 		for k in 3:
 			var l: Line2D = ropes[k]
-			l.visible = true
+			l.visible = k == 1 or Gfx.level > Gfx.LOW
+			if not l.visible:
+				continue
 			l.points = pts
 			l.default_color = [Color(col, 0.2), Color(col, 0.65), Color(1, 1, 1, 0.35)][k]
 			# The Rainbow trail from the shop: colours flowing along the rope
@@ -305,7 +324,7 @@ func _draw_items() -> void:
 		_items.draw_circle(at, r, Color.WHITE, true, -1, true)
 		_items.draw_arc(at, r, 0, TAU, 40, c, r * 0.18, true)
 		_items.draw_texture_rect(_icons[pu.kind], Rect2(at - Vector2(r, r) * 0.68, Vector2(r, r) * 1.36), false)
-		for k in 3:
+		for k in (3 if Gfx.level > Gfx.LOW else 0):
 			var a := t * 2.5 + k * TAU / 3
 			var sp := at + Vector2.from_angle(a) * r * 1.45
 			_items.draw_texture_rect(_spark, Rect2(sp - Vector2(r, r) * 0.2, Vector2(r, r) * 0.4), false, Color(1, 1, 1, 0.9))
@@ -392,6 +411,13 @@ func _draw_fx() -> void:
 			var a := (maxf(0.0, 1.0 - absf(d - front) / 3.0) * 0.7 + (0.1 if d < front else 0.3)) * fade
 			if a > 0.03:
 				_fx.draw_rect(Rect2((i % n) * CELL, (i / n) * CELL, CELL, CELL), Color(1, 1, 1, a))
+	# The edge of freshly claimed land glows, then fades
+	for o in _outlines:
+		var k: float = o.life / 0.9
+		var c: Color = o.color
+		c.a = k
+		_fx.draw_multiline(o.lines, Color(c.lightened(0.5), k * 0.5), CELL * (0.5 + (1.0 - k) * 0.4))
+		_fx.draw_multiline(o.lines, Color(1, 1, 1, k), CELL * 0.14)
 	for r in _rings:
 		var t: float = 1.0 - r.life / 0.6
 		var c: Color = r.color
@@ -405,6 +431,8 @@ func _on_captured(p: Player, cells: PackedInt32Array, gain: float) -> void:
 	if cells.is_empty():
 		return
 	_flashes.append({"cells": cells, "life": 0.8, "max": 0.8, "origin": p.pos})
+	if Gfx.level > Gfx.LOW:
+		_outlines.append({"lines": _edges(cells), "color": p.color, "life": 0.9})
 	if cells.size() > 15:
 		_rings.append({"pos": p.pos, "color": p.color, "life": 0.6, "size": minf(14.0, 4.0 + sqrt(cells.size()) * 0.5)})
 	burst(p.pos, p.color, mini(40, 8 + cells.size() / 10), 260.0)
@@ -420,7 +448,7 @@ func _on_knocked_out(v: Player, _killer: Player, _how: String, lost: PackedInt32
 	tiles.texture = _tile
 	tiles.one_shot = true
 	tiles.explosiveness = 0.9
-	tiles.amount = 36
+	tiles.amount = Gfx.particles(36)
 	tiles.lifetime = 1.1
 	tiles.emission_shape = CPUParticles2D.EMISSION_SHAPE_SPHERE
 	tiles.emission_sphere_radius = CELL * 2
@@ -468,7 +496,7 @@ func burst(at: Vector2, color: Color, amount: int, speed: float) -> void:
 	ps.material = _add_mat
 	ps.one_shot = true
 	ps.explosiveness = 0.95
-	ps.amount = maxi(4, amount)
+	ps.amount = Gfx.particles(maxi(4, amount))
 	ps.lifetime = 0.7
 	ps.spread = 180
 	ps.gravity = Vector2(0, 300)
@@ -510,3 +538,72 @@ func float_text(at: Vector2, text: String, color: Color, outline: Color, big := 
 	tw.parallel().tween_property(l, "position:y", l.position.y - CELL * 1.8, 1.2)
 	tw.parallel().tween_property(l, "modulate:a", 0.0, 0.5).set_delay(0.7)
 	tw.tween_callback(l.queue_free)
+
+
+## The outline of a patch of cells, as pairs of points for draw_multiline
+func _edges(cells: PackedInt32Array) -> PackedVector2Array:
+	var n: int = w.N
+	var inside := {}
+	for i in cells:
+		inside[i] = true
+	var out := PackedVector2Array()
+	for i in cells:
+		var x := i % n
+		var y := i / n
+		var a := Vector2(x, y) * CELL
+		if y == 0 or not inside.has(i - n):
+			out.append_array([a, a + Vector2(CELL, 0)])
+		if y == n - 1 or not inside.has(i + n):
+			out.append_array([a + Vector2(0, CELL), a + Vector2(CELL, CELL)])
+		if x == 0 or not inside.has(i - 1):
+			out.append_array([a, a + Vector2(0, CELL)])
+		if x == n - 1 or not inside.has(i + 1):
+			out.append_array([a + Vector2(CELL, 0), a + Vector2(CELL, CELL)])
+	return out
+
+
+## A soft coloured glow under every square (High and Ultra; stronger on Ultra)
+func _draw_glows() -> void:
+	var strength := 0.3 if Gfx.level == Gfx.ULTRA else 0.18
+	for p in w.players:
+		if p and p.alive:
+			var s: float = CELL * 3.6 * p.size
+			_glows.draw_texture_rect(_glow, Rect2(p.pos * CELL - Vector2(s, s) / 2, Vector2(s, s)), false, Color(p.color, strength))
+
+
+## Specks of light drifting over the part of the board on screen
+func _update_motes(dt: float) -> void:
+	var want: int = [0, 0, 16, 34][Gfx.level]
+	_air.visible = want > 0
+	if want == 0:
+		_motes.clear()
+		return
+	var view := get_viewport().get_canvas_transform().affine_inverse() * Rect2(Vector2.ZERO, get_viewport_rect().size)
+	while _motes.size() < want:
+		_motes.append(_new_mote(view))
+	if _motes.size() > want:
+		_motes.resize(want)
+	for m in _motes:
+		m.pos += m.vel * dt
+		m.phase += dt
+		if not view.grow(CELL * 2).has_point(m.pos):
+			var fresh := _new_mote(view)
+			m.pos = fresh.pos
+			m.vel = fresh.vel
+	_air.queue_redraw()
+
+
+func _new_mote(view: Rect2) -> Dictionary:
+	return {
+		"pos": view.position + Vector2(randf() * view.size.x, randf() * view.size.y),
+		"vel": Vector2(randf_range(-12, 12), randf_range(-28, -8)),
+		"phase": randf() * TAU,
+		"size": randf_range(0.25, 0.6) * CELL,
+	}
+
+
+func _draw_air() -> void:
+	for m in _motes:
+		var a := 0.22 + 0.18 * sin(m.phase * 1.7)
+		var s: float = m.size * (1.0 + 0.2 * sin(m.phase * 2.3))
+		_air.draw_texture_rect(_glow, Rect2(m.pos - Vector2(s, s) / 2, Vector2(s, s)), false, Color(1, 0.96, 0.8, a))

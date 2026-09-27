@@ -322,6 +322,40 @@ func _run() -> void:
 	await process_frame
 	ok("The menu shows your level and today's missions", main.level_label.text.begins_with("Level ") and main.missions_badge.text.ends_with("/3"))
 
+	# Graphics settings
+	var gfx_before := [Gfx.level, Gfx.fps, Gfx.show_fps]
+	Gfx.level = Gfx.LOW
+	main._apply_gfx()
+	ok("Low draws at 720p with no anti-aliasing and fewer particles", root.content_scale_mode == Window.CONTENT_SCALE_MODE_VIEWPORT and root.msaa_2d == Viewport.MSAA_DISABLED and Gfx.particles(40) < 20 and not main.vignette.visible)
+	Gfx.level = Gfx.ULTRA
+	Gfx.fps = 120
+	Gfx.show_fps = true
+	main._apply_gfx()
+	ok("Ultra draws at full resolution with 4x anti-aliasing and more particles", root.content_scale_mode == Window.CONTENT_SCALE_MODE_CANVAS_ITEMS and root.msaa_2d == Viewport.MSAA_4X and Gfx.particles(40) > 40 and main.vignette.visible)
+	ok("120 FPS lifts the frame cap and Show FPS shows the counter", Engine.max_fps == 120 and main.fps_label.get_parent().visible)
+	Gfx.level = Gfx.MEDIUM
+	Gfx.fps = 90
+	Gfx.show_fps = false
+	main._save()
+	Gfx.level = Gfx.HIGH
+	Gfx.fps = 60
+	main._load()
+	ok("Graphics settings are saved", Gfx.level == Gfx.MEDIUM and Gfx.fps == 90 and not Gfx.show_fps)
+	await _play()
+	w.me.fx.speed = 0.0
+	for gl in 4:
+		Gfx.level = gl
+		main._apply_gfx()
+		for f in 20:
+			await process_frame
+	ok("Every quality level runs a game without errors", main.state == "play")
+	Gfx.level = gfx_before[0]
+	Gfx.fps = gfx_before[1]
+	Gfx.show_fps = gfx_before[2]
+	main._apply_gfx()
+	main._to_menu()
+	await process_frame
+
 	# The shop
 	main._to_menu()
 	await process_frame

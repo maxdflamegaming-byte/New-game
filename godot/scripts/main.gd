@@ -120,11 +120,18 @@ var ask_box: Control
 var tut_card: PanelContainer
 var tut_label: Label
 var toast_row: HBoxContainer
+var fps_label: Label
+var vignette: CanvasLayer
+var flash_rect: ColorRect
+var _punch := 0.0 # a quick zoom-in when you claim land
+var _punch_k := 1.0
+var _fps_timer := 0.0
 
 
 func _ready() -> void:
 	randomize()
 	_load()
+	Gfx.apply(get_tree())
 	font = load("res://assets/fonts/Fredoka-Bold.ttf")
 	font_med = load("res://assets/fonts/Fredoka-Medium.ttf")
 	sfx = preload("res://scripts/sfx.gd").new()
@@ -255,6 +262,11 @@ func _process(delta: float) -> void:
 		_mm_timer = 0.25
 		_update_minimap()
 	stick_view.queue_redraw()
+	if Gfx.show_fps:
+		_fps_timer -= delta
+		if _fps_timer <= 0:
+			_fps_timer = 0.5
+			fps_label.text = "%d FPS" % Engine.get_frames_per_second()
 
 
 ## How each mode is won or lost
@@ -405,6 +417,11 @@ func _game_over(won: bool, reason: String, who: Player = null) -> void:
 	_show(over_screen)
 
 
+func _flash(c: Color) -> void:
+	flash_rect.color = c
+	create_tween().tween_property(flash_rect, "color:a", 0.0, 0.45)
+
+
 func _set_xp_fill(f: float) -> void:
 	over_xp_bar.set_meta("fill", f)
 	over_xp_bar.queue_redraw()
@@ -506,6 +523,18 @@ func _notification(what: int) -> void:
 		_back()
 	elif what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
 		_pause()
+	elif what == NOTIFICATION_APPLICATION_RESUMED or what == NOTIFICATION_APPLICATION_FOCUS_IN:
+		Gfx.apply(get_tree()) # the screen may have been rebuilt; ask for our frame rate again
+
+
+## New graphics settings: apply and save them
+func _apply_gfx() -> void:
+	Gfx.apply(get_tree())
+	fps_label.get_parent().visible = Gfx.show_fps
+	vignette.visible = Gfx.level >= Gfx.HIGH
+	if split and split.visible:
+		split.layout()
+	_save()
 
 
 # ---------- Events ----------
@@ -514,6 +543,7 @@ func _on_captured(p: Player, _cells: PackedInt32Array, gain: float) -> void:
 	if p != world.me or state == "menu":
 		return
 	_best_loop = maxf(_best_loop, gain)
+	_punch = clampf(gain / 4.0, 0.3, 1.0)
 	if _tut_step == 2:
 		_tut_next()
 	sfx.play("capture")
@@ -546,6 +576,7 @@ func _on_knocked_out(v: Player, killer: Player, how: String, _lost: PackedInt32A
 		# Boss Battle: lose a life and come back somewhere else (the tutorial has lots)
 		me.lives -= 1
 		_lives_lost += 1
+		_flash(Color(1, 0.3, 0.35, 0.35))
 		sfx.play("hurt")
 		shake = 1.0
 		_vibrate(200)
@@ -561,6 +592,7 @@ func _on_knocked_out(v: Player, killer: Player, how: String, _lost: PackedInt32A
 			_snap_camera()
 	elif v == me and not ending:
 		ending = true
+		_flash(Color(1, 0.3, 0.35, 0.45))
 		sfx.play("death")
 		shake = 1.0
 		_vibrate(300)
@@ -897,6 +929,8 @@ var _duo_cams := [{}, {}]
 func _snap_camera() -> void:
 	cam.position = world.me.pos * CELL
 	cam.zoom = Vector2.ONE * _cam_zoom()
+	_punch = 0.0
+	_punch_k = 1.0
 	if world.p2:
 		cam.position = Vector2(1e6, 1e6)
 		for i in 2:
@@ -920,7 +954,10 @@ func _update_camera(dt: float) -> void:
 	var me: Player = world.me
 	var lead := Vector2.from_angle(me.angle) * 2.2 if me.alive else Vector2.ZERO
 	cam.position = cam.position.lerp((me.pos + lead) * CELL, 1.0 - exp(-dt * 4.5))
-	cam.zoom = cam.zoom.lerp(Vector2.ONE * _cam_zoom(), 1.0 - exp(-dt * 1.8))
+	var base := (cam.zoom / _punch_k).lerp(Vector2.ONE * _cam_zoom(), 1.0 - exp(-dt * 1.8))
+	_punch = move_toward(_punch, 0.0, dt * 2.2)
+	_punch_k = 1.0 + 0.05 * sin(_punch * PI * 0.5)
+	cam.zoom = base * _punch_k
 	cam.offset = jiggle
 
 
@@ -1369,6 +1406,46 @@ func _build_ui() -> void:
 	stick_view.draw.connect(_draw_stick)
 	hud.add_child(stick_view)
 
+	# A soft darkening round the screen's edges (High and Ultra)
+	vignette = CanvasLayer.new()
+	vignette.layer = 1
+	add_child(vignette)
+	var g := Gradient.new()
+	g.offsets = PackedFloat32Array([0.0, 0.6, 1.0])
+	g.colors = PackedColorArray([Color(0.06, 0.08, 0.18, 0.0), Color(0.06, 0.08, 0.18, 0.0), Color(0.06, 0.08, 0.18, 0.32)])
+	var gt := GradientTexture2D.new()
+	gt.gradient = g
+	gt.fill = GradientTexture2D.FILL_RADIAL
+	gt.fill_from = Vector2(0.5, 0.5)
+	gt.fill_to = Vector2(1.05, 1.05)
+	gt.width = 256
+	gt.height = 256
+	var vr := TextureRect.new()
+	vr.texture = gt
+	vr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	vr.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	vr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vignette.add_child(vr)
+	vignette.visible = Gfx.level >= Gfx.HIGH
+	# A quick colour flash over everything (when you're knocked out)
+	flash_rect = ColorRect.new()
+	flash_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	flash_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	flash_rect.color = Color(1, 1, 1, 0)
+	ui_layer.add_child(flash_rect)
+	ui_layer.move_child(flash_rect, 0)
+
+	# The frame counter (Settings -> Show FPS)
+	var fps_card := _card(Color(0.12, 0.15, 0.27, 0.7))
+	fps_label = _label("", 22, Color.WHITE)
+	fps_card.add_child(fps_label)
+	fps_card.visible = Gfx.show_fps
+	ui_layer.add_child(fps_card)
+	fps_card.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, 6)
+	fps_card.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	fps_card.offset_top += safe.y
+	fps_card.offset_bottom += safe.y
+
 	_build_menu(safe)
 	_build_pause()
 	_build_over()
@@ -1789,6 +1866,7 @@ static func _fmt_time(t: float) -> String:
 # ---------- Saving ----------
 
 func _load() -> void:
+	Gfx.level = Gfx.default_level() # until the save says otherwise
 	var c := ConfigFile.new()
 	if c.load(SAVE_PATH) != OK:
 		return
@@ -1824,6 +1902,11 @@ func _load() -> void:
 		difficulty = "normal"
 	player_name = c.get_value("player", "name", "You")
 	vibration = c.get_value("settings", "vibration", true)
+	Gfx.level = clampi(c.get_value("settings", "gfx", Gfx.default_level()), 0, Gfx.LEVELS.size() - 1)
+	Gfx.fps = c.get_value("settings", "fps", 60)
+	if not Gfx.FPS.has(Gfx.fps):
+		Gfx.fps = 60
+	Gfx.show_fps = c.get_value("settings", "show_fps", false)
 	big_stick = c.get_value("settings", "big_stick", false)
 	set_meta("music", c.get_value("settings", "music", true))
 	set_meta("muted", c.get_value("settings", "muted", false))
@@ -1849,6 +1932,9 @@ func _save() -> void:
 	c.set_value("player", "difficulty", difficulty)
 	c.set_value("player", "name", player_name)
 	c.set_value("settings", "vibration", vibration)
+	c.set_value("settings", "gfx", Gfx.level)
+	c.set_value("settings", "fps", Gfx.fps)
+	c.set_value("settings", "show_fps", Gfx.show_fps)
 	c.set_value("settings", "big_stick", big_stick)
 	c.set_value("settings", "music", music.enabled)
 	c.set_value("settings", "muted", sfx.muted)

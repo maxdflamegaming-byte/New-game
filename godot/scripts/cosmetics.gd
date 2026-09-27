@@ -201,7 +201,7 @@ static func rainbow(t: float, u: float = 0.0) -> Color:
 ## `extra` colours are washed over the body after the gloss (frozen, hit flash).
 static func draw_square(ci: CanvasItem, at: Vector2, s: float, color: Color, dark: Color, skin: String,
 		look: Vector2, t: float, rot := 0.0, squash := 0.0, blink := false, extra: Array = []) -> void:
-	var px := 128 if s < 80 else 256
+	var px := 128 if s < 80 and Gfx.level < Gfx.ULTRA else 256
 	var body := Art.tex(Art.BODY, px)
 	var side := Art.tex(Art.SIDE, px)
 	var r := Rect2(-s / 2, -s / 2, s, s)
@@ -412,4 +412,5 @@ static func make_emitter(fx: String, scale: float, color: Color) -> CPUParticles
 			e.scale_amount_max = 0.9 * scale
 			e.amount = 40
 			e.lifetime = 0.7
+	e.amount = Gfx.particles(e.amount)
 	return e

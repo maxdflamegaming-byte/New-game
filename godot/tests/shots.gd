@@ -70,6 +70,30 @@ func _run() -> void:
 			await _shot("results")
 			main._to_menu()
 			continue
+		if m == "gfx":
+			main.settings_screen.open()
+			await _wait(0.8)
+			await _shot("settings-gfx")
+			main.settings_screen.close()
+			main.prog.tutorial_done = true
+			main.mode_id = "classic"
+			main.map_id = "pillars"
+			main.equipped = {"skin": "galaxy", "trail": "sparkle", "pet": "dragon"}
+			main.start_game()
+			var gw = main.world
+			gw.me.is_bot = true
+			gw.bots.give_personality(gw.me, "explorer")
+			await _wait(9.0)
+			for gl in [0, 3]:
+				Gfx.level = gl
+				main._apply_gfx()
+				main.view._on_captured(gw.me, gw.free_start_cells(int(gw.me.pos.x), int(gw.me.pos.y)), 1.0)
+				await _wait(0.25)
+				await _shot("gfx-" + Gfx.LEVELS[gl])
+			Gfx.level = Gfx.HIGH
+			main._apply_gfx()
+			main._to_menu()
+			continue
 		if m == "shop":
 			main.wallet = 700
 			main.owned.skin.append("cat")

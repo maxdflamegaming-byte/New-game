@@ -120,6 +120,8 @@ python3 -m http.server 8000
 - **22 trophies** (25 coins each) and a **profile** with your name, level, stats and trophies
 - **Bot difficulty:** Easy (0.75× coins), Normal or Hard (faster, bolder bots, 1.5× coins)
 - **Tutorial:** 5 guided steps with a harmless practice bot (leave your land, loop home, grab a power-up, cut a trail, claim 15%), offered before your first game and in Settings; 50 coins the first time
+- **Graphics settings:** quality Low (720p, fewer effects, for older phones), Medium, High (smoother edges, glow under the squares, floating light, a soft vignette) or Ultra (4× anti-aliasing, sharper sprites, more particles), picked for your phone's memory the first time; frame rate 30, 60, 90 or 120 FPS (90 and 120 need a 90/120 Hz screen; on Android 11+ the game asks the screen for that rate); and an FPS counter
+- **Effects:** the edge of freshly claimed land glows, the camera gives a little zoom punch on a big loop, and the screen flashes when you're knocked out
 - **Settings:** sound, music, vibration and joystick size
 - The menu has a level badge and a dock for the Shop, Missions, Profile and Settings; the results screen shows your XP bar and each reward as it pops in
 - Smooth glowing trails, raised land, particles, a live bots-only game behind the menu, a touch joystick (one per player in 2 Players), a minimap, callouts, sound effects, and **music** made in code (on a background thread, so the game starts at once)
@@ -130,11 +132,14 @@ python3 -m http.server 8000
 - `scripts/split_view.gd`: the 2 Players split screen
 - `scripts/cosmetics.gd` and `scripts/shop.gd`: the skins, trail effects and pets, and the shop screen
 - `scripts/progress.gd`: levels, missions, the streak, trophies and stats
+- `scripts/gfx.gd`: the graphics quality levels and frame rate
 - `scripts/menu_screen.gd`, `missions_screen.gd`, `profile_screen.gd` and `settings_screen.gd`: the menu's other screens
 - `scripts/main.gd`: game flow, controls, camera, HUD and screens
 - `scripts/art.gd`, `scripts/sfx.gd` and `scripts/music.gd`: sprites drawn from SVG, and sounds and music made in code at start-up
 
-A GitHub Actions workflow (`.github/workflows/godot.yml`) checks the rules (`tests/sim.gd`: bots-only games in every mode and on every map) and the game flow (`tests/flow.gd`: power-ups, winning, coins, saving, pausing, every mode, the shop, levels, missions, trophies, difficulty, the tutorial, the menu screens, music) on every change. The APK is built only when the workflow is started by hand (Actions → Build Color Claim HD (Godot) → Run workflow): it makes **ColorClaimHD-0.N.apk** and puts it on the Releases page. It installs next to the older Color Claim app. To open the project yourself, install Godot 4.4 and open `godot/project.godot`.
+**Phones it runs on:** Android 5.0 or newer with a 64-bit (arm64) processor and OpenGL ES 3.0 graphics (almost every phone from 2016 on), about 100 MB of free space, and 2 GB of memory or more (3 GB+ recommended for High, 4 GB+ and a recent chip for Ultra at 120 FPS).
+
+A GitHub Actions workflow (`.github/workflows/godot.yml`) checks the rules (`tests/sim.gd`: bots-only games in every mode and on every map) and the game flow (`tests/flow.gd`: power-ups, winning, coins, saving, pausing, every mode, the shop, levels, missions, trophies, difficulty, the tutorial, the menu screens, graphics settings, music) on every change. The APK is built only when the workflow is started by hand (Actions → Build Color Claim HD (Godot) → Run workflow): it makes **ColorClaimHD-0.N.apk** and puts it on the Releases page. It installs next to the older Color Claim app. To open the project yourself, install Godot 4.4 and open `godot/project.godot`.
 
 ## Android app (APK)
 
