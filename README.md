@@ -110,8 +110,9 @@ python3 -m http.server 8000
 
 `godot/` is Color Claim rebuilt in the free [Godot](https://godotengine.org) engine (4.7). It draws everything with the phone's GPU at the screen's full resolution, so it's sharp and smooth. So far it has:
 
-- **6 modes:** Classic (claim 50% to win), Timed (most land after 3 minutes), Daily (the same map and start for everyone today), Teams (you and 3 bots against 4, claim 50% together), Boss Battle (cut the King's trail 5 times; you have 3 lives, and he calls guards at half health) and 2 Players (split screen on one phone, first to 40%)
-- **5 maps:** Square, Round, Pillars, Maze and Islands (animated water with foam and waves); walls are slid along, never deadly
+- **6 modes:** Classic (claim 50% to win), Timed (most land after 3 minutes), Daily (the same map and start for everyone today), Teams (you and 3 bots against 4, claim 50% together), Boss Battle and 2 Players (split screen on one phone, first to 40%)
+- **3 bosses:** the King (5 hearts, calls guards at half health); beat him to unlock the Queen (6 hearts, drops spiky traps), then the Wizard (7 hearts, blinks home and wipes his trail when you get close). You have 3 lives
+- **9 maps:** Square, Round, Pillars, Maze and Islands (animated water with foam and waves), plus 4 hazard maps: Saw Mill (blades on tracks cut trails), Storm (the arena closes in every 25 s after a warning ring), Conveyor (belts carry you) and Portals (step into one, pop out of its twin, trail and all). Walls are slid along, never deadly; bots understand every hazard
 - **Power-ups:** Speed (1.6× for 4 s), Shield (6 s), Freeze (everyone else at half speed for 4 s), Ghost (cross your own trail for 5 s) and Paint Bomb (claims a circle of land), with icons, sparkles, effects on the squares and HUD chips showing the seconds left
 - **Gold coins** on the map, and a saved wallet: every game pays 2 per % claimed, 5 per knockout, 50 for a win (100 more for beating the King), plus what you picked up
 - **Shop:** spend coins on 8 skins (Stripes, Dots, Shades, Kitty, Ninja, Robot, Galaxy, Rainbow), 7 trail effects (Sparkles, Bubbles, Hearts, Stars, Confetti, Fire, Rainbow) and 5 pets that follow you (Chick, Slime, Boo, Bee, Dragon). A showcase shows your square driving around in your look. Bots wear shop items too.
@@ -122,7 +123,9 @@ python3 -m http.server 8000
 - **Tutorial:** 5 guided steps with a harmless practice bot (leave your land, loop home, grab a power-up, cut a trail, claim 15%), offered before your first game and in Settings; 50 coins the first time
 - **Graphics settings:** quality Low (720p, fewer effects, for older phones), Medium, High (smoother edges, glow under the squares, floating light, a soft vignette) or Ultra (4× anti-aliasing, sharper sprites, more particles), picked for your phone's memory the first time; frame rate 30, 60, 90 or 120 FPS (90 and 120 need a 90/120 Hz screen; on Android 11+ the game asks the screen for that rate); and an FPS counter
 - **Effects:** the edge of freshly claimed land glows, the camera gives a little zoom punch on a big loop, and the screen flashes when you're knocked out
-- **Settings:** sound, music, vibration and joystick size
+- **Settings:** sound, music, vibration, steering (drag joystick, normal or large, or one-thumb tap to turn) and colourblind patterns (each player's land, trail and square get their own pattern)
+- **7 languages:** English, Spanish, Portuguese, Hindi, Indonesian, Russian and Turkish (follows the phone, or pick one in Settings), with fallback fonts for Hindi, Russian and Turkish letters
+- **New-player help:** hint cards in the first games, an explanation the first time you play each hazard map, and a tip after every knockout
 - The menu has a level badge and a dock for the Shop, Missions, Profile and Settings; the results screen shows your XP bar and each reward as it pops in
 - Smooth glowing trails, raised land, particles, a live bots-only game behind the menu, a touch joystick (one per player in 2 Players), a minimap, callouts, sound effects, and **music** made in code (on a background thread, so the game starts at once)
 
@@ -133,15 +136,16 @@ python3 -m http.server 8000
 - `scripts/cosmetics.gd` and `scripts/shop.gd`: the skins, trail effects and pets, and the shop screen
 - `scripts/progress.gd`: levels, missions, the streak, trophies and stats
 - `scripts/gfx.gd`: the graphics quality levels and frame rate
+- `scripts/patterns.gd`: colourblind patterns; `scripts/i18n.gd` and `i18n/*.gd`: languages and translations
 - `scripts/menu_screen.gd`, `missions_screen.gd`, `profile_screen.gd` and `settings_screen.gd`: the menu's other screens
 - `scripts/main.gd`: game flow, controls, camera, HUD and screens
 - `scripts/art.gd`, `scripts/sfx.gd` and `scripts/music.gd`: sprites drawn from SVG, and sounds and music made in code at start-up
 
 **Phones it runs on:** Android 7.0 or newer with a 64-bit (arm64) processor and OpenGL ES 3.0 graphics (almost every phone from 2017 on), about 100 MB of free space, and 2 GB of memory or more (3 GB+ recommended for High, 4 GB+ and a recent chip for Ultra at 120 FPS).
 
-A GitHub Actions workflow (`.github/workflows/godot.yml`) checks the rules (`tests/sim.gd`: bots-only games in every mode and on every map) and the game flow (`tests/flow.gd`: power-ups, winning, coins, saving, pausing, every mode, the shop, levels, missions, trophies, difficulty, the tutorial, the menu screens, graphics settings, music) on every change. The game is built only when the workflow is started by hand (Actions → Build Color Claim HD (Godot) → Run workflow): it makes **ColorClaimHD-1.0.N.apk** (to install on a phone) and **ColorClaimHD-1.0.N.aab** (the App Bundle for Google Play, a Gradle build targeting Android 16 / API 36), checks them, and puts them on the Releases page. Both are signed with the private upload key from the repo's secrets; without it, only a test APK is kept. To open the project yourself, install Godot 4.7 and open `godot/project.godot`.
+A GitHub Actions workflow (`.github/workflows/godot.yml`) checks the rules (`tests/sim.gd`: bots-only games in every mode and on every map) and the game flow (`tests/flow.gd`: power-ups, winning, coins, saving, pausing, every mode, the shop, levels, missions, trophies, difficulty, the tutorial, the menu screens, graphics settings, hazards, bosses, controls, colourblind mode, hints, languages, music) on every change. The game is built only when the workflow is started by hand (Actions → Build Color Claim HD (Godot) → Run workflow): it makes **ColorClaimHD-1.0.N.apk** (to install on a phone) and **ColorClaimHD-1.0.N.aab** (the App Bundle for Google Play, a Gradle build targeting Android 16 / API 36), checks them, and puts them on the Releases page. Both are signed with the private upload key from the repo's secrets; without it, only a test APK is kept. To open the project yourself, install Godot 4.7 and open `godot/project.godot`.
 
-**Google Play:** everything for the store is in [`store/`](store/): a step-by-step guide ([`store/PUBLISHING.md`](store/PUBLISHING.md)), the listing text, the 512 icon, the feature graphic, 8 captioned screenshots and the privacy policy (also [`privacy.html`](privacy.html) on GitHub Pages). `tests/store_shots.gd` retakes the screenshots and `tests/make_icons.gd` redraws the icons.
+**Google Play:** everything for the store is in [`store/`](store/): a step-by-step guide ([`store/PUBLISHING.md`](store/PUBLISHING.md)), the listing text, the 512 icon, the feature graphic, 8 captioned screenshots and the privacy policy (also [`privacy.html`](privacy.html) on GitHub Pages). `tests/store_shots.gd` retakes the raw screenshots, `store/make_assets.py` turns them into the captioned store images and feature graphic, and `tests/make_icons.gd` redraws the icons. Translated store listings are in `store/listing-translations.md`.
 
 ## Android app (APK)
 

@@ -77,16 +77,33 @@ func _run() -> void:
 	await _shot("1-classic")
 	main._to_menu()
 
-	# 2. Boss Battle on Islands
+	# 2. Boss Battle against the Queen, with her traps
 	main.equipped = {"skin": "galaxy", "trail": "fire", "pet": "chick"}
-	await _game("boss", "islands", 25.0)
+	main.prog.stats.king_wins = maxi(1, main.prog.stats.king_wins)
+	main.boss_kind = "queen"
+	await _game("boss", "square", 25.0)
 	await _shot("2-boss")
 	main._to_menu()
+	main.boss_kind = "king"
 
-	# 3. Teams on Round
+	# 3. A hazard map: the Storm closing in
 	main.equipped = {"skin": "robot", "trail": "rainbow", "pet": "bee"}
-	await _game("teams", "round", 35.0)
-	await _shot("3-teams")
+	if not main.prog.stats.maps.has("storm"):
+		main.prog.stats.maps.append("storm") # no first-time hint card in the picture
+	await _game("classic", "storm", 35.0)
+	var w = main.world
+	# Close the storm in once (you're kept in the game), then show the next ring coming
+	main.ending = true
+	w.storm_timer = 99.0
+	w._close_storm(w.storm_r - w.STORM_STEP * 2)
+	if not w.me.alive:
+		w.spawn(w.me, w.N / 2, w.N / 2)
+	main.ending = false
+	w.storm_next = maxf(w.STORM_MIN, w.storm_r - w.STORM_STEP)
+	main._snap_camera()
+	main.tut_card.visible = false
+	await _wait(0.8)
+	await _shot("3-storm")
 	main._to_menu()
 
 	# 4. The shop

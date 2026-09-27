@@ -26,11 +26,11 @@ Color Claim is a fast, colourful territory game you can play in short bursts or 
 • Timed: be the biggest when the 3-minute clock runs out
 • Daily: today's map and start, the same for everyone
 • Teams: you and 3 bots against 4, claim half the map together
-• Boss Battle: cut the King's trail to knock off his hearts before he calls his guards
+• Boss Battle: take down the King, then unlock the Queen (she drops spiky traps) and the Wizard (he teleports away)
 • 2 Players: split screen on one phone, first to 40% wins
 
-5 MAPS
-Square, Round, Pillars, Maze and Islands, each with its own shortcuts and dangers.
+9 MAPS
+Square, Round, Pillars, Maze and Islands, plus 4 hazard maps: Saw Mill (blades cut trails), Storm (the arena closes in), Conveyor (belts carry you) and Portals (jump across the map, trail and all).
 
 POWER-UPS
 Speed, Shield, Freeze, Ghost and Paint Bomb. Grab them before the bots do!
@@ -44,11 +44,14 @@ Spend the coins you win on 8 skins (from Ninja to Galaxy), 7 trail effects (Star
 ALWAYS SOMETHING TO DO
 • 3 new missions every day
 • A daily streak bonus
-• 22 trophies to collect
+• 24 trophies to collect
 • Levels and XP, with coins on every level-up
 
-LOOKS AND PLAYS GREAT
-Smooth, sharp graphics with Low, Medium, High and Ultra quality, and up to 120 FPS on phones with fast screens.
+PLAY YOUR WAY
+• Drag-anywhere joystick or one-thumb tap-to-turn controls
+• Colourblind patterns for every player
+• Low, Medium, High and Ultra graphics, up to 120 FPS on fast screens
+• In English, Español, Português, हिन्दी, Bahasa Indonesia, Русский and Türkçe
 
 PLAY ANYWHERE
 No internet needed, no ads, no accounts and no in-app purchases. Your progress stays on your phone.
@@ -76,6 +79,8 @@ New to the game? A quick 5-step tutorial shows you how to play.
 | Phone screenshots (2 to 8) | `screenshots/1-classic.png` … `8-profile.png` | 1080 × 1920 |
 
 Upload the screenshots in number order: the first two or three are the ones people see without scrolling.
+
+Translated listings (title, short and full description) for Spanish, Portuguese, Hindi, Indonesian, Russian and Turkish are in `listing-translations.md`. Add each under **Main store listing → Manage translations → Add your own translations**.
 
 ## Privacy policy URL
 

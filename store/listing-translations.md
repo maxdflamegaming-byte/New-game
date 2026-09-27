@@ -1,0 +1,357 @@
+# Translated store listings
+
+In Play Console: **Grow users → Store presence → Main store listing → Manage translations → Add your own translations**, pick the language, and paste these. The graphics can stay the same for every language.
+
+## Español (es-ES / es-419)
+
+**App name** (26/30)
+
+```
+Color Claim: Pinta el mapa
+```
+
+**Short description** (80/80)
+
+```
+Sal, pinta el mapa y corta estelas rivales. ¡6 modos, jefes, aspectos, mascotas!
+```
+
+**Full description** (2118/4000)
+
+```
+Sal de tu territorio, dibuja una estela y vuelve a casa para conquistar todo lo que rodees. Cuanto más territorio, más puntos. Pero cuidado: si alguien toca tu estela mientras estás fuera, ¡quedas eliminado!
+
+Color Claim es un juego de territorio rápido y colorido para partidas cortas o para horas. Corta las estelas rivales, coge potenciadores y pinta todo el mapa de tu color.
+
+6 FORMAS DE JUGAR
+• Clásico: sé el primero en conquistar el 50% del mapa
+• Contrarreloj: sé el más grande cuando se acaben los 3 minutos
+• Diario: el mapa y la salida de hoy, iguales para todos
+• Equipos: tú y 3 bots contra 4, conquistad juntos la mitad del mapa
+• Jefes: derrota al Rey y desbloquea a la Reina (suelta trampas con pinchos) y al Mago (se teletransporta)
+• 2 jugadores: pantalla dividida en un móvil, gana el primero en llegar al 40%
+
+9 MAPAS
+Cuadrado, Redondo, Pilares, Laberinto e Islas, más 4 mapas con peligros: Aserradero (las sierras cortan estelas), Tormenta (la arena se cierra), Cinta (las cintas te llevan) y Portales (cruza el mapa, con estela y todo).
+
+POTENCIADORES
+Velocidad, Escudo, Congelar, Fantasma y Bomba de pintura. ¡Cógelos antes que los bots!
+
+BOTS LISTOS
+Los cazadores persiguen tu estela, las tortugas van a lo seguro, los exploradores arriesgan y los coleccionistas van a por cada moneda. Elige Fácil, Normal o Difícil (Difícil da 1,5× monedas).
+
+HAZLO TUYO
+Gasta tus monedas en 8 aspectos (de Ninja a Galaxia), 7 efectos de estela (Estrellas, Fuego, Arcoíris y más) y 5 mascotas que te siguen.
+
+SIEMPRE HAY ALGO QUE HACER
+• 3 misiones nuevas cada día
+• Premio por racha diaria
+• 24 trofeos que conseguir
+• Niveles y XP, con monedas en cada subida de nivel
+
+JUEGA A TU MANERA
+• Joystick en cualquier parte de la pantalla o giro con un solo pulgar
+• Patrones para daltónicos
+• Gráficos Baja, Media, Alta y Ultra, hasta 120 FPS en pantallas rápidas
+• En español, English, português, हिन्दी, Bahasa Indonesia, русский y Türkçe
+
+JUEGA DONDE QUIERAS
+Sin internet, sin anuncios, sin cuentas y sin compras. Tu progreso se queda en tu móvil.
+
+¿Eres nuevo? Un tutorial rápido de 5 pasos te enseña a jugar.
+```
+
+## Português (pt-BR)
+
+**App name** (25/30)
+
+```
+Color Claim: Pinte o mapa
+```
+
+**Short description** (80/80)
+
+```
+Saia, pinte o mapa e corte rastros rivais. 6 modos, chefões, visuais e mascotes!
+```
+
+**Full description** (2098/4000)
+
+```
+Saia do seu território, desenhe um rastro e volte para casa para conquistar tudo o que cercou. Quanto maior o seu território, maior a sua pontuação. Mas cuidado: se alguém tocar no seu rastro enquanto você está fora, você é eliminado!
+
+Color Claim é um jogo de território rápido e colorido, para partidas curtas ou para horas de diversão. Corte os rastros rivais, pegue power-ups e pinte o mapa todo com a sua cor.
+
+6 JEITOS DE JOGAR
+• Clássico: seja o primeiro a conquistar 50% do mapa
+• Cronometrado: seja o maior quando os 3 minutos acabarem
+• Diário: o mapa e o início de hoje, iguais para todos
+• Equipes: você e 3 bots contra 4, conquistem metade do mapa juntos
+• Chefões: derrote o Rei e desbloqueie a Rainha (solta armadilhas com espinhos) e o Mago (se teletransporta)
+• 2 jogadores: tela dividida em um celular, vence quem chegar a 40% primeiro
+
+9 MAPAS
+Quadrado, Redondo, Pilares, Labirinto e Ilhas, mais 4 mapas com perigos: Serraria (lâminas cortam rastros), Tempestade (a arena se fecha), Esteira (as esteiras te levam) e Portais (atravesse o mapa, com rastro e tudo).
+
+POWER-UPS
+Velocidade, Escudo, Congelar, Fantasma e Bomba de tinta. Pegue antes dos bots!
+
+BOTS ESPERTOS
+Caçadores perseguem seu rastro, tartarugas jogam no seguro, exploradores arriscam e colecionadores vão atrás de cada moeda. Escolha Fácil, Normal ou Difícil (Difícil dá 1,5× moedas).
+
+DO SEU JEITO
+Gaste as moedas em 8 visuais (de Ninja a Galáxia), 7 efeitos de rastro (Estrelas, Fogo, Arco-íris e mais) e 5 mascotes que te seguem.
+
+SEMPRE TEM ALGO PARA FAZER
+• 3 missões novas por dia
+• Bônus de sequência diária
+• 24 troféus para colecionar
+• Níveis e XP, com moedas a cada nível
+
+JOGUE COMO QUISER
+• Joystick em qualquer lugar da tela ou controle de virar com um dedo
+• Padrões para daltônicos
+• Gráficos Baixa, Média, Alta e Ultra, até 120 FPS em telas rápidas
+• Em português, English, español, हिन्दी, Bahasa Indonesia, русский e Türkçe
+
+JOGUE ONDE QUISER
+Sem internet, sem anúncios, sem contas e sem compras. Seu progresso fica no seu celular.
+
+Novo por aqui? Um tutorial rápido de 5 passos ensina a jogar.
+```
+
+## हिन्दी (hi-IN)
+
+**App name** (23/30)
+
+```
+Color Claim: नक्शा रंगो
+```
+
+**Short description** (72/80)
+
+```
+बाहर निकलो, नक्शा रंगो, दुश्मन की लकीर काटो। 6 मोड, बॉस, स्किन और पालतू!
+```
+
+**Full description** (1866/4000)
+
+```
+अपनी ज़मीन से बाहर निकलें, लकीर बनाएँ और घर लौटकर घेरे के अंदर का सब जीत लें। जितनी बड़ी ज़मीन, उतना बड़ा स्कोर। पर सावधान: बाहर रहते हुए अगर किसी ने आपकी लकीर छू ली, तो आप बाहर!
+
+Color Claim एक तेज़ और रंगीन गेम है, जिसे थोड़ी देर या घंटों तक खेला जा सकता है। दूसरों की लकीरें काटें, पावर-अप उठाएँ और पूरा नक्शा अपने रंग में रंग दें।
+
+खेलने के 6 तरीके
+• क्लासिक: सबसे पहले नक्शे का 50% जीतें
+• टाइम्ड: 3 मिनट पूरे होने पर सबसे बड़े रहें
+• डेली: आज का नक्शा और शुरुआत, सबके लिए एक जैसे
+• टीमें: आप और 3 बॉट बनाम 4, मिलकर आधा नक्शा जीतें
+• बॉस: राजा को हराएँ, फिर रानी (काँटेदार जाल गिराती है) और जादूगर (गायब हो जाता है) को अनलॉक करें
+• 2 खिलाड़ी: एक फ़ोन पर स्प्लिट स्क्रीन, पहले 40% वाला जीतेगा
+
+9 नक्शे
+चौकोर, गोल, खंभे, भूलभुलैया और द्वीप, और 4 ख़तरनाक नक्शे: आरा मिल (आरियाँ लकीर काटती हैं), तूफ़ान (मैदान सिकुड़ता है), कन्वेयर (बेल्ट आपको ले जाती है) और पोर्टल (लकीर समेत नक्शे के पार जाएँ)।
+
+पावर-अप
+रफ़्तार, ढाल, फ़्रीज़, भूत और पेंट बम। बॉट से पहले उठा लें!
+
+समझदार बॉट
+शिकारी आपकी लकीर का पीछा करते हैं, कछुए संभलकर खेलते हैं, खोजी जोखिम लेते हैं और संग्राहक हर सिक्के के पीछे भागते हैं। आसान, सामान्य या कठिन चुनें (कठिन पर 1.5× सिक्के)।
+
+अपने अंदाज़ में
+जीते हुए सिक्कों से 8 स्किन (निंजा से गैलेक्सी तक), 7 लकीर इफ़ेक्ट (तारे, आग, इंद्रधनुष और भी) और 5 पालतू खरीदें जो आपके पीछे चलते हैं।
+
+हमेशा कुछ नया
+• हर दिन 3 नए मिशन
+• रोज़ खेलने का स्ट्रीक बोनस
+• जीतने के लिए 24 ट्रॉफ़ियाँ
+• लेवल और XP, हर नए लेवल पर सिक्के
+
+अपने तरीके से खेलें
+• स्क्रीन पर कहीं भी जॉयस्टिक, या एक अंगूठे से टैप करके मुड़ें
+• कलर-ब्लाइंड पैटर्न
+• लो, मीडियम, हाई और अल्ट्रा ग्राफ़िक्स, तेज़ स्क्रीन पर 120 FPS तक
+• हिन्दी, English, Español, Português, Bahasa Indonesia, Русский और Türkçe में
+
+कहीं भी खेलें
+इंटरनेट की ज़रूरत नहीं, कोई विज्ञापन नहीं, कोई अकाउंट नहीं और कोई ख़रीदारी नहीं। आपकी प्रगति आपके फ़ोन पर ही रहती है।
+
+नए हैं? 5 आसान कदमों का ट्यूटोरियल खेलना सिखाता है।
+```
+
+## Bahasa Indonesia (id)
+
+**App name** (24/30)
+
+```
+Color Claim: Warnai Peta
+```
+
+**Short description** (75/80)
+
+```
+Keluar, warnai peta, potong jejak lawan. 6 mode, bos, skin, dan peliharaan!
+```
+
+**Full description** (2073/4000)
+
+```
+Keluar dari wilayahmu, buat jejak, lalu kembali pulang untuk menguasai semua yang ada di dalamnya. Makin luas wilayahmu, makin tinggi skormu. Tapi hati-hati: kalau ada yang menyentuh jejakmu saat kamu di luar, kamu tersingkir!
+
+Color Claim adalah game wilayah yang cepat dan penuh warna, seru dimainkan sebentar maupun berjam-jam. Potong jejak lawan, ambil power-up, dan warnai seluruh peta dengan warnamu.
+
+6 CARA BERMAIN
+• Klasik: jadilah yang pertama menguasai 50% peta
+• Berwaktu: jadilah yang terbesar saat 3 menit habis
+• Harian: peta dan titik awal hari ini, sama untuk semua
+• Tim: kamu dan 3 bot melawan 4, kuasai setengah peta bersama
+• Bos: kalahkan Raja, lalu buka Ratu (menjatuhkan jebakan berduri) dan Penyihir (bisa berteleportasi)
+• 2 Pemain: layar terbagi di satu ponsel, pertama ke 40% menang
+
+9 PETA
+Persegi, Bundar, Pilar, Labirin, dan Pulau, plus 4 peta berbahaya: Penggergajian (gergaji memotong jejak), Badai (arena menyempit), Konveyor (sabuk membawamu), dan Portal (lintasi peta, lengkap dengan jejaknya).
+
+POWER-UP
+Cepat, Perisai, Beku, Hantu, dan Bom Cat. Ambil sebelum bot mendahuluimu!
+
+BOT CERDAS
+Pemburu mengejar jejakmu, Kura-kura bermain aman, Penjelajah berani ambil risiko, dan Kolektor mengincar setiap koin. Pilih Mudah, Normal, atau Sulit (Sulit memberi 1,5× koin).
+
+GAYAMU SENDIRI
+Belanjakan koinmu untuk 8 skin (dari Ninja sampai Galaksi), 7 efek jejak (Bintang, Api, Pelangi, dan lainnya), dan 5 peliharaan yang mengikutimu.
+
+SELALU ADA YANG BISA DILAKUKAN
+• 3 misi baru setiap hari
+• Bonus streak harian
+• 24 trofi untuk dikumpulkan
+• Level dan XP, dengan koin di setiap naik level
+
+MAIN SESUKAMU
+• Joystick di mana saja di layar atau kontrol ketuk-untuk-belok dengan satu jempol
+• Pola untuk buta warna
+• Grafis Rendah, Sedang, Tinggi, dan Ultra, hingga 120 FPS di layar cepat
+• Dalam Bahasa Indonesia, English, Español, Português, हिन्दी, Русский, dan Türkçe
+
+MAIN DI MANA SAJA
+Tanpa internet, tanpa iklan, tanpa akun, dan tanpa pembelian. Progresmu tersimpan di ponselmu.
+
+Baru main? Tutorial singkat 5 langkah akan mengajarimu.
+```
+
+## Русский (ru-RU)
+
+**App name** (27/30)
+
+```
+Color Claim: Раскрась карту
+```
+
+**Short description** (79/80)
+
+```
+Выходи, раскрашивай карту и режь чужие следы. 6 режимов, боссы, скины, питомцы!
+```
+
+**Full description** (2002/4000)
+
+```
+Выйдите со своей территории, оставьте след и вернитесь домой, чтобы захватить всё внутри. Чем больше территория, тем больше очков. Но осторожно: если кто-то коснётся вашего следа, пока вы снаружи, — вы выбыли!
+
+Color Claim — быстрая и яркая игра о захвате территории: на пару минут или на несколько часов. Режьте следы соперников, собирайте бонусы и раскрасьте всю карту в свой цвет.
+
+6 РЕЖИМОВ
+• Классика: первым захватите 50% карты
+• На время: будьте крупнейшим, когда истекут 3 минуты
+• Ежедневный: сегодняшняя карта и старт — одни для всех
+• Команды: вы и 3 бота против 4, захватите половину карты вместе
+• Босс: победите Короля, затем откройте Королеву (оставляет шипастые ловушки) и Волшебника (телепортируется)
+• 2 игрока: разделённый экран на одном телефоне, побеждает первый до 40%
+
+9 КАРТ
+Квадрат, Круг, Колонны, Лабиринт и Острова, а также 4 опасные карты: Лесопилка (пилы режут следы), Буря (арена сужается), Конвейер (ленты несут вас) и Порталы (пересекайте карту вместе со следом).
+
+БОНУСЫ
+Скорость, Щит, Заморозка, Призрак и Бомба-краска. Успейте раньше ботов!
+
+УМНЫЕ БОТЫ
+Охотники преследуют ваш след, черепахи играют осторожно, исследователи рискуют, а собиратели охотятся за каждой монетой. Выберите Легко, Обычно или Сложно (на сложном — 1,5× монет).
+
+ВАШ СТИЛЬ
+Тратьте монеты на 8 скинов (от Ниндзя до Галактики), 7 эффектов следа (Звёзды, Огонь, Радуга и другие) и 5 питомцев, которые ходят за вами.
+
+ВСЕГДА ЕСТЬ ЧЕМ ЗАНЯТЬСЯ
+• 3 новых задания каждый день
+• Бонус за ежедневную серию
+• 24 трофея
+• Уровни и опыт, монеты за каждый новый уровень
+
+ИГРАЙТЕ КАК УДОБНО
+• Джойстик в любом месте экрана или поворот касанием одним пальцем
+• Узоры для дальтоников
+• Графика: низкая, средняя, высокая и ультра, до 120 FPS на быстрых экранах
+• На русском, English, español, português, हिन्दी, Bahasa Indonesia и Türkçe
+
+ИГРАЙТЕ ГДЕ УГОДНО
+Без интернета, без рекламы, без аккаунтов и без покупок. Прогресс хранится на вашем телефоне.
+
+Впервые здесь? Короткое обучение из 5 шагов научит играть.
+```
+
+## Türkçe (tr-TR)
+
+**App name** (26/30)
+
+```
+Color Claim: Haritayı Boya
+```
+
+**Short description** (79/80)
+
+```
+Dışarı çık, haritayı boya, rakip izleri kes! 6 mod, boss, kostüm, evcil hayvan!
+```
+
+**Full description** (1965/4000)
+
+```
+Bölgenden çık, bir iz çiz ve içindeki her yeri almak için eve dön. Bölgen ne kadar büyükse puanın o kadar yüksek. Ama dikkat: dışarıdayken biri izine dokunursa elenirsin!
+
+Color Claim, kısa molalarda ya da saatlerce oynanabilen hızlı ve renkli bir bölge oyunu. Rakip izleri kes, güçlendiricileri kap ve tüm haritayı kendi rengine boya.
+
+6 OYUN MODU
+• Klasik: haritanın %50'sini ilk alan sen ol
+• Süreli: 3 dakika bittiğinde en büyük sen ol
+• Günlük: bugünün haritası ve başlangıcı, herkes için aynı
+• Takımlar: sen ve 3 bot, 4 bota karşı; haritanın yarısını birlikte alın
+• Boss: Kral'ı yen, sonra Kraliçe'yi (dikenli tuzaklar bırakır) ve Büyücü'yü (ışınlanır) aç
+• 2 Oyuncu: tek telefonda bölünmüş ekran, %40'a ilk ulaşan kazanır
+
+9 HARİTA
+Kare, Yuvarlak, Sütunlar, Labirent ve Adalar; ayrıca 4 tehlikeli harita: Kereste Fabrikası (bıçaklar izleri keser), Fırtına (arena daralır), Konveyör (bantlar seni taşır) ve Portallar (izinle birlikte haritanın öbür ucuna geç).
+
+GÜÇLENDİRİCİLER
+Hız, Kalkan, Dondur, Hayalet ve Boya Bombası. Botlardan önce kap!
+
+AKILLI BOTLAR
+Avcılar izini kovalar, kaplumbağalar temkinli oynar, kaşifler risk alır, koleksiyoncular her jetonun peşine düşer. Kolay, Normal ya da Zor seç (Zor 1,5× jeton verir).
+
+SENİN TARZIN
+Kazandığın jetonları 8 kostüme (Ninja'dan Galaksi'ye), 7 iz efektine (Yıldızlar, Ateş, Gökkuşağı ve daha fazlası) ve seni takip eden 5 evcil hayvana harca.
+
+HER ZAMAN YAPACAK BİR ŞEY VAR
+• Her gün 3 yeni görev
+• Günlük seri bonusu
+• Toplanacak 24 kupa
+• Seviye ve XP, her seviyede jeton
+
+İSTEDİĞİN GİBİ OYNA
+• Ekranın her yerinde joystick ya da tek başparmakla dokunarak dönme
+• Renk körü desenleri
+• Düşük, Orta, Yüksek ve Ultra grafik; hızlı ekranlarda 120 FPS'ye kadar
+• Türkçe, English, Español, Português, हिन्दी, Bahasa Indonesia ve Русский dillerinde
+
+HER YERDE OYNA
+İnternet yok, reklam yok, hesap yok, satın alma yok. İlerlemen telefonunda kalır.
+
+Yeni misin? 5 adımlık kısa bir eğitim sana oynamayı öğretir.
+```

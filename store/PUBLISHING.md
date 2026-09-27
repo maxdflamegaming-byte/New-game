@@ -110,3 +110,4 @@ Make the changes, then run the workflow again (step 3). Upload the new `.aab` as
 - Privacy policy (`privacy.html`, `store/privacy-policy.md`)
 - Store listing text, icon, feature graphic and 8 screenshots (this folder)
 - Themed (monochrome) icon for Android 13+ home screens
+- The game in 7 languages, and store listings translated into Spanish, Portuguese, Hindi, Indonesian, Russian and Turkish (`listing-translations.md`): add them in Play Console under **Main store listing → Manage translations**
