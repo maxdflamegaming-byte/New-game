@@ -108,15 +108,21 @@ python3 -m http.server 8000
 
 ## Color Claim HD (Godot)
 
-`godot/` is Color Claim rebuilt in the free [Godot](https://godotengine.org) engine (4.4). It draws everything with the phone's GPU at the screen's full resolution, so it's sharp and smooth. This first version has the core game: Classic mode (claim 50% to win) against 7 bots with personalities, smooth glowing trails, raised land, particles, a live bots-only game behind the menu, a touch joystick, a minimap, callouts, sound effects and a saved best score. The other modes, maps and progression will follow.
+`godot/` is Color Claim rebuilt in the free [Godot](https://godotengine.org) engine (4.4). It draws everything with the phone's GPU at the screen's full resolution, so it's sharp and smooth. So far it has:
+
+- **Classic mode** (claim 50% to win) against 7 bots with personalities, who also grab power-ups and coins
+- **5 maps:** Square, Round, Pillars, Maze and Islands (animated water with foam and waves); walls are slid along, never deadly
+- **Power-ups:** Speed (1.6× for 4 s), Shield (6 s), Freeze (everyone else at half speed for 4 s), Ghost (cross your own trail for 5 s) and Paint Bomb (claims a circle of land), with icons, sparkles, effects on the squares and HUD chips showing the seconds left
+- **Gold coins** on the map, and a saved wallet: every game pays 2 per % claimed, 5 per knockout, 50 for a win, plus what you picked up
+- Smooth glowing trails, raised land, particles, a live bots-only game behind the menu, a touch joystick, a minimap, callouts, sound effects, and **music** made in code (on a background thread, so the game starts at once)
 
 - `scripts/world.gd`: the board and rules (movement, trails, capturing land, knockouts, bumps)
 - `scripts/bots.gd`: bot brains (loops, the safe way home, trail safety, hunting)
 - `scripts/board_view.gd` and `scripts/player_view.gd`: drawing and effects
 - `scripts/main.gd`: game flow, controls, camera, HUD and screens
-- `scripts/art.gd` and `scripts/sfx.gd`: sprites drawn from SVG and sounds made in code at start-up
+- `scripts/art.gd`, `scripts/sfx.gd` and `scripts/music.gd`: sprites drawn from SVG, and sounds and music made in code at start-up
 
-A GitHub Actions workflow (`.github/workflows/godot.yml`) checks the rules (`tests/sim.gd`, bots-only games) and builds **ColorClaimHD-0.N.apk** on every change, then puts it on the Releases page. It installs next to the older Color Claim app. To open the project yourself, install Godot 4.4 and open `godot/project.godot`.
+A GitHub Actions workflow (`.github/workflows/godot.yml`) checks the rules (`tests/sim.gd`: bots-only games on every map) and the game flow (`tests/flow.gd`: power-ups, winning, coins, saving, pausing, music) and builds **ColorClaimHD-0.N.apk** on every change, then puts it on the Releases page. It installs next to the older Color Claim app. To open the project yourself, install Godot 4.4 and open `godot/project.godot`.
 
 ## Android app (APK)
 

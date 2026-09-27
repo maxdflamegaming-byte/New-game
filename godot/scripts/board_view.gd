@@ -8,6 +8,10 @@ const BG := Color("#cfd6e4")
 const EDGE := Color("#aab4c8")
 const FLOOR := Color("#f5f7fc")
 const CHECK := Color("#ebeff8")
+const PILLAR := Color("#6b7690")
+const PILLAR_DARK := Color("#4a5369")
+const WATER := Color("#56b6e2")
+const SHORE := Color("#3f8fb8")
 
 var w
 var font: Font
@@ -17,12 +21,18 @@ var lines := {} # player id -> [glow, rope, shine] Line2Ds
 var danger := 0.0
 
 var _floor: Node2D
+var _water: Node2D
+var _items: Node2D
 var _land: Node2D
 var _fx: Node2D
 var _trails: Node2D
 var _actors: Node2D
 var _top: Node2D
 var _land_version := -1
+var _map_version := -1
+var _waves := PackedVector2Array() # spots on the sea where wave crests roll
+var _icons := {}
+var _coin: Texture2D
 var _flashes := [] # {cells, life, max, origin}
 var _fades := [] # {cells, color, life}
 var _rings := [] # {pos, color, life, size}
@@ -41,7 +51,10 @@ func setup(world, ui_font: Font, px: int) -> void:
 	_spark = Art.tex(Art.SPARK, 64)
 	_add_mat = CanvasItemMaterial.new()
 	_add_mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
-	for n in ["_floor", "_land", "_fx", "_trails", "_actors", "_top"]:
+	_coin = Art.tex(Art.COIN, 96)
+	for k in Art.ICONS:
+		_icons[k] = Art.tex(Art.ICONS[k], 96)
+	for n in ["_floor", "_water", "_land", "_fx", "_trails", "_items", "_actors", "_top"]:
 		var node := Node2D.new()
 		node.name = n
 		add_child(node)
@@ -49,7 +62,13 @@ func setup(world, ui_font: Font, px: int) -> void:
 	_floor.draw.connect(_draw_floor)
 	_land.draw.connect(_draw_land)
 	_fx.draw.connect(_draw_fx)
+	_water.draw.connect(_draw_water)
+	_items.draw.connect(_draw_items)
+	_items.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	w.captured.connect(_on_captured)
+	w.picked.connect(_on_picked)
+	w.painted.connect(_on_painted)
+	w.coin_taken.connect(func(_p, at): burst(at, Color("#ffc93c"), 10, 180.0))
 	w.knocked_out.connect(_on_knocked_out)
 	w.spawned.connect(_on_spawned)
 
@@ -95,9 +114,17 @@ func rebuild() -> void:
 func _process(dt: float) -> void:
 	if w == null or w.players.is_empty():
 		return
+	if w.map_version != _map_version:
+		_map_version = w.map_version
+		_find_waves()
+		_floor.queue_redraw()
+		_water.queue_redraw() # clears the waves when leaving Islands
 	if w.land_version != _land_version:
 		_land_version = w.land_version
 		_land.queue_redraw()
+	if w.map_id == "islands":
+		_water.queue_redraw()
+	_items.queue_redraw()
 	_update_trails()
 	# Effects fade out
 	for f in _flashes:
@@ -117,6 +144,7 @@ func _process(dt: float) -> void:
 			leader = p
 	for id in views:
 		views[id].leader = leader != null and leader.id == id
+		views[id].frozen = w.freezer != null and w.freezer.id != id
 
 
 func _update_trails() -> void:
@@ -152,16 +180,124 @@ func _update_trails() -> void:
 func _draw_floor() -> void:
 	var n: int = w.N
 	var size := n * CELL
-	# Far background, then a soft shadow and a rim under the board
-	_floor.draw_rect(Rect2(-size, -size, size * 3, size * 3), BG)
-	for k in range(4, 0, -1):
-		var g := CELL * 0.4 * k
-		_floor.draw_rect(Rect2(-6 - g, -6 + CELL * 0.5 + g * 0.6, size + 12 + g * 2, size + 12 + g), Color(0.08, 0.1, 0.18, 0.05))
-	_floor.draw_rect(Rect2(-6, -6 + CELL * 0.45, size + 12, size + 12), EDGE)
-	_floor.draw_rect(Rect2(0, 0, size, size), FLOOR)
+	var wall: PackedByteArray = w.wall
+	var islands: bool = w.map_id == "islands"
+	var open_board: bool = w.map_id != "round" and not islands
+	# Far background (the sea on Islands), then a soft shadow and a rim under a square board
+	_floor.draw_rect(Rect2(-size, -size, size * 3, size * 3), WATER if islands else BG)
+	if open_board:
+		for k in range(4, 0, -1):
+			var g := CELL * 0.4 * k
+			_floor.draw_rect(Rect2(-6 - g, -6 + CELL * 0.5 + g * 0.6, size + 12 + g * 2, size + 12 + g), Color(0.08, 0.1, 0.18, 0.05))
+		_floor.draw_rect(Rect2(-6, -6 + CELL * 0.45, size + 12, size + 12), EDGE)
+	elif not islands:
+		_floor.draw_circle(Vector2(size / 2, size / 2 + CELL * 0.45), size / 2 - CELL * 0.6, EDGE, true, -1, true)
+	# Open ground: a raised edge where it meets the sea or the outside, then the checker
+	for y in n:
+		for x in n:
+			var i := y * n + x
+			if wall[i] == 2 or (y + 1 < n and wall[i + n] != 2):
+				continue
+			_floor.draw_rect(Rect2(x * CELL, (y + 1) * CELL - 1, CELL, CELL * 0.4), SHORE if islands else EDGE)
+	for y in n:
+		var x := 0
+		while x < n:
+			if wall[y * n + x] == 2:
+				x += 1
+				continue
+			var e := x
+			while e + 1 < n and wall[y * n + e + 1] != 2:
+				e += 1
+			_floor.draw_rect(Rect2(x * CELL, y * CELL, (e - x + 1) * CELL, CELL), FLOOR)
+			x = e + 1
 	for y in n:
 		for x in range(y % 2, n, 2):
-			_floor.draw_rect(Rect2(x * CELL, y * CELL, CELL, CELL), CHECK)
+			if wall[y * n + x] != 2:
+				_floor.draw_rect(Rect2(x * CELL, y * CELL, CELL, CELL), CHECK)
+	# Foam on the water side of every shore
+	if islands:
+		var f := CELL * 0.22
+		var foam := Color(1, 1, 1, 0.6)
+		for y in n:
+			for x in n:
+				var i := y * n + x
+				if wall[i] != 2:
+					continue
+				var px := x * CELL
+				var py := y * CELL
+				if y > 0 and wall[i - n] != 2:
+					_floor.draw_rect(Rect2(px, py + CELL * 0.4, CELL, f), foam)
+				if y < n - 1 and wall[i + n] != 2:
+					_floor.draw_rect(Rect2(px, py + CELL - f, CELL, f), foam)
+				if x > 0 and wall[i - 1] != 2:
+					_floor.draw_rect(Rect2(px, py, f, CELL), foam)
+				if x < n - 1 and wall[i + 1] != 2:
+					_floor.draw_rect(Rect2(px + CELL - f, py, f, CELL), foam)
+	# Pillars and maze walls: raised blocks with a lit top edge
+	for pass_i in 3:
+		for y in n:
+			var x := 0
+			while x < n:
+				if wall[y * n + x] != 1:
+					x += 1
+					continue
+				var e := x
+				while e + 1 < n and wall[y * n + e + 1] == 1:
+					e += 1
+				var r := Rect2(x * CELL, y * CELL, (e - x + 1) * CELL, CELL)
+				if pass_i == 0:
+					_floor.draw_rect(Rect2(r.position + Vector2(0, CELL * 0.35), r.size), PILLAR_DARK)
+				elif pass_i == 1:
+					_floor.draw_rect(r, PILLAR)
+				elif y == 0 or wall[(y - 1) * n + x] != 1:
+					_floor.draw_rect(Rect2(r.position, Vector2(r.size.x, CELL * 0.14)), Color(1, 1, 1, 0.22))
+				x = e + 1
+
+
+## Where wave crests roll on the Islands sea
+func _find_waves() -> void:
+	_waves.clear()
+	if w.map_id != "islands":
+		return
+	var n: int = w.N
+	for y in range(0, n, 3):
+		for x in n:
+			if (x + y * 2) % 5 == 0 and x + 1 < n and w.wall[y * n + x] == 2 and w.wall[y * n + x + 1] == 2:
+				_waves.append(Vector2(x, y))
+
+
+func _draw_water() -> void:
+	var t := Time.get_ticks_msec() / 1000.0
+	var crest := Color(1, 1, 1, 0.42)
+	for q in _waves:
+		var o := Vector2(q.x * CELL + sin(t * 1.2 + q.y * 0.7 + q.x * 0.3) * CELL * 0.6, q.y * CELL + sin(t * 2.0 + q.x) * CELL * 0.15)
+		_water.draw_polyline(PackedVector2Array([o, o + Vector2(CELL * 0.35, -CELL * 0.22), o + Vector2(CELL * 0.8, -CELL * 0.28), o + Vector2(CELL * 1.2, 0)]), crest, CELL * 0.12, true)
+
+
+## Power-ups bob and sparkle; coins spin and blink before they vanish
+func _draw_items() -> void:
+	var t := Time.get_ticks_msec() / 1000.0
+	for pu in w.powerups:
+		var c: Color = w.POWERUPS[pu.kind].color
+		var at: Vector2 = pu.pos * CELL + Vector2(0, sin(t * 4.0 + pu.pos.x) * CELL * 0.15)
+		var r := CELL * 0.85 * minf(1.0, pu.age * 4.0)
+		_items.draw_circle(at, r * (1.5 + 0.15 * sin(t * 6.0)), Color(c, 0.25), true, -1, true)
+		_items.draw_circle(at, r, Color.WHITE, true, -1, true)
+		_items.draw_arc(at, r, 0, TAU, 40, c, r * 0.18, true)
+		_items.draw_texture_rect(_icons[pu.kind], Rect2(at - Vector2(r, r) * 0.68, Vector2(r, r) * 1.36), false)
+		for k in 3:
+			var a := t * 2.5 + k * TAU / 3
+			var sp := at + Vector2.from_angle(a) * r * 1.45
+			_items.draw_texture_rect(_spark, Rect2(sp - Vector2(r, r) * 0.2, Vector2(r, r) * 0.4), false, Color(1, 1, 1, 0.9))
+	for co in w.coins:
+		if co.life < 3 and int(co.life * 8) % 2:
+			continue
+		var at: Vector2 = co.pos * CELL + Vector2(0, sin(t * 3.0 + co.pos.x) * CELL * 0.1)
+		var r := CELL * 0.5 * minf(1.0, co.age * 4.0)
+		var spin := maxf(0.15, absf(cos(t * 4.0 + co.pos.x)))
+		_items.draw_set_transform(at, 0, Vector2(spin, 1))
+		_items.draw_texture_rect(_coin, Rect2(-r, -r, r * 2, r * 2), false)
+		_items.draw_set_transform(Vector2.ZERO)
 
 
 func _draw_land() -> void:
@@ -286,6 +422,18 @@ func _on_knocked_out(v: Player, _killer: Player, _how: String, lost: PackedInt32
 	_top.add_child(tiles)
 	tiles.emitting = true
 	tiles.finished.connect(tiles.queue_free)
+
+
+func _on_picked(p: Player, kind: String, at: Vector2) -> void:
+	burst(at, w.POWERUPS[kind].color, 20, 300.0)
+	if kind == "shield" or kind == "speed":
+		_rings.append({"pos": p.pos, "color": w.POWERUPS[kind].color, "life": 0.6, "size": 5.0})
+
+
+func _on_painted(p: Player, cells: PackedInt32Array) -> void:
+	_flashes.append({"cells": cells, "life": 0.6, "max": 0.6, "origin": p.pos})
+	_rings.append({"pos": p.pos, "color": w.POWERUPS.paint.color, "life": 0.6, "size": 9.0})
+	burst(p.pos, w.POWERUPS.paint.color, 36, 480.0)
 
 
 func _on_spawned(p: Player) -> void:

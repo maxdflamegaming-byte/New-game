@@ -2,10 +2,10 @@ extends RefCounted
 ## Bot brains: plan loops out of their land, head home the safe way, and hunt trails.
 
 const PERSONAS := {
-	"hunter": {"aggro": 0.8, "greed": 26, "loop": 0.9, "flee": 4},
-	"turtle": {"aggro": 0.06, "greed": 18, "loop": 0.7, "flee": 8},
-	"explorer": {"aggro": 0.15, "greed": 60, "loop": 1.6, "flee": 5},
-	"collector": {"aggro": 0.25, "greed": 35, "loop": 1.0, "flee": 5},
+	"hunter": {"aggro": 0.8, "greed": 26, "loop": 0.9, "flee": 4, "grab": 0.3},
+	"turtle": {"aggro": 0.06, "greed": 18, "loop": 0.7, "flee": 8, "grab": 0.3},
+	"explorer": {"aggro": 0.15, "greed": 60, "loop": 1.6, "flee": 5, "grab": 0.3},
+	"collector": {"aggro": 0.25, "greed": 35, "loop": 1.0, "flee": 5, "grab": 0.9},
 	"wildcard": {},
 }
 const PERSONA_MIX := ["hunter", "turtle", "explorer", "collector", "wildcard", "hunter", "explorer"]
@@ -36,6 +36,7 @@ func give_personality(p: Player, id: String) -> void:
 		p.greed = d.greed
 		p.loop_scale = d.loop
 	p.flee = d.get("flee", 5)
+	p.grab_chance = d.get("grab", 0.5)
 
 
 # ---------- Pathfinding ----------
@@ -47,9 +48,14 @@ func _touches_own_trail(p: Player, x: int, y: int) -> bool:
 		or (y > 0 and w.trail[i - n] == p.id) or (y < n - 1 and w.trail[i + n] == p.id)
 
 
-## Next to the map edge? Squares need room to turn, so bots keep off it when they can.
+## Next to a wall, the water or the map edge? Squares need room to turn, so bots keep off
+## them when they can.
 func _beside_wall(x: int, y: int) -> bool:
-	return x <= 0 or y <= 0 or x >= w.N - 1 or y >= w.N - 1
+	var n: int = w.N
+	if x <= 0 or y <= 0 or x >= n - 1 or y >= n - 1:
+		return true
+	var i := y * n + x
+	return w.wall[i - 1] != 0 or w.wall[i + 1] != 0 or w.wall[i - n] != 0 or w.wall[i + n] != 0
 
 
 ## Breadth-first search from the bot's head to its nearest own land that never steps on its
@@ -82,7 +88,7 @@ func _bfs_home(p: Player, padded: bool):
 			if nx < 0 or ny < 0 or nx >= n or ny >= n:
 				continue
 			var j := ny * n + nx
-			if _mark[j] == _gen or w.trail[j] == p.id:
+			if _mark[j] == _gen or w.trail[j] == p.id or w.wall[j]:
 				continue
 			if padded and (absi(nx - p.cell.x) > 2 or absi(ny - p.cell.y) > 2):
 				if _touches_own_trail(p, nx, ny) or (w.land[j] != p.id and _beside_wall(nx, ny)):
@@ -111,13 +117,24 @@ func safe_steps(p: Player, desired: float, steps := LOOK, dt := 0.05) -> int:
 	var v: float = w.speed_of(p)
 	for k in steps:
 		a += clampf(wrapf(desired - a, -PI, PI), -w.TURN * dt, w.TURN * dt)
-		x = clampf(x + cos(a) * v * dt, 0.01, n - 0.01)
-		y = clampf(y + sin(a) * v * dt, 0.01, n - 0.01)
+		var nx := clampf(x + cos(a) * v * dt, 0.01, n - 0.01)
+		var ny := clampf(y + sin(a) * v * dt, 0.01, n - 0.01)
+		# Walls aren't deadly: slide along them exactly like the real move does
+		if w.is_wall_at(nx, ny):
+			if not w.is_wall_at(x, ny):
+				nx = x
+			elif not w.is_wall_at(nx, y):
+				ny = y
+			else:
+				nx = x
+				ny = y
+		x = nx
+		y = ny
 		var fx := int(x)
 		var fy := int(y)
 		if fx == cx and fy == cy:
 			continue
-		if fx != cx and fy != cy and w.trail[cy * n + fx] == p.id:
+		if fx != cx and fy != cy and w.trail[cy * n + fx] == p.id and w.wall[cy * n + fx] == 0:
 			return k
 		if w.trail[fy * n + fx] == p.id:
 			return k
@@ -157,11 +174,12 @@ func _clear_lane(a: Vector2, b: Vector2, r: float) -> bool:
 
 func plan_loop(p: Player) -> void:
 	var n: int = w.N
+	var tight := 0.55 if w.map_id == "islands" else 1.0 # small islands: small loops
 	for tries in 10:
 		var shrink := 1.0 if tries < 6 else 0.5
 		var a := randf() * TAU
-		var length := randf_range(5, 11 + minf(10, w.counts[p.id] / 60.0)) * p.loop_scale * shrink
-		var wid := randf_range(4, 10) * p.loop_scale * shrink * (1 if randf() < 0.5 else -1)
+		var length := randf_range(5, 11 + minf(10, w.counts[p.id] / 60.0)) * p.loop_scale * tight * shrink
+		var wid := randf_range(4, 10) * p.loop_scale * tight * shrink * (1 if randf() < 0.5 else -1)
 		var A := (p.pos + Vector2.from_angle(a) * length).clamp(Vector2(1.5, 1.5), Vector2(n - 1.5, n - 1.5))
 		var B := (A + Vector2.from_angle(a + PI / 2) * wid).clamp(Vector2(1.5, 1.5), Vector2(n - 1.5, n - 1.5))
 		var r := 1.0 if tries < 8 else 0.0
@@ -202,7 +220,8 @@ func think(p: Player) -> void:
 				if o and o != p and o.alive and o.pos.distance_to(p.pos) < p.flee:
 					threat = true
 					break
-		if threat or p.trail.size() > p.greed:
+		var greed := minf(p.greed, 22) if w.map_id == "islands" else p.greed
+		if threat or p.trail.size() > greed:
 			go_home(p)
 			return
 	# Hunt: go for the closest part of a nearby trail. The bigger you get, the further bots
@@ -217,6 +236,22 @@ func think(p: Player) -> void:
 				p.wp = [_closest_trail_point(p, o)]
 				p.mode = "hunt"
 				return
+	# At home: sometimes go and grab a nearby power-up (collectors also go for coins)
+	if not outside and p.mode != "grab":
+		var goal = null
+		for pu in w.powerups:
+			if pu.pos.distance_to(p.pos) < 12:
+				goal = pu.pos
+				break
+		if goal == null and p.persona == "collector":
+			for c in w.coins:
+				if c.pos.distance_to(p.pos) < 15:
+					goal = c.pos
+					break
+		if goal != null and randf() < p.grab_chance:
+			p.wp = [goal]
+			p.mode = "grab"
+			return
 	if not outside and p.wp.is_empty():
 		plan_loop(p)
 

@@ -7,6 +7,7 @@ const CELL := 32.0
 var p: Player
 var leader := false
 var threat := false
+var frozen := false
 var label: Label
 var _body: Texture2D
 var _side: Texture2D
@@ -57,11 +58,26 @@ func _draw() -> void:
 		var fade := 0.5 + 0.5 * sin(t * 20.0) if p.shield < 1.5 else 1.0
 		draw_circle(Vector2(0, bob), s * 0.98, Color(0.31, 0.55, 1.0, 0.13 * fade), true, -1, true)
 		draw_arc(Vector2(0, bob), s * 0.98 + sin(t * 6.0) * 1.5, 0, TAU, 48, Color(0.31, 0.55, 1.0, 0.85 * fade), 3.0, true)
+	# Speed: motion lines streaming behind
+	if p.fx.speed > 0:
+		var back := Vector2.from_angle(p.angle + PI)
+		var side := back.orthogonal()
+		for k in [-0.35, 0.0, 0.35]:
+			var from: Vector2 = back * s * 0.75 + side * k * s + Vector2(0, bob)
+			var length: float = s * (0.6 + 0.3 * sin(t * 30.0 + k * 9.0))
+			draw_line(from, from + back * length, Color(1.0, 0.72, 0.3, 0.75), maxf(2.0, CELL * 0.14), true)
+	# Ghost: see-through and flickering
+	if p.fx.ghost > 0:
+		modulate.a = 0.45 + 0.15 * sin(t * 10.0)
+	else:
+		modulate.a = 1.0
 	# Body, leaning into turns and squashing a little when it lands
 	draw_set_transform(Vector2(0, bob), p.turning * 0.14, Vector2(1 + p.squash * 0.12, 1 - p.squash * 0.12))
 	draw_texture_rect(_side, Rect2(-s / 2, -s / 2 + s * 0.17, s, s), false, p.dark)
 	draw_texture_rect(_body, Rect2(-s / 2, -s / 2, s, s), false, p.color)
 	draw_texture_rect(_gloss, Rect2(-s / 2, -s / 2, s, s), false)
+	if frozen:
+		draw_texture_rect(_side, Rect2(-s / 2, -s / 2, s, s), false, Color(0.63, 0.88, 1.0, 0.55))
 	# Eyes look the way it's heading
 	var look := Vector2.from_angle(p.angle)
 	for side in [-1, 1]:

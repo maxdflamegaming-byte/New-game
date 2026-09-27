@@ -12,12 +12,15 @@ const NAVY := Color("#1d2342")
 var world
 var view
 var sfx
+var music
 var cam: Camera2D
 var font: Font
 var font_med: Font
 
 var state := "menu" # menu, countdown, play, won, paused, over
 var my_color := 0
+var map_id := "square"
+var wallet := 0 # coins you've saved up
 var best := 0.0
 var games := 0
 var wins := 0
@@ -27,6 +30,7 @@ var shake := 0.0
 var peak := 0.0
 var play_time := 0.0
 var ending := false
+var _game_id := 0 # bumps every game, so a delayed event from an old game does nothing
 var _kos: Array[float] = []
 var _marks := {}
 var _hud_timer := 0.0
@@ -44,12 +48,16 @@ var hud: Control
 var pct_label: Label
 var goal_bar: Control
 var status_label: Label
+var coin_label: Label
+var fx_row: HBoxContainer
 var board_rows: Array = []
 var minimap: TextureRect
 var mm_dot: Control
 var mm_img: Image
 var mm_tex: ImageTexture
 var toast_label: Label
+var toast_panel: PanelContainer
+var _toast_tween: Tween
 var callout_label: Label
 var count_label: Label
 var stick_view: Control
@@ -60,6 +68,10 @@ var over_title: Label
 var over_reason: Label
 var over_stats: Label
 var over_best: Label
+var over_coins: Label
+var wallet_label: Label
+var maps_row: HBoxContainer
+var music_btn: Button
 var best_label: Label
 var swatches: HBoxContainer
 var sound_btn: Button
@@ -73,6 +85,9 @@ func _ready() -> void:
 	sfx = preload("res://scripts/sfx.gd").new()
 	sfx.muted = get_meta("muted", false)
 	add_child(sfx)
+	music = preload("res://scripts/music.gd").new()
+	music.enabled = get_meta("music", true)
+	add_child(music)
 	world = preload("res://scripts/world.gd").new()
 	add_child(world)
 	view = preload("res://scripts/board_view.gd").new()
@@ -83,6 +98,8 @@ func _ready() -> void:
 	cam.make_current()
 	world.captured.connect(_on_captured)
 	world.knocked_out.connect(_on_knocked_out)
+	world.picked.connect(_on_picked)
+	world.coin_taken.connect(_on_coin)
 	_build_ui()
 	_start_demo()
 
@@ -90,8 +107,9 @@ func _ready() -> void:
 # ---------- Game flow ----------
 
 func _start_demo() -> void:
+	_game_id += 1
 	state = "menu"
-	world.setup(my_color, "You", true)
+	world.setup(my_color, "You", true, map_id)
 	view.rebuild()
 	_snap_camera()
 	_show(menu)
@@ -99,7 +117,8 @@ func _start_demo() -> void:
 
 
 func start_game() -> void:
-	world.setup(my_color, "You", false)
+	_game_id += 1
+	world.setup(my_color, "You", false, map_id)
 	view.rebuild()
 	_snap_camera()
 	state = "countdown"
@@ -172,8 +191,10 @@ func _win() -> void:
 	_callout("VICTORY!", YELLOW)
 	for i in 6:
 		view.burst(world.me.pos + Vector2(randf_range(-6, 6), randf_range(-5, 5)), world.COLORS[i], 30, 520.0)
+	var id := _game_id
 	await get_tree().create_timer(1.6).timeout
-	_game_over(true, "You claimed %d%% of the map!" % int(world.WIN_PCT))
+	if id == _game_id:
+		_game_over(true, "You claimed %d%% of the map!" % int(world.WIN_PCT))
 
 
 func _game_over(won: bool, reason: String) -> void:
@@ -187,7 +208,10 @@ func _game_over(won: bool, reason: String) -> void:
 	var new_best := score > best
 	if new_best:
 		best = score
+	var earned: int = roundi(score * 2) + world.me.kills * 5 + (50 if won else 0) + world.coins_picked
+	wallet += earned
 	_save()
+	over_coins.text = "+%d coins" % earned
 	over_title.text = "You win!" if won else "Game over"
 	over_title.label_settings.font_color = YELLOW if won else Color.WHITE
 	over_reason.text = reason
@@ -264,8 +288,10 @@ func _on_knocked_out(v: Player, killer: Player, how: String, _lost: PackedInt32A
 			else "%s swallowed all your land!" % killer.name if how == "swallow" \
 			else "You bumped into %s outside your land!" % killer.name if how == "bump" \
 			else "%s cut your trail!" % killer.name
+		var id := _game_id
 		await get_tree().create_timer(0.9).timeout
-		_game_over(false, reason)
+		if id == _game_id:
+			_game_over(false, reason)
 	elif killer == me and v != me:
 		sfx.play("cut")
 		shake = maxf(shake, 0.4)
@@ -278,6 +304,30 @@ func _on_knocked_out(v: Player, killer: Player, how: String, _lost: PackedInt32A
 			_callout("TRIPLE KO!", Color("#ff5d73"))
 		elif _kos.size() == 2:
 			_callout("DOUBLE KO!", Color("#ff8c42"))
+
+
+const PICK_TOASTS := {
+	"speed": "Speed boost!", "shield": "Shield! Nobody can cut your trail", "freeze": "Freeze! Everyone else slows down",
+	"ghost": "Ghost! You can cross your own trail", "paint": "Paint bomb!",
+}
+
+
+func _on_picked(p: Player, kind: String, _at: Vector2) -> void:
+	if state == "menu":
+		return
+	if p == world.me:
+		sfx.play(kind)
+		_toast(PICK_TOASTS[kind])
+		_vibrate(15)
+	elif kind == "freeze" and world.me.alive and p.pos.distance_to(world.me.pos) < 40:
+		sfx.play("freeze")
+		_toast("%s froze everyone!" % p.name)
+
+
+func _on_coin(p: Player, at: Vector2) -> void:
+	if p == world.me and state != "menu":
+		sfx.play("coin")
+		view.float_text(at + Vector2(0, -1), "+%d" % world.COIN_VALUE, Color("#ffd23f"), Color("#9a6a00"), 0.8)
 
 
 func _milestones() -> void:
@@ -401,6 +451,29 @@ func _update_hud() -> void:
 	goal_bar.queue_redraw()
 	var kos := "%d KO%s" % [me.kills, "" if me.kills == 1 else "s"]
 	status_label.text = ("#%d of %d  ·  %s" % [world.rank_of(me), world.alive_count(), kos]) if me.alive else "Knocked out  ·  " + kos
+	coin_label.text = str(wallet + world.coins_picked)
+	# Power-ups running now, with seconds left
+	for c in fx_row.get_children():
+		c.queue_free()
+	var chips := []
+	if me.alive:
+		for k in me.fx:
+			if me.fx[k] > 0:
+				chips.append([world.POWERUPS[k].name, me.fx[k], world.POWERUPS[k].color])
+		if me.shield > 0:
+			chips.append(["Shield", me.shield, world.POWERUPS.shield.color])
+		if world.freezer and world.freezer != me:
+			chips.append(["Frozen!", world.freezer.fx.freeze, Color("#3fc7f5")])
+	for c in chips:
+		var chip := PanelContainer.new()
+		var st := _style(c[2], 12)
+		st.content_margin_left = 10
+		st.content_margin_right = 10
+		st.content_margin_top = 2
+		st.content_margin_bottom = 2
+		chip.add_theme_stylebox_override("panel", st)
+		chip.add_child(_label("%s %ds" % [c[0], ceili(c[1])], 18, Color.WHITE))
+		fx_row.add_child(chip)
 	var ranked := []
 	for p in world.players:
 		if p and p.alive:
@@ -446,6 +519,17 @@ func _update_minimap() -> void:
 			data[o + 1] = lut[id * 4 + 1]
 			data[o + 2] = lut[id * 4 + 2]
 			data[o + 3] = 255
+		elif world.wall[i] == 1:
+			data[o] = 107
+			data[o + 1] = 118
+			data[o + 2] = 144
+			data[o + 3] = 255
+		elif world.wall[i] == 2:
+			var sea: bool = world.map_id == "islands"
+			data[o] = 124 if sea else 200
+			data[o + 1] = 199 if sea else 207
+			data[o + 2] = 232 if sea else 222
+			data[o + 3] = 255 if sea else 120
 		else:
 			data[o] = 235
 			data[o + 1] = 239
@@ -460,10 +544,12 @@ func _update_minimap() -> void:
 
 func _toast(text: String) -> void:
 	toast_label.text = text
-	toast_label.modulate.a = 1.0
-	var tw := create_tween()
-	tw.tween_interval(1.2)
-	tw.tween_property(toast_label, "modulate:a", 0.0, 0.3)
+	toast_panel.modulate.a = 1.0
+	if _toast_tween:
+		_toast_tween.kill()
+	_toast_tween = create_tween()
+	_toast_tween.tween_interval(1.4)
+	_toast_tween.tween_property(toast_panel, "modulate:a", 0.0, 0.3)
 
 
 func _callout(text: String, color: Color) -> void:
@@ -591,6 +677,19 @@ func _build_ui() -> void:
 	status_label = _label("", 22, MUTED, 0, INK, font_med)
 	status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	lv.add_child(status_label)
+	var coin_row := HBoxContainer.new()
+	coin_row.add_theme_constant_override("separation", 6)
+	var coin_icon := TextureRect.new()
+	coin_icon.texture = Art.tex(Art.COIN, 64)
+	coin_icon.custom_minimum_size = Vector2(26, 26)
+	coin_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	coin_row.add_child(coin_icon)
+	coin_label = _label("0", 24, Color("#b07800"))
+	coin_row.add_child(coin_label)
+	lv.add_child(coin_row)
+	fx_row = HBoxContainer.new()
+	fx_row.add_theme_constant_override("separation", 6)
+	lv.add_child(fx_row)
 
 	var right := _card()
 	hud.add_child(right)
@@ -644,11 +743,25 @@ func _build_ui() -> void:
 	minimap.add_child(mm_dot)
 	_pin(mm_card, Control.PRESET_BOTTOM_LEFT, safe)
 
-	toast_label = _label("", 34, Color.WHITE, 12, Color(0.12, 0.15, 0.27, 0.85))
-	toast_label.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	toast_label.position.y = 250 + safe.y
-	toast_label.modulate.a = 0
-	hud.add_child(toast_label)
+	# Messages pop up on a dark rounded label near the top
+	var toast_row := HBoxContainer.new()
+	toast_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	toast_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	toast_row.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	toast_row.offset_top = 250 + safe.y
+	hud.add_child(toast_row)
+	toast_panel = PanelContainer.new()
+	var ts := _style(Color(0.12, 0.15, 0.27, 0.78), 24)
+	ts.content_margin_left = 24
+	ts.content_margin_right = 24
+	ts.content_margin_top = 8
+	ts.content_margin_bottom = 10
+	toast_panel.add_theme_stylebox_override("panel", ts)
+	toast_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	toast_panel.modulate.a = 0
+	toast_row.add_child(toast_panel)
+	toast_label = _label("", 28, Color.WHITE, 0, INK, font_med)
+	toast_panel.add_child(toast_label)
 
 	callout_label = _label("", 84, YELLOW, 18, INK)
 	callout_label.set_anchors_preset(Control.PRESET_CENTER)
@@ -721,6 +834,19 @@ func _center_column(screen: Control) -> VBoxContainer:
 func _build_menu(safe: Vector4) -> void:
 	menu = _screen()
 	_dim(menu, Color(0.11, 0.14, 0.26, 0.15), Color(0.11, 0.14, 0.26, 0.8))
+	var wallet_card := _card(Color(1, 1, 1, 0.92))
+	var wrow := HBoxContainer.new()
+	wrow.add_theme_constant_override("separation", 8)
+	var wicon := TextureRect.new()
+	wicon.texture = Art.tex(Art.COIN, 64)
+	wicon.custom_minimum_size = Vector2(32, 32)
+	wicon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	wrow.add_child(wicon)
+	wallet_label = _label("0", 30, Color("#b07800"))
+	wrow.add_child(wallet_label)
+	wallet_card.add_child(wrow)
+	menu.add_child(wallet_card)
+	_pin(wallet_card, Control.PRESET_TOP_RIGHT, safe)
 	var col := _center_column(menu)
 	# The title: every letter a player colour, bobbing gently
 	var title := HBoxContainer.new()
@@ -760,6 +886,23 @@ func _build_menu(safe: Vector4) -> void:
 			sfx.play("tap")
 			_refresh_menu())
 		swatches.add_child(b)
+	col.add_child(_label("MAP", 22, Color(1, 1, 1, 0.75)))
+	maps_row = HBoxContainer.new()
+	maps_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	maps_row.add_theme_constant_override("separation", 8)
+	col.add_child(maps_row)
+	for id in world.MAPS:
+		var mb := Button.new()
+		mb.text = world.MAPS[id]
+		mb.focus_mode = Control.FOCUS_NONE
+		mb.add_theme_font_override("font", font)
+		mb.add_theme_font_size_override("font_size", 22)
+		mb.pressed.connect(func():
+			map_id = id
+			_save()
+			sfx.play("tap")
+			_start_demo())
+		maps_row.add_child(mb)
 	col.add_child(Control.new())
 	var play := _button("PLAY", YELLOW, Color("#5a3200"), Color("#d27a06"), 64)
 	play.custom_minimum_size = Vector2(380, 120)
@@ -772,14 +915,22 @@ func _build_menu(safe: Vector4) -> void:
 	pulse.tween_property(play, "scale", Vector2.ONE, 0.7).set_trans(Tween.TRANS_SINE)
 	best_label = _label("", 26, Color(1, 1, 1, 0.85), 0, INK, font_med)
 	col.add_child(best_label)
+	var toggles := HBoxContainer.new()
+	toggles.alignment = BoxContainer.ALIGNMENT_CENTER
+	toggles.add_theme_constant_override("separation", 12)
+	col.add_child(toggles)
 	sound_btn = _button("", Color(1, 1, 1, 0.16), Color.WHITE, Color(1, 1, 1, 0.1), 24)
-	sound_btn.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
-	sound_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	sound_btn.pressed.connect(func():
 		sfx.muted = not sfx.muted
 		_save()
 		_refresh_menu())
-	col.add_child(sound_btn)
+	toggles.add_child(sound_btn)
+	music_btn = _button("", Color(1, 1, 1, 0.16), Color.WHITE, Color(1, 1, 1, 0.1), 24)
+	music_btn.pressed.connect(func():
+		music.set_enabled(not music.enabled)
+		_save()
+		_refresh_menu())
+	toggles.add_child(music_btn)
 	var foot := _label("Steer by dragging anywhere · arrows or WASD on a keyboard", 20, Color(1, 1, 1, 0.6), 0, INK, font_med)
 	col.add_child(foot)
 
@@ -801,6 +952,19 @@ func _refresh_menu() -> void:
 			b.add_theme_stylebox_override(st, s)
 	best_label.text = "Best: %.1f%%   ·   Wins: %d" % [best, wins] if games > 0 else "Claim 50% of the map to win"
 	sound_btn.text = "Sound: off" if sfx.muted else "Sound: on"
+	music_btn.text = "Music: on" if music.enabled else "Music: off"
+	wallet_label.text = str(wallet)
+	for mb in maps_row.get_children():
+		var picked: bool = mb.text == world.MAPS[map_id]
+		var st := _style(Color.WHITE if picked else Color(1, 1, 1, 0.16), 18)
+		st.content_margin_left = 16
+		st.content_margin_right = 16
+		st.content_margin_top = 8
+		st.content_margin_bottom = 8
+		for k in ["normal", "hover", "pressed"]:
+			mb.add_theme_stylebox_override(k, st)
+		for k in ["font_color", "font_hover_color", "font_pressed_color"]:
+			mb.add_theme_color_override(k, INK if picked else Color.WHITE)
 
 
 func _build_pause() -> void:
@@ -832,6 +996,8 @@ func _build_over() -> void:
 	col.add_child(over_stats)
 	over_best = _label("", 30, YELLOW)
 	col.add_child(over_best)
+	over_coins = _label("", 34, Color("#ffd23f"), 10, Color("#6b4a00"))
+	col.add_child(over_coins)
 	col.add_child(Control.new())
 	var again := _button("Play again", YELLOW, Color("#5a3200"), Color("#d27a06"), 46)
 	again.custom_minimum_size = Vector2(380, 104)
@@ -870,6 +1036,9 @@ func _load() -> void:
 	games = c.get_value("stats", "games", 0)
 	wins = c.get_value("stats", "wins", 0)
 	my_color = clampi(c.get_value("player", "color", 0), 0, 7)
+	wallet = c.get_value("player", "coins", 0)
+	map_id = c.get_value("player", "map", "square")
+	set_meta("music", c.get_value("settings", "music", true))
 	set_meta("muted", c.get_value("settings", "muted", false))
 
 
@@ -879,5 +1048,8 @@ func _save() -> void:
 	c.set_value("stats", "games", games)
 	c.set_value("stats", "wins", wins)
 	c.set_value("player", "color", my_color)
+	c.set_value("player", "coins", wallet)
+	c.set_value("player", "map", map_id)
+	c.set_value("settings", "music", music.enabled)
 	c.set_value("settings", "muted", sfx.muted)
 	c.save(SAVE_PATH)

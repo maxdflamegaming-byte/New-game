@@ -56,6 +56,7 @@ jobs:
         run: |
           "$HOME/godot" --headless --path godot --import || true
           "$HOME/godot" --headless --path godot -s tests/sim.gd
+          "$HOME/godot" --headless --path godot -s tests/flow.gd
 
       - name: Export the APK
         env:
