@@ -1,2 +1,8 @@
 node_modules/
 tests/output/
+
+# Android build output
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties

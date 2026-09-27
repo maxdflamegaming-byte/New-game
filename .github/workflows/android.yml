@@ -1,0 +1,53 @@
+# Builds Color Claim as an Android app (APK) and puts it on the repo's Releases page.
+# Runs on every push that changes the game or the app, or by hand from the Actions tab.
+name: Build Android APK
+
+on:
+  push:
+    branches: [main, claude/game-ideas-brainstorm-g3f06o]
+    paths:
+      - 'color-claim/**'
+      - 'shared/**'
+      - 'android/**'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-apk
+  cancel-in-progress: true
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Build the APK
+        working-directory: android
+        run: ./gradlew --no-daemon assembleRelease
+
+      - name: Name the APK
+        run: cp android/app/build/outputs/apk/release/app-release.apk "ColorClaim-1.0.${{ github.run_number }}.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ColorClaim-apk
+          path: ColorClaim-*.apk
+
+      - name: Put it on the Releases page
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "color-claim-v1.0.${{ github.run_number }}" ColorClaim-*.apk \
+            --target "${{ github.sha }}" \
+            --title "Color Claim 1.0.${{ github.run_number }} (Android)" \
+            --latest \
+            --notes "Download **ColorClaim-1.0.${{ github.run_number }}.apk** below on your Android phone or tablet and open it. If Android asks, allow installing apps from your browser or files app. Newer versions install over older ones and keep your progress."

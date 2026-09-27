@@ -106,6 +106,18 @@ python3 -m http.server 8000
 # then visit http://localhost:8000
 ```
 
+## Android app (APK)
+
+`android/` wraps Color Claim in a small Android app: the game runs full screen from files inside the app, so it works offline, and the back button pauses the game or goes back a screen. GIFs, photos and player cards are saved to **Downloads/Color Claim**.
+
+A GitHub Actions workflow (`.github/workflows/android.yml`) builds the APK every time the game changes and puts it on the repo's **Releases** page. To install it:
+
+1. On your Android phone or tablet, open the repo's **Releases** page and tap the newest **ColorClaim-1.0.N.apk**.
+2. Open the download. If Android asks, allow your browser (or files app) to install apps.
+3. Newer versions install over older ones and keep your progress.
+
+The APK is signed with `android/app/color-claim.keystore`, so every build can update the last one. That key is only for installing the APK directly; a Play Store release should use a private key kept out of the repo. To build it yourself you need the Android SDK: `cd android && ./gradlew assembleRelease`.
+
 ## Publish online (free)
 
 This repo has a GitHub Actions workflow (`.github/workflows/pages.yml`) that publishes the games with GitHub Pages every time this branch is pushed. **Pages has to be switched on once by the repo owner**, otherwise every run fails with "Get Pages site failed".

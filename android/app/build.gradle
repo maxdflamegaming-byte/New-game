@@ -1,0 +1,59 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Every build on GitHub gets a higher version number, so a new APK installs over the old one
+// (and keeps your progress)
+def build = (System.getenv('GITHUB_RUN_NUMBER') ?: '1') as int
+
+android {
+    namespace 'com.maxdflamegaming.colorclaim'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.maxdflamegaming.colorclaim'
+        minSdk 24
+        targetSdk 34
+        versionCode build
+        versionName "1.0.${build}"
+    }
+
+    // The APK is signed with the key in this folder, so every build can update the last one.
+    // It's only for installing the APK directly; a Play Store release would use a private key.
+    signingConfigs {
+        release {
+            storeFile file('color-claim.keystore')
+            storePassword 'colorclaim'
+            keyAlias 'colorclaim'
+            keyPassword 'colorclaim'
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    lint {
+        checkReleaseBuilds false
+    }
+
+    // The game itself: color-claim/ and shared/ from the top of the repo, copied in as assets
+    sourceSets {
+        main.assets.srcDirs += layout.buildDirectory.dir('gameAssets')
+    }
+}
+
+def copyGame = tasks.register('copyGame', Sync) {
+    from(rootProject.file('../color-claim')) { into 'color-claim' }
+    from(rootProject.file('../shared')) { into 'shared' }
+    into layout.buildDirectory.dir('gameAssets')
+}
+tasks.named('preBuild') { dependsOn copyGame }
