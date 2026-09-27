@@ -1,0 +1,86 @@
+# Builds the Godot version of Color Claim ("Color Claim HD") as an Android APK and puts it on
+# the repo's Releases page. Runs on every push that changes godot/, or by hand from Actions.
+name: Build Color Claim HD (Godot)
+
+on:
+  push:
+    branches: [main, claude/game-ideas-brainstorm-g3f06o]
+    paths:
+      - 'godot/**'
+      - '.github/workflows/godot.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: godot-apk
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: 4.4.1
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Get Godot and its Android export templates
+        run: |
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          wget -q "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q "Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" "$HOME/godot"
+          wget -q "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          dir="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          mkdir -p "$dir"
+          unzip -q -j "Godot_v${GODOT_VERSION}-stable_export_templates.tpz" 'templates/android_*' 'templates/version.txt' -d "$dir"
+          rm "Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          ls "$dir"
+
+      - name: Tell Godot where the Android SDK and Java are
+        run: |
+          mkdir -p "$HOME/.config/godot"
+          for f in editor_settings-4.tres editor_settings-4.4.tres; do
+            printf '[gd_resource type="EditorSettings" format=3]\n\n[resource]\nexport/android/android_sdk_path = "%s"\nexport/android/java_sdk_path = "%s"\n' \
+              "$ANDROID_SDK_ROOT" "$JAVA_HOME" > "$HOME/.config/godot/$f"
+          done
+
+      - name: Import the project and check the rules
+        run: |
+          "$HOME/godot" --headless --path godot --import || true
+          "$HOME/godot" --headless --path godot -s tests/sim.gd
+
+      - name: Export the APK
+        env:
+          GODOT_ANDROID_KEYSTORE_RELEASE_PATH: ${{ github.workspace }}/android/app/color-claim.keystore
+          GODOT_ANDROID_KEYSTORE_RELEASE_USER: colorclaim
+          GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD: colorclaim
+        run: |
+          # Every build gets a higher version, so a new APK installs over the old one
+          sed -i "s/^version\/code=.*/version\/code=${{ github.run_number }}/; s/^version\/name=.*/version\/name=\"0.${{ github.run_number }}\"/" godot/export_presets.cfg
+          mkdir -p build
+          "$HOME/godot" --headless --path godot --export-release "Android" "$GITHUB_WORKSPACE/build/ColorClaimHD-0.${{ github.run_number }}.apk"
+          ls -la build
+          test -s "build/ColorClaimHD-0.${{ github.run_number }}.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ColorClaimHD-apk
+          path: build/*.apk
+
+      - name: Put it on the Releases page
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "color-claim-hd-v0.${{ github.run_number }}" build/*.apk \
+            --target "${{ github.sha }}" \
+            --title "Color Claim HD 0.${{ github.run_number }} (Godot, Android)" \
+            --latest \
+            --notes "The Godot version of Color Claim: full-resolution graphics and smooth play. Download **ColorClaimHD-0.${{ github.run_number }}.apk** below on your Android phone or tablet and open it. It installs next to the older Color Claim app, so you can compare them. Newer versions install over older ones and keep your progress."

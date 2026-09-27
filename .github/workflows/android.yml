@@ -49,5 +49,5 @@ jobs:
           gh release create "color-claim-v1.0.${{ github.run_number }}" ColorClaim-*.apk \
             --target "${{ github.sha }}" \
             --title "Color Claim 1.0.${{ github.run_number }} (Android)" \
-            --latest \
+            --latest=false \
             --notes "Download **ColorClaim-1.0.${{ github.run_number }}.apk** below on your Android phone or tablet and open it. If Android asks, allow installing apps from your browser or files app. Newer versions install over older ones and keep your progress."

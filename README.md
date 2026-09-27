@@ -106,6 +106,18 @@ python3 -m http.server 8000
 # then visit http://localhost:8000
 ```
 
+## Color Claim HD (Godot)
+
+`godot/` is Color Claim rebuilt in the free [Godot](https://godotengine.org) engine (4.4). It draws everything with the phone's GPU at the screen's full resolution, so it's sharp and smooth. This first version has the core game: Classic mode (claim 50% to win) against 7 bots with personalities, smooth glowing trails, raised land, particles, a live bots-only game behind the menu, a touch joystick, a minimap, callouts, sound effects and a saved best score. The other modes, maps and progression will follow.
+
+- `scripts/world.gd`: the board and rules (movement, trails, capturing land, knockouts, bumps)
+- `scripts/bots.gd`: bot brains (loops, the safe way home, trail safety, hunting)
+- `scripts/board_view.gd` and `scripts/player_view.gd`: drawing and effects
+- `scripts/main.gd`: game flow, controls, camera, HUD and screens
+- `scripts/art.gd` and `scripts/sfx.gd`: sprites drawn from SVG and sounds made in code at start-up
+
+A GitHub Actions workflow (`.github/workflows/godot.yml`) checks the rules (`tests/sim.gd`, bots-only games) and builds **ColorClaimHD-0.N.apk** on every change, then puts it on the Releases page. It installs next to the older Color Claim app. To open the project yourself, install Godot 4.4 and open `godot/project.godot`.
+
 ## Android app (APK)
 
 `android/` wraps Color Claim in a small Android app: the game runs full screen from files inside the app, so it works offline, and the back button pauses the game or goes back a screen. GIFs, photos and player cards are saved to **Downloads/Color Claim**.
