@@ -461,6 +461,9 @@ const SKINS = [
   // Season pass rewards (can't be bought)
   { id: 'crystal', name: 'Crystal', need: { stat: 'season', n: Infinity, text: 'Season pass reward' } },
   { id: 'tiger', name: 'Tiger', need: { stat: 'season', n: Infinity, text: 'Season pass reward' } },
+  // Shop only
+  { id: 'galaxy', name: 'Galaxy', price: 250, need: { stat: 'shop', n: Infinity, text: '' } },
+  { id: 'lava', name: 'Lava', price: 250, need: { stat: 'shop', n: Infinity, text: '' } },
 ];
 
 // Power-ups appear on the map; anyone (bots too) can grab them
@@ -561,11 +564,11 @@ try { Object.assign(settings, JSON.parse(load('color-claim-settings', '{}'))); }
 const saveSettings = () => save('color-claim-settings', JSON.stringify(settings));
 // Map looks. Each season of the year has its own (Settings can pick one instead).
 const THEMES = {
-  classic: { name: 'Classic', bg: '#cfd6e4', edge: '#aab4c8', floor: '#f5f7fc', check: '#edf0f8', pillar: '#6b7690', pillarDark: '#4a5369', fx: null },
-  snow: { name: 'Snow', bg: '#bcd3e6', edge: '#8fb0cc', floor: '#fbfdff', check: '#eef5fb', pillar: '#a9c4dc', pillarDark: '#7d9cb8', fx: 'snow' },
-  garden: { name: 'Garden', bg: '#bfe0b0', edge: '#8fbf7c', floor: '#f6fbf1', check: '#e9f5e0', pillar: '#7fae6a', pillarDark: '#5b8a48', fx: 'petals' },
-  desert: { name: 'Desert', bg: '#e8cf9e', edge: '#cfae72', floor: '#fdf6e8', check: '#f6ead2', pillar: '#c99a5b', pillarDark: '#a47640', fx: 'sand' },
-  space: { name: 'Space', bg: '#1d2342', edge: '#3a4270', floor: '#eef0fb', check: '#e2e6f7', pillar: '#6b6fa8', pillarDark: '#474b80', fx: 'stars' },
+  classic: { name: 'Classic', bg: '#cfd6e4', edge: '#aab4c8', floor: '#f5f7fc', check: '#edf0f8', pillar: '#6b7690', pillarDark: '#4a5369', fx: null, water: '#7cc7e8' },
+  snow: { name: 'Snow', bg: '#bcd3e6', edge: '#8fb0cc', floor: '#fbfdff', check: '#eef5fb', pillar: '#a9c4dc', pillarDark: '#7d9cb8', fx: 'snow', water: '#8fcbe6' },
+  garden: { name: 'Garden', bg: '#bfe0b0', edge: '#8fbf7c', floor: '#f6fbf1', check: '#e9f5e0', pillar: '#7fae6a', pillarDark: '#5b8a48', fx: 'petals', water: '#6ccbd9' },
+  desert: { name: 'Desert', bg: '#e8cf9e', edge: '#cfae72', floor: '#fdf6e8', check: '#f6ead2', pillar: '#c99a5b', pillarDark: '#a47640', fx: 'sand', water: '#5fc2d6' },
+  space: { name: 'Space', bg: '#1d2342', edge: '#3a4270', floor: '#eef0fb', check: '#e2e6f7', pillar: '#6b6fa8', pillarDark: '#474b80', fx: 'stars', water: '#4a5fb8' },
 };
 // January to December
 const SEASON_THEMES = ['snow', 'snow', 'garden', 'garden', 'garden', 'desert', 'desert', 'desert', 'space', 'space', 'space', 'snow'];
@@ -2570,17 +2573,22 @@ function burst(x, y, color, n, speed = 9) {
 // ---------- Update ----------
 let feedTimer = 0;
 function updateCamera(dt) {
-  // Camera glides after you and zooms out as your land grows
-  const k = Math.min(1, dt * 6);
-  cam.x += (me.x - cam.x) * k;
-  cam.y += (me.y - cam.y) * k;
   const base = gameMode.duo ? 0.8 : 1;
-  cam.zoom += (base - Math.min(0.35, pct(me) / 80) - cam.zoom) * Math.min(1, dt * 2);
-  if (p2) {
-    cam2.x += (p2.x - cam2.x) * k;
-    cam2.y += (p2.y - cam2.y) * k;
-    cam2.zoom += (base - Math.min(0.35, pct(p2) / 80) - cam2.zoom) * Math.min(1, dt * 2);
-  }
+  followCam(cam, me, dt, base);
+  if (p2) followCam(cam2, p2, dt, base);
+}
+
+// The camera glides after you, looking a little ahead of where you're going, and zooms out
+// as your land grows (and a touch more while you have Speed). The easing doesn't depend on
+// the frame rate, so it feels the same on every screen.
+function followCam(c, p, dt, base) {
+  const lead = p.alive ? 2.2 * (speedOf(p) / SPEED) : 0;
+  const tx = p.x + Math.cos(p.angle) * lead, ty = p.y + Math.sin(p.angle) * lead;
+  const k = 1 - Math.exp(-dt * 4.5);
+  c.x += (tx - c.x) * k;
+  c.y += (ty - c.y) * k;
+  const target = base - Math.min(0.35, pct(p) / 80) - (p.fx.speed > 0 ? 0.06 : 0);
+  c.zoom += (target - c.zoom) * (1 - Math.exp(-dt * 1.8));
 }
 
 function update(dt) {
@@ -2740,7 +2748,8 @@ function updateMinimap() {
     d[i * 4] = r;
     d[i * 4 + 1] = g;
     d[i * 4 + 2] = b;
-    d[i * 4 + 3] = wall[i] === 2 ? 0 : id || wall[i] ? 255 : 220;
+    d[i * 4 + 3] = wall[i] === 2 && gameMapId !== 'islands' ? 0 : id || wall[i] ? 255 : 220;
+    if (wall[i] === 2 && gameMapId === 'islands' && !id) { d[i * 4] = 124; d[i * 4 + 1] = 199; d[i * 4 + 2] = 232; }
   }
   miniCtx.putImageData(miniImg, 0, 0);
 }
@@ -2816,6 +2825,51 @@ function drawLandEdges(c0, c1, r0, r1, x0, y0) {
   }
 }
 
+// Islands: rolling wave crests and glints across the sea, and foam along every shore
+function drawWater(x0, y0) {
+  const cs = CELL, hi = hiGfx();
+  const cA = Math.floor(x0 / cs) - 2, cB = Math.floor((x0 + W) / cs) + 1, rA = Math.floor(y0 / cs) - 1, rB = Math.floor((y0 + H) / cs) + 1;
+  const sea = (c, r) => c < 0 || r < 0 || c >= N || r >= N || wall[r * N + c] === 2;
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.32)';
+  ctx.lineWidth = Math.max(1.2, cs * 0.12);
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  for (let r = rA; r <= rB; r++) {
+    if (((r % 3) + 3) % 3) continue;
+    for (let c = cA; c <= cB; c++) {
+      if (((c + r * 2) % 5 + 5) % 5 || !sea(c, r) || !sea(c + 1, r)) continue;
+      const x = c * cs - x0 + Math.sin(time * 1.2 + r * 0.7 + c * 0.3) * cs * 0.6, y = r * cs - y0 + Math.sin(time * 2 + c) * cs * 0.15;
+      ctx.moveTo(x, y);
+      ctx.quadraticCurveTo(x + cs * 0.6, y - cs * 0.35, x + cs * 1.2, y);
+    }
+  }
+  ctx.stroke();
+  if (hi) {
+    // Glints that come and go
+    for (let r = rA; r <= rB; r += 2) {
+      for (let c = cA; c <= cB; c += 3) {
+        const n = noise1(c * 131 + r * 17), tw = Math.sin(time * (1.5 + n * 2) + n * 40);
+        if (tw < 0.85 || !sea(c, r)) continue;
+        ctx.fillStyle = `rgba(255, 255, 255, ${(tw - 0.85) * 5})`;
+        ctx.fillRect(c * cs - x0 + n * cs, r * cs - y0, cs * 0.35, Math.max(1, cs * 0.1));
+      }
+    }
+  }
+  // Foam on the water side of every shore cell
+  const f = cs * (0.22 + 0.06 * Math.sin(time * 3));
+  ctx.fillStyle = `rgba(255, 255, 255, ${0.55 + 0.15 * Math.sin(time * 2.4)})`;
+  for (let r = Math.max(0, rA); r <= Math.min(N - 1, rB); r++) {
+    for (let c = Math.max(0, cA); c <= Math.min(N - 1, cB); c++) {
+      if (wall[r * N + c] !== 2) continue;
+      const x = c * cs - x0, y = r * cs - y0;
+      if (r > 0 && !wall[(r - 1) * N + c]) ctx.fillRect(x, y, cs, f);
+      if (r < N - 1 && !wall[(r + 1) * N + c]) ctx.fillRect(x, y + cs - f, cs, f);
+      if (c > 0 && !wall[r * N + c - 1]) ctx.fillRect(x, y, f, cs);
+      if (c < N - 1 && !wall[r * N + c + 1]) ctx.fillRect(x + cs - f, y, f, cs);
+    }
+  }
+}
+
 // A soft dark edge around the screen (cached for each screen size)
 let vignetteCache = null;
 function drawVignette() {
@@ -2875,6 +2929,8 @@ function drawCrown(x, y, w) {
 }
 
 function skinColors(look, t) {
+  if (look.skin === 'galaxy') return ['#262b58', '#141836'];
+  if (look.skin === 'lava') return ['#ff6a2b', '#9c2f10'];
   if (look.skin !== 'rainbow') return [look.color, look.dark];
   const h = (t * 120 + look.hueOff) % 360;
   return [`hsl(${h}, 85%, 62%)`, `hsl(${h}, 70%, 42%)`];
@@ -2949,22 +3005,55 @@ function drawBody(g, look, s, t) {
   g.beginPath();
   g.roundRect(-s / 2, -s / 2, s, s, rr);
   g.clip();
-  if (skin === 'stripes') {
+  if (skin === 'stripes') { // stripes slide along
+    const shift = ((t * 0.35) % 0.3) * s;
     g.strokeStyle = 'rgba(255, 255, 255, 0.35)';
     g.lineWidth = s * 0.12;
-    for (let k = -3; k <= 3; k++) {
+    for (let k = -4; k <= 3; k++) {
       g.beginPath();
-      g.moveTo(k * s * 0.3 - s / 2, -s / 2);
-      g.lineTo(k * s * 0.3 + s / 2, s / 2);
+      g.moveTo(k * s * 0.3 - s / 2 + shift, -s / 2);
+      g.lineTo(k * s * 0.3 + s / 2 + shift, s / 2);
       g.stroke();
     }
-  } else if (skin === 'dots') {
-    for (const dx of [-0.3, 0, 0.3]) for (const dy of [-0.3, 0, 0.3]) circ(dx * s - s * 0.05, dy * s, s * 0.07, 'rgba(255, 255, 255, 0.45)');
-  } else if (skin === 'confetti') {
+  } else if (skin === 'dots') { // dots pulse one after another
+    let n = 0;
+    for (const dx of [-0.3, 0, 0.3]) for (const dy of [-0.3, 0, 0.3]) circ(dx * s - s * 0.05, dy * s, s * 0.07 * (1 + 0.3 * Math.sin(t * 5 - n++ * 0.7)), 'rgba(255, 255, 255, 0.45)');
+  } else if (skin === 'confetti') { // bits spin and twinkle
     [[-0.3, -0.3], [0.05, -0.12], [-0.2, 0.25], [0.3, 0.32], [-0.35, 0.02], [0.1, 0.38]].forEach(([dx, dy], i) => {
+      g.save();
+      g.translate(dx * s, dy * s);
+      g.rotate(t * (1.5 + i * 0.3) + i);
+      g.globalAlpha = 0.65 + 0.35 * Math.sin(t * 4 + i * 2);
       g.fillStyle = COLORS[(i * 3 + 1) % COLORS.length];
-      g.fillRect(dx * s - s * 0.06, dy * s - s * 0.06, s * 0.12, s * 0.12);
+      g.fillRect(-s * 0.06, -s * 0.06, s * 0.12, s * 0.12);
+      g.restore();
     });
+  } else if (skin === 'galaxy') { // a swirl of your colour with twinkling stars
+    const neb = g.createRadialGradient(Math.cos(t * 0.8) * s * 0.2, Math.sin(t * 0.8) * s * 0.2, 0, 0, 0, s * 0.75);
+    neb.addColorStop(0, alpha(look.color, 0.9));
+    neb.addColorStop(0.5, alpha(look.color, 0.35));
+    neb.addColorStop(1, 'rgba(38, 43, 88, 0)');
+    g.fillStyle = neb;
+    g.fillRect(-s / 2, -s / 2, s, s);
+    [[-0.32, -0.3], [0.1, -0.36], [-0.12, 0.08], [0.3, 0.3], [-0.36, 0.34], [0.34, -0.05], [0.02, 0.36]].forEach(([dx, dy], i) => {
+      const tw = 0.5 + 0.5 * Math.sin(t * (3 + i) + i * 1.7);
+      circ(dx * s, dy * s, s * (0.025 + 0.03 * tw), `rgba(255, 255, 255, ${0.4 + 0.6 * tw})`);
+    });
+  } else if (skin === 'lava') { // glowing blobs drifting through dark rock
+    for (let i = 0; i < 4; i++) {
+      const bx = Math.sin(t * (0.7 + i * 0.23) + i * 2) * s * 0.3, by = Math.cos(t * (0.5 + i * 0.19) + i) * s * 0.3;
+      const glow = g.createRadialGradient(bx, by, 0, bx, by, s * 0.3);
+      glow.addColorStop(0, 'rgba(255, 230, 120, 0.95)');
+      glow.addColorStop(1, 'rgba(255, 140, 40, 0)');
+      g.fillStyle = glow;
+      g.fillRect(-s / 2, -s / 2, s, s);
+    }
+    g.strokeStyle = 'rgba(80, 20, 5, 0.45)';
+    g.lineWidth = Math.max(1, s * 0.04);
+    g.beginPath();
+    g.moveTo(-s * 0.45, -s * 0.1); g.lineTo(-s * 0.15, -s * 0.2); g.lineTo(s * 0.05, s * 0.1);
+    g.moveTo(-s * 0.2, s * 0.45); g.lineTo(-s * 0.05, s * 0.2);
+    g.stroke();
   } else if (skin === 'crystal') {
     // Gem facets
     g.fillStyle = 'rgba(255, 255, 255, 0.45)';
@@ -2975,9 +3064,19 @@ function drawBody(g, look, s, t) {
     g.beginPath(); g.moveTo(s / 2, s / 2); g.lineTo(0, 0); g.lineTo(-s / 2, s / 2); g.fill();
     g.fillStyle = 'rgba(255, 255, 255, 0.8)';
     g.fillRect(-s * 0.3, -s * 0.34, s * 0.1, s * 0.1);
-  } else if (skin === 'tiger') {
+    // A glint sweeps across every couple of seconds
+    const sweep = ((t * 0.6) % 1.6) - 0.3;
+    if (sweep < 1) {
+      g.save();
+      g.rotate(-0.7);
+      g.fillStyle = 'rgba(255, 255, 255, 0.55)';
+      g.fillRect((sweep - 0.5) * s * 1.6, -s, s * 0.14, s * 2);
+      g.restore();
+    }
+  } else if (skin === 'tiger') { // stripes ripple a little
     g.fillStyle = 'rgba(20, 20, 30, 0.55)';
-    for (const k of [-0.35, -0.1, 0.15]) {
+    for (const k0 of [-0.35, -0.1, 0.15]) {
+      const k = k0 + Math.sin(t * 3 + k0 * 9) * 0.025;
       g.beginPath();
       g.moveTo(k * s, -s / 2);
       g.lineTo((k + 0.12) * s, -s / 2);
@@ -3281,7 +3380,7 @@ function drawHead(p, x0, y0, leaderId) {
 }
 
 function draw(dt) {
-  ctx.fillStyle = me ? theme().bg : '#cfd6e4';
+  ctx.fillStyle = me ? (gameMapId === 'islands' ? theme().water : theme().bg) : '#cfd6e4';
   ctx.fillRect(0, 0, W, H);
 
   if (!me) {
@@ -3360,7 +3459,7 @@ function drawWorld(focus, c) {
   }
 
   // Outside the round arena, and pillars (drawn as raised blocks)
-  const wallColor = [null, null, T.bg];
+  const wallColor = [null, null, gameMapId === 'islands' ? T.water : T.bg];
   const drawWalls = (kind, color, yOff) => {
     ctx.fillStyle = color;
     for (let r = r0; r <= r1; r++) {
@@ -3375,6 +3474,7 @@ function drawWorld(focus, c) {
     }
   };
   drawWalls(2, wallColor[2], 0);
+  if (gameMapId === 'islands') drawWater(x0, y0);
   if (gameMapId === 'belts') drawBelts(c0, c1, r0, r1, x0, y0, false);
   drawWalls(1, T.pillarDark, CELL * 0.35);
   drawWalls(1, T.pillar, 0);
@@ -3884,7 +3984,8 @@ function landPattern(skin, x0, y0) {
     patternCache[skin] = ctx.createPattern(c, 'repeat');
   }
   const pat = patternCache[skin];
-  pat.setTransform(new DOMMatrix().translateSelf(-x0, -y0));
+  const drift = (time * 6) % 24; // the pattern drifts slowly across your land
+  pat.setTransform(new DOMMatrix().translateSelf(-x0 + drift, -y0 + (skin === 'stripes' ? 0 : drift * 0.5)));
   return pat;
 }
 

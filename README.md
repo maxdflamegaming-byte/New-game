@@ -46,7 +46,7 @@ A territory game inspired by Paper.io.
 - **Accessibility:** large text, a high-contrast look and a slower game speed (75%) in Settings.
 - **Map looks:** each season has its own look (Snow in winter, Garden in spring, Desert in summer, Space in autumn) with falling snow, petals, blowing sand or twinkling stars. Pick any look in Settings.
 - **Power-up upgrades:** spend coins to make your power-ups last up to 60% longer (or your Paint Bomb bigger).
-- **Graphics:** rounded, glossy squares, smooth glowing rope trails with sparkles, raised land edges, a wave and ring when you claim land, a soft board shadow and vignette, sparkling power-ups and glinting coins. Settings → Graphics: Low turns the extras off for slower phones.
+- **Graphics:** rounded, glossy squares, smooth glowing rope trails with sparkles, raised land edges, a wave and ring when you claim land, a soft board shadow and vignette, sparkling power-ups and glinting coins, a camera that looks ahead of you, animated skin patterns, and a rolling sea with foam around the Islands. Settings → Graphics: Low turns the extras off for slower phones.
 - **Photo mode:** from the pause screen, zoom, add a filter (Warm, Cool, Mono, Retro, Pop) and stickers, then save a framed picture.
 - **Daily missions:** 3 new missions every day with coin rewards.
 - **Weekly quest chain:** 5 quests a week (2 easy, 2 medium, 1 hard) that unlock one after another and pay 50, 75, 100, 150 and 300 coins.
@@ -54,7 +54,7 @@ A territory game inspired by Paper.io.
 - **Daily streak:** the first game each day pays coins, more for every day in a row (20 up to 150 on day 7, then 100 a day). Day 7 unlocks the Star Sprite pet.
 - **Pets:** a little friend follows your square: Chick, Slime, Bat, Kitty (Silver rank), Dragon (Gold), UFO (Platinum) and Star Sprite (7-day streak). Some bots bring pets too.
 - **Player level:** every game earns XP, and each level-up pays a coin bonus.
-- **Coins and the Locker:** earn coins every game (2 per % claimed, 5 per knockout, 50 for a win, 25 per trophy). Unlock 8 skins by playing or buy them, and buy trail effects (Sparkles, Bubbles, Hearts, Fire, Stars, Rainbow).
+- **Coins and the Locker:** earn coins every game (2 per % claimed, 5 per knockout, 50 for a win, 25 per trophy). Unlock 8 skins by playing or buy them (plus the animated Galaxy and Lava skins in the shop), and buy trail effects (Sparkles, Bubbles, Hearts, Fire, Stars, Rainbow).
 - **33 trophies** on 2 pages (wear one as a **badge** next to your name) and a **stats** page (wins, best claim, knockouts, time played and best score per mode).
 - **Tutorial:** a 5-step guided level (leave land, loop home, grab a power-up, cut a practice bot, claim 15%) that pays 50 coins the first time. It's offered on the how-to-play screen.
 - **Instant replay:** after a game, watch the last 10 seconds again, or turn it into a looping **GIF** to download or share.

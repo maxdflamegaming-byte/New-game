@@ -1040,7 +1040,7 @@ function buildLocker() {
     : lockerTab === 'skins'
     ? SKINS.map(sk => ({
       id: sk.id, name: sk.name, canvas: skinPreview(sk.id), open: isUnlocked(sk), equipped: sk.id === mySkin,
-      price: SKIN_PRICE, how: sk.need && sk.need.text, season: sk.need && sk.need.stat === 'season',
+      price: sk.price || SKIN_PRICE, how: sk.need && sk.need.text, season: sk.need && sk.need.stat === 'season',
       equip: () => { mySkin = sk.id; save('color-claim-skin', sk.id); },
       buy: () => { ownedSkins.push(sk.id); save('color-claim-owned-skins', JSON.stringify(ownedSkins)); },
     }))
