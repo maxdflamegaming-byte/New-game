@@ -52,7 +52,7 @@ SIEMPRE HAY ALGO QUE HACER
 JUEGA A TU MANERA
 • Joystick en cualquier parte de la pantalla o giro con un solo pulgar
 • Patrones para daltónicos
-• Gráficos Baja, Media, Alta y Ultra, hasta 120 FPS en pantallas rápidas
+• Gráficos Baja, Media y Alta, a 30 o 60 FPS
 • En español, English, português, हिन्दी, Bahasa Indonesia, русский y Türkçe
 
 JUEGA DONDE QUIERAS
@@ -111,7 +111,7 @@ SEMPRE TEM ALGO PARA FAZER
 JOGUE COMO QUISER
 • Joystick em qualquer lugar da tela ou controle de virar com um dedo
 • Padrões para daltônicos
-• Gráficos Baixa, Média, Alta e Ultra, até 120 FPS em telas rápidas
+• Gráficos Baixa, Média e Alta, a 30 ou 60 FPS
 • Em português, English, español, हिन्दी, Bahasa Indonesia, русский e Türkçe
 
 JOGUE ONDE QUISER
@@ -170,7 +170,7 @@ Color Claim एक तेज़ और रंगीन गेम है, जि�
 अपने तरीके से खेलें
 • स्क्रीन पर कहीं भी जॉयस्टिक, या एक अंगूठे से टैप करके मुड़ें
 • कलर-ब्लाइंड पैटर्न
-• लो, मीडियम, हाई और अल्ट्रा ग्राफ़िक्स, तेज़ स्क्रीन पर 120 FPS तक
+• लो, मीडियम और हाई ग्राफ़िक्स, 30 या 60 FPS पर
 • हिन्दी, English, Español, Português, Bahasa Indonesia, Русский और Türkçe में
 
 कहीं भी खेलें
@@ -229,7 +229,7 @@ SELALU ADA YANG BISA DILAKUKAN
 MAIN SESUKAMU
 • Joystick di mana saja di layar atau kontrol ketuk-untuk-belok dengan satu jempol
 • Pola untuk buta warna
-• Grafis Rendah, Sedang, Tinggi, dan Ultra, hingga 120 FPS di layar cepat
+• Grafis Rendah, Sedang, dan Tinggi, pada 30 atau 60 FPS
 • Dalam Bahasa Indonesia, English, Español, Português, हिन्दी, Русский, dan Türkçe
 
 MAIN DI MANA SAJA
@@ -288,7 +288,7 @@ Color Claim — быстрая и яркая игра о захвате терр
 ИГРАЙТЕ КАК УДОБНО
 • Джойстик в любом месте экрана или поворот касанием одним пальцем
 • Узоры для дальтоников
-• Графика: низкая, средняя, высокая и ультра, до 120 FPS на быстрых экранах
+• Графика: низкая, средняя и высокая, 30 или 60 FPS
 • На русском, English, español, português, हिन्दी, Bahasa Indonesia и Türkçe
 
 ИГРАЙТЕ ГДЕ УГОДНО
@@ -347,7 +347,7 @@ HER ZAMAN YAPACAK BİR ŞEY VAR
 İSTEDİĞİN GİBİ OYNA
 • Ekranın her yerinde joystick ya da tek başparmakla dokunarak dönme
 • Renk körü desenleri
-• Düşük, Orta, Yüksek ve Ultra grafik; hızlı ekranlarda 120 FPS'ye kadar
+• Düşük, Orta ve Yüksek grafik; 30 veya 60 FPS
 • Türkçe, English, Español, Português, हिन्दी, Bahasa Indonesia ve Русский dillerinde
 
 HER YERDE OYNA

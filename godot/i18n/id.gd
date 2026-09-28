@@ -317,4 +317,11 @@ const T := {
 	"Then a quick tutorial will show you how to play.": "Lalu tutorial singkat akan mengajarimu cara bermain.",
 	"Let's go!": "Ayo mulai!",
 	"Running slowly? A lower Quality in Settings makes the game smoother.": "Terasa lambat? Kualitas lebih rendah di Pengaturan membuat game lebih lancar.",
+	"Sorry about that!": "Maaf soal itu!",
+	"Color Claim closed unexpectedly last time. Copy the game log and send it to the developer, so it can be fixed.": "Color Claim tertutup tiba-tiba terakhir kali. Salin log game dan kirim ke developer agar bisa diperbaiki.",
+	"Copy game log": "Salin log game",
+	"Close": "Tutup",
+	"Copied! Paste it in a message to the developer.": "Tersalin! Tempel di pesan ke developer.",
+	"HELP": "BANTUAN",
+	"If the game closes by itself, copy this log and send it to the developer.": "Jika game tertutup sendiri, salin log ini dan kirim ke developer.",
 }

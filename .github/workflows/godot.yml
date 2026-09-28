@@ -113,6 +113,7 @@ jobs:
           v="1.0.${{ github.run_number }}"
           echo "VERSION=$v" >> "$GITHUB_ENV"
           sed -i "s/^version\/code=.*/version\/code=${{ github.run_number }}/; s/^version\/name=.*/version\/name=\"$v\"/" godot/export_presets.cfg
+          sed -i "s/^config\/version=.*/config\/version=\"$v\"/" godot/project.godot
           mkdir -p build
           "$HOME/godot" --headless --path godot --export-release "Android" "$GITHUB_WORKSPACE/build/ColorClaimHD-$v.apk"
           test -s "build/ColorClaimHD-$v.apk"

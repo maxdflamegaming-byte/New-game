@@ -44,7 +44,7 @@ func _run() -> void:
 	main._snap_camera()
 	w.me.shield = 0.0
 	get_root().get_tree().paused = false
-	for lv in 4:
+	for lv in 3:
 		Gfx.level = lv
 		main._apply_gfx()
 		main.state = "won" # hold the game still

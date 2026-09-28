@@ -1,15 +1,16 @@
 class_name Gfx
 extends RefCounted
-## Graphics settings: a quality level (Low, Medium, High, Ultra) and a frame-rate cap
-## (30 to 120). Drawing code asks Gfx how much to draw, so a slower phone can trade effects
+## Graphics settings: a quality level (Low, Medium, High) and a frame-rate cap (30 or 60).
+## Ultra and 90/120 FPS are switched off for now while crashes on some phones are tracked
+## down; the Ultra code paths stay, but nothing can pick them. Drawing code asks Gfx how much to draw, so a slower phone can trade effects
 ## for smoothness.
 
-const LEVELS := ["Low", "Medium", "High", "Ultra"]
+const LEVELS := ["Low", "Medium", "High"]
 const LOW := 0
 const MEDIUM := 1
 const HIGH := 2
 const ULTRA := 3
-const FPS := [30, 60, 90, 120]
+const FPS := [30, 60]
 const PARTICLES := [0.35, 0.65, 1.0, 1.4] # share of particles drawn at each level
 
 static var level := MEDIUM

@@ -31,10 +31,8 @@ func refresh() -> void:
 	var hz := Gfx.screen_hz()
 	var about_gfx: Label = m._label(tr(["Low: 720p with simple effects. The smoothest on older phones.",
 			"Medium: 720p, light rims on the land, glowing trails and capture flashes.",
-			"High: full resolution, shaded land, trail shadows, glows and floating lights.",
-			"Ultra: everything in High, plus neon trails, shining land and the most sparkle."][Gfx.level])
-			+ ("  " + tr("Your screen is running at %d Hz.") % hz if hz > 0 else "")
-			+ ("  " + tr("90 and 120 FPS need a 90 or 120 Hz screen, and use more battery.") if Gfx.fps > 60 else ""),
+			"High: full resolution, shaded land, trail shadows, glows and floating lights."][Gfx.level])
+			+ ("  " + tr("Your screen is running at %d Hz.") % hz if hz > 0 else ""),
 			22, m.MUTED, 0, m.INK, m.font_med)
 	about_gfx.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(about_gfx)
@@ -78,6 +76,15 @@ func refresh() -> void:
 		visible = false
 		m.start_tutorial())
 	box.add_child(play)
+	heading("HELP")
+	box = card()
+	var hl: Label = m._label("If the game closes by itself, copy this log and send it to the developer.", 24, m.INK, 0, m.INK, m.font_med)
+	hl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(hl)
+	var copy: Button = m._button("Copy game log", Color(0.12, 0.15, 0.27, 0.08), m.INK, Color(0.12, 0.15, 0.27, 0.1), 28)
+	copy.custom_minimum_size = Vector2(0, 80)
+	copy.pressed.connect(m.copy_log)
+	box.add_child(copy)
 	var about: Label = m._label("Color Claim HD · made with Godot", 20, Color(1, 1, 1, 0.5), 0, m.INK, m.font_med)
 	body.add_child(about)
 

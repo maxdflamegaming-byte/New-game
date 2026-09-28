@@ -326,4 +326,11 @@ const T := {
 	"Then a quick tutorial will show you how to play.": "Ardından kısa bir eğitim sana nasıl oynanacağını gösterecek.",
 	"Let's go!": "Hadi başlayalım!",
 	"Running slowly? A lower Quality in Settings makes the game smoother.": "Yavaş mı çalışıyor? Ayarlar'da daha düşük Kalite oyunu daha akıcı yapar.",
+	"Sorry about that!": "Bunun için üzgünüz!",
+	"Color Claim closed unexpectedly last time. Copy the game log and send it to the developer, so it can be fixed.": "Color Claim geçen sefer beklenmedik şekilde kapandı. Düzeltilebilmesi için oyun kaydını kopyalayıp geliştiriciye gönder.",
+	"Copy game log": "Oyun kaydını kopyala",
+	"Close": "Kapat",
+	"Copied! Paste it in a message to the developer.": "Kopyalandı! Geliştiriciye bir mesajda yapıştır.",
+	"HELP": "YARDIM",
+	"If the game closes by itself, copy this log and send it to the developer.": "Oyun kendi kendine kapanırsa bu kaydı kopyalayıp geliştiriciye gönder.",
 }

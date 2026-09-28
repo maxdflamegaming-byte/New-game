@@ -40,3 +40,7 @@ renderer/rendering_method.mobile="gl_compatibility"
 textures/canvas_textures/default_texture_filter=1
 textures/vram_compression/import_etc2_astc=true
 environment/defaults/default_clear_color=Color(0.113725, 0.137255, 0.258824, 1)
+
+[debug]
+
+file_logging/enable_file_logging=true

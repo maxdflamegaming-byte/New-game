@@ -27,7 +27,7 @@ func _run() -> void:
 		main.welcome.visible = false
 	main.prog.tutorial_done = true
 	Gfx.level = level
-	Gfx.fps = 120
+	Gfx.fps = 60
 	main._apply_gfx()
 	Engine.max_fps = 0
 	main.mode_id = "classic"

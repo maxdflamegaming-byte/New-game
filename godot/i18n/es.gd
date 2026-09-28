@@ -325,4 +325,11 @@ const T := {
 	"Then a quick tutorial will show you how to play.": "Después, un tutorial rápido te enseñará a jugar.",
 	"Let's go!": "¡Vamos!",
 	"Running slowly? A lower Quality in Settings makes the game smoother.": "¿Va lento? Una Calidad más baja en Ajustes hace el juego más fluido.",
+	"Sorry about that!": "¡Lo sentimos!",
+	"Color Claim closed unexpectedly last time. Copy the game log and send it to the developer, so it can be fixed.": "Color Claim se cerró inesperadamente la última vez. Copia el registro del juego y envíalo al desarrollador para que pueda arreglarlo.",
+	"Copy game log": "Copiar registro",
+	"Close": "Cerrar",
+	"Copied! Paste it in a message to the developer.": "¡Copiado! Pégalo en un mensaje al desarrollador.",
+	"HELP": "AYUDA",
+	"If the game closes by itself, copy this log and send it to the developer.": "Si el juego se cierra solo, copia este registro y envíalo al desarrollador.",
 }

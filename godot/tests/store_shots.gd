@@ -62,7 +62,7 @@ func _game(mode: String, map: String, seconds: float) -> void:
 
 func _run() -> void:
 	await _wait(0.5) # let the game start up
-	Gfx.level = Gfx.ULTRA
+	Gfx.level = Gfx.HIGH
 	Gfx.show_fps = false
 	main._apply_gfx()
 	main.prog.tutorial_done = true

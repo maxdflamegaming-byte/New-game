@@ -333,4 +333,11 @@ const T := {
 	"Then a quick tutorial will show you how to play.": "फिर एक छोटा ट्यूटोरियल आपको खेलना सिखाएगा।",
 	"Let's go!": "चलो शुरू करें!",
 	"Running slowly? A lower Quality in Settings makes the game smoother.": "गेम धीमा चल रहा है? सेटिंग्स में कम क्वालिटी चुनें, गेम ज़्यादा स्मूद चलेगा।",
+	"Sorry about that!": "इसके लिए माफ़ी!",
+	"Color Claim closed unexpectedly last time. Copy the game log and send it to the developer, so it can be fixed.": "पिछली बार Color Claim अचानक बंद हो गया। गेम लॉग कॉपी करके डेवलपर को भेजें, ताकि इसे ठीक किया जा सके।",
+	"Copy game log": "गेम लॉग कॉपी करें",
+	"Close": "बंद करें",
+	"Copied! Paste it in a message to the developer.": "कॉपी हो गया! इसे डेवलपर को मैसेज में पेस्ट करें।",
+	"HELP": "मदद",
+	"If the game closes by itself, copy this log and send it to the developer.": "अगर गेम अपने आप बंद हो जाए, तो यह लॉग कॉपी करके डेवलपर को भेजें।",
 }

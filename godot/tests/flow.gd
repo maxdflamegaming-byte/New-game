@@ -336,21 +336,22 @@ func _run() -> void:
 	Gfx.level = Gfx.MEDIUM
 	main._apply_gfx()
 	ok("Medium draws at 720p too", root.content_scale_mode == Window.CONTENT_SCALE_MODE_VIEWPORT)
-	Gfx.level = Gfx.ULTRA
-	Gfx.fps = 120
+	Gfx.level = Gfx.HIGH
+	Gfx.fps = 60
 	Gfx.show_fps = true
 	main._apply_gfx()
-	ok("Ultra draws at full resolution with more particles", root.content_scale_mode == Window.CONTENT_SCALE_MODE_CANVAS_ITEMS and Gfx.particles(40) > 40 and main.vignette.visible)
+	ok("High draws at full resolution", root.content_scale_mode == Window.CONTENT_SCALE_MODE_CANVAS_ITEMS and Gfx.particles(40) == 40 and main.vignette.visible)
 	ok("The Android frame-rate call and MSAA are gone (they crashed or did nothing)", root.msaa_2d == Viewport.MSAA_DISABLED and not Gfx.new().has_method("_request_refresh_rate"))
-	ok("120 FPS lifts the frame cap and Show FPS shows the counter", Engine.max_fps == 120 and main.fps_label.get_parent().visible)
+	ok("Ultra and 90/120 FPS are off for now", Gfx.LEVELS.size() == 3 and Gfx.FPS == [30, 60])
+	ok("Show FPS shows the counter", main.fps_label.get_parent().visible)
 	Gfx.level = Gfx.MEDIUM
-	Gfx.fps = 90
+	Gfx.fps = 30
 	Gfx.show_fps = false
 	main._save()
 	Gfx.level = Gfx.HIGH
 	Gfx.fps = 60
 	main._load()
-	ok("Graphics settings are saved", Gfx.level == Gfx.MEDIUM and Gfx.fps == 90 and not Gfx.show_fps)
+	ok("Graphics settings are saved", Gfx.level == Gfx.MEDIUM and Gfx.fps == 30 and not Gfx.show_fps)
 	var old_save := ConfigFile.new()
 	old_save.load(main.SAVE_PATH)
 	old_save.set_value("settings", "gfx", Gfx.ULTRA)
@@ -358,10 +359,26 @@ func _run() -> void:
 	old_save.save(main.SAVE_PATH)
 	main._load()
 	ok("A save from before the new levels starts again from the safe default", Gfx.level == Gfx.default_level() and Gfx.level <= Gfx.MEDIUM)
+	old_save.set_value("settings", "gfx", 3)
+	old_save.set_value("settings", "gfx_v", 2)
+	old_save.set_value("settings", "fps", 120)
+	old_save.save(main.SAVE_PATH)
+	main._load()
+	ok("A save on Ultra at 120 FPS comes back as High at 60 FPS", Gfx.level == Gfx.HIGH and Gfx.fps == 60)
 	main._save()
+	# Crash reports: the marker file, and a log report with the device details
+	CrashLog.running()
+	ok("A game that closes without saying goodbye counts as a crash next time", CrashLog.started())
+	CrashLog.stopped()
+	ok("A game closed on purpose doesn't", not CrashLog.started())
+	CrashLog.stopped()
+	CrashLog.running()
+	main.copy_log()
+	var report := DisplayServer.clipboard_get()
+	ok("Copy game log puts the device details on the clipboard", report == "" or report.begins_with("Color Claim log"))
 	await _play()
 	w.me.fx.speed = 0.0
-	for gl in 4:
+	for gl in 3:
 		Gfx.level = gl
 		main._apply_gfx()
 		for f in 20:

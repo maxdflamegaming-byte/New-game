@@ -125,6 +125,8 @@ var over_xp: Label
 var over_xp_bar: Control
 var again_btn: Button
 var ask_box: Control
+var crash_box: Control # "the game closed last time", with a button to copy the log
+var crashed_last_time := false
 var welcome: Control # the very first launch: pick a language, then the tutorial
 var welcomed := false
 var _welcome_pick := ""
@@ -147,6 +149,7 @@ var _slow_told := false
 func _ready() -> void:
 	randomize()
 	_load()
+	crashed_last_time = CrashLog.started()
 	Gfx.apply(get_tree())
 	font = load("res://assets/fonts/Fredoka-Bold.ttf")
 	font_med = load("res://assets/fonts/Fredoka-Medium.ttf")
@@ -181,6 +184,8 @@ func _ready() -> void:
 	_start_demo()
 	if not welcomed:
 		_open_welcome()
+	elif crashed_last_time:
+		crash_box.visible = true
 
 
 # ---------- Game flow ----------
@@ -211,6 +216,7 @@ func start_game(mode := "") -> void:
 	world.looks = equipped
 	world.difficulty = difficulty
 	world.boss_kind = boss_kind if boss_unlocked(boss_kind) else "king"
+	CrashLog.note("game  mode %s  map %s  boss %s  %s" % [play_mode, world.map_id, world.boss_kind, difficulty])
 	world.setup(my_color, player_name, false, map_id, play_mode)
 	view.rebuild()
 	if world.p2:
@@ -397,6 +403,7 @@ func _game_over(won: bool, reason: String, who: Player = null) -> void:
 	if state == "over":
 		return
 	state = "over"
+	CrashLog.note("over  won %s  %.0fs  fps %d" % [won, play_time, Engine.get_frames_per_second()])
 	_split_off(true)
 	over_title.label_settings.font_color = YELLOW if won else Color.WHITE
 	over_reason.text = reason
@@ -572,15 +579,20 @@ func _back() -> void:
 			_to_menu()
 		"menu":
 			if welcome.visible:
+				CrashLog.stopped()
 				get_tree().quit()
 				return
 			if ask_box.visible:
 				ask_box.visible = false
 				return
+			if crash_box.visible:
+				crash_box.visible = false
+				return
 			for sc in [shop, missions_screen, profile_screen, settings_screen]:
 				if sc.visible:
 					sc.close()
 					return
+			CrashLog.stopped()
 			get_tree().quit()
 
 
@@ -589,11 +601,19 @@ func _notification(what: int) -> void:
 		_back()
 	elif what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
 		_pause()
+	# Going to the background or closing on purpose isn't a crash (Android may close the game
+	# while it's in the background)
+	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_PREDELETE:
+		CrashLog.stopped()
+	elif what == NOTIFICATION_APPLICATION_RESUMED:
+		CrashLog.running()
+		CrashLog.note("resumed  fps %d" % Engine.get_frames_per_second())
 
 
 ## New graphics settings: apply and save them
 func _apply_gfx() -> void:
 	Gfx.apply(get_tree())
+	CrashLog.note("graphics  %s  %d fps" % [Gfx.LEVELS[mini(Gfx.level, Gfx.LEVELS.size() - 1)], Gfx.fps])
 	fps_label.get_parent().visible = Gfx.show_fps
 	vignette.visible = Gfx.level >= Gfx.HIGH
 	if split and split.visible:
@@ -984,6 +1004,45 @@ func _build_ask() -> void:
 	no.custom_minimum_size = Vector2(0, 80)
 	no.pressed.connect(func(): start_game())
 	col.add_child(no)
+
+
+## After a crash: say sorry, and offer to copy the log for the developer
+func _build_crash_box() -> void:
+	crash_box = Control.new()
+	crash_box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	crash_box.visible = false
+	ui_layer.add_child(crash_box)
+	_dim(crash_box, Color(0.08, 0.1, 0.2, 0.6), Color(0.08, 0.1, 0.2, 0.8))
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	crash_box.add_child(center)
+	var c := _card(Color(1, 1, 1, 0.97))
+	center.add_child(c)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 16)
+	c.add_child(col)
+	col.add_child(_label("Sorry about that!", 48, INK))
+	var t := _label("Color Claim closed unexpectedly last time. Copy the game log and send it to the developer, so it can be fixed.", 28, MUTED, 0, INK, font_med)
+	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	t.custom_minimum_size.x = 520
+	col.add_child(t)
+	var copy := _button("Copy game log", YELLOW, Color("#5a3200"), Color("#d27a06"), 34)
+	copy.custom_minimum_size = Vector2(0, 90)
+	copy.pressed.connect(func():
+		copy_log()
+		crash_box.visible = false)
+	col.add_child(copy)
+	var ok := _button("Close", Color(0.12, 0.15, 0.27, 0.08), INK, Color(0.12, 0.15, 0.27, 0.1), 28)
+	ok.custom_minimum_size = Vector2(0, 80)
+	ok.pressed.connect(func(): crash_box.visible = false)
+	col.add_child(ok)
+
+
+## Puts the device details and recent logs on the clipboard
+func copy_log() -> void:
+	DisplayServer.clipboard_set(CrashLog.report())
+	sfx.play("tap")
+	_toast(tr("Copied! Paste it in a message to the developer."))
 
 
 # ---------- First launch ----------
@@ -1743,6 +1802,7 @@ func _build_ui() -> void:
 	ui_layer.add_child(settings_screen)
 	settings_screen.build(self)
 	_build_ask()
+	_build_crash_box()
 	_build_welcome()
 
 
@@ -2262,7 +2322,7 @@ func _load() -> void:
 		Gfx.level = clampi(c.get_value("settings", "gfx", Gfx.default_level()), 0, Gfx.LEVELS.size() - 1)
 	Gfx.fps = c.get_value("settings", "fps", 60)
 	if not Gfx.FPS.has(Gfx.fps):
-		Gfx.fps = 60
+		Gfx.fps = 60 # 90 and 120 are off for now
 	Gfx.show_fps = c.get_value("settings", "show_fps", false)
 	big_stick = c.get_value("settings", "big_stick", false)
 	controls = c.get_value("settings", "controls", "stick")

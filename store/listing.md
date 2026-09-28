@@ -50,7 +50,7 @@ ALWAYS SOMETHING TO DO
 PLAY YOUR WAY
 • Drag-anywhere joystick or one-thumb tap-to-turn controls
 • Colourblind patterns for every player
-• Low, Medium, High and Ultra graphics, up to 120 FPS on fast screens
+• Low, Medium and High graphics, at 30 or 60 FPS
 • In English, Español, Português, हिन्दी, Bahasa Indonesia, Русский and Türkçe
 
 PLAY ANYWHERE

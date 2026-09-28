@@ -333,4 +333,11 @@ const T := {
 	"Then a quick tutorial will show you how to play.": "Затем короткое обучение покажет, как играть.",
 	"Let's go!": "Поехали!",
 	"Running slowly? A lower Quality in Settings makes the game smoother.": "Игра тормозит? Более низкое качество в Настройках сделает её плавнее.",
+	"Sorry about that!": "Извините!",
+	"Color Claim closed unexpectedly last time. Copy the game log and send it to the developer, so it can be fixed.": "В прошлый раз Color Claim неожиданно закрылась. Скопируйте журнал игры и отправьте разработчику, чтобы это исправить.",
+	"Copy game log": "Скопировать журнал",
+	"Close": "Закрыть",
+	"Copied! Paste it in a message to the developer.": "Скопировано! Вставьте это в сообщение разработчику.",
+	"HELP": "ПОМОЩЬ",
+	"If the game closes by itself, copy this log and send it to the developer.": "Если игра закрывается сама, скопируйте этот журнал и отправьте разработчику.",
 }

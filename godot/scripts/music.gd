@@ -10,30 +10,33 @@ const ARP := [0, 1, 2, 3, 2, 1, 2, 3]
 
 var enabled := true
 var _task := -1
-var _data := PackedByteArray()
-var _samples := 0
+var _result := [] # the worker thread puts the finished loop here; nothing else is shared
 
 
 func _ready() -> void:
 	bus = "Master"
 	volume_db = -4.0
-	_task = WorkerThreadPool.add_task(_synth)
+	var out := _result
+	_task = WorkerThreadPool.add_task(func(): out.append(_synth()))
 
 
 func _process(_dt: float) -> void:
 	if _task >= 0 and WorkerThreadPool.is_task_completed(_task):
 		WorkerThreadPool.wait_for_task_completion(_task)
 		_task = -1
+		if _result.is_empty():
+			return
+		var data: PackedByteArray = _result[0]
+		_result.clear()
 		var s := AudioStreamWAV.new()
 		s.format = AudioStreamWAV.FORMAT_16_BITS
 		s.mix_rate = RATE
 		s.stereo = false
-		s.data = _data
+		s.data = data
 		s.loop_mode = AudioStreamWAV.LOOP_FORWARD
 		s.loop_begin = 0
-		s.loop_end = _samples
+		s.loop_end = data.size() / 2
 		stream = s
-		_data = PackedByteArray()
 		set_enabled(enabled)
 
 
@@ -77,7 +80,8 @@ static func _note(buf: PackedFloat32Array, f: float, start: int, dur: float, wav
 		env *= decay
 
 
-func _synth() -> void:
+## The whole loop as 16-bit samples. Static and self-contained, so it's safe on a worker thread.
+static func _synth() -> PackedByteArray:
 	var step_len := 60.0 / BPM / 2.0 # eighth notes
 	var steps := CHORDS.size() * 16 # two bars per chord
 	var n := int(steps * step_len * RATE)
@@ -101,5 +105,4 @@ func _synth() -> void:
 	data.resize(n * 2)
 	for i in n:
 		data.encode_s16(i * 2, int(clampf(buf[i] * 1.8, -1.0, 1.0) * 32767))
-	_data = data
-	_samples = n
+	return data
