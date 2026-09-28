@@ -802,10 +802,10 @@ func _draw_hazards() -> void:
 		_hazards.draw_arc(c, w.storm_next * CELL + band / 2, 0, TAU, 128, Color(1, 0.25, 0.35, 0.12 + 0.1 * pulse), band, true)
 		_hazards.draw_arc(c, w.storm_next * CELL, 0, TAU, 128, Color(1, 0.3, 0.4, 0.6 + 0.4 * pulse), CELL * 0.3, true)
 	# The Queen's traps: spiky, and blinking before they vanish
-	for tr in w.traps:
-		if tr.life < 2.0 and int(tr.life * 8) % 2:
+	for trap in w.traps:
+		if trap.life < 2.0 and int(trap.life * 8) % 2:
 			continue
-		var at: Vector2 = tr.pos * CELL
+		var at: Vector2 = trap.pos * CELL
 		var spikes := PackedVector2Array()
 		for k in 16:
 			var a: float = k * TAU / 16.0 + t
@@ -827,7 +827,7 @@ func _on_teleported(p: Player, from: Vector2, to: Vector2) -> void:
 		p.squash = 1.0
 
 
-func _on_blinked(k: Player, from: Vector2, to: Vector2) -> void:
+func _on_blinked(_k: Player, from: Vector2, to: Vector2) -> void:
 	burst(from, Color("#b06bff"), 30, 380.0)
 	burst(to, Color("#b06bff"), 30, 380.0)
 	_rings.append({"pos": to, "color": Color("#b06bff"), "life": 0.6, "size": 7.0})

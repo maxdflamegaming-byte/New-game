@@ -1,10 +1,10 @@
 # Publishes the games as a website with GitHub Pages.
 # One-time setup: repo Settings -> Pages -> Build and deployment -> Source: "GitHub Actions".
+# Runs only when started from the Actions tab: until Pages is switched on, a run on every push
+# would just fail.
 name: Deploy to GitHub Pages
 
 on:
-  push:
-    branches: [main, claude/game-ideas-brainstorm-g3f06o]
   workflow_dispatch:
 
 permissions:

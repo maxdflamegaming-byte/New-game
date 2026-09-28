@@ -241,7 +241,7 @@ func start_game(mode := "") -> void:
 	_tut_step = 1 if play_mode == "tutorial" else 0
 	_hints.clear()
 	_hint_until = 0.0
-	_taps.clear()
+	_release_touches()
 	_death_how = ""
 	_storm_warned = false
 	_update_tutorial()
@@ -345,7 +345,8 @@ func _check_end() -> void:
 		elif world.team_pct(1) >= goal:
 			_lose(tr("The other team claimed %d%% first.") % int(goal), 0.6)
 	elif m.get("boss", false):
-		if world.king and not world.king.alive:
+		# Beaten when his hearts are gone (he can be off the board for a moment while he moves)
+		if world.king and world.king.hp <= 0:
 			_win(tr("You defeated the %s!") % tr(world.king.name))
 	elif m.has("time"):
 		var left: float = m.time - play_time
@@ -526,7 +527,16 @@ func _show_rewards(rewards: Array) -> void:
 				sfx.play("hype" if r.kind == "level" else "coin"))
 
 
+## Forgets every finger on the screen: a finger lifted while the pause screen (or another
+## app) had it never reaches the game, and would leave the joystick stuck
+func _release_touches() -> void:
+	_stick_index = -1
+	_stick2_index = -1
+	_taps.clear()
+
+
 func _pause() -> void:
+	_release_touches()
 	if state != "play" and state != "countdown":
 		return
 	pause_screen.set_meta("was", state)
@@ -538,6 +548,7 @@ func _resume() -> void:
 	if state != "paused":
 		return
 	state = pause_screen.get_meta("was", "play")
+	_release_touches()
 	_show(null)
 
 
@@ -2282,9 +2293,10 @@ const GFX_VERSION := 2
 func _load() -> void:
 	Gfx.level = Gfx.default_level() # until the save says otherwise
 	var c := ConfigFile.new()
-	if c.load(SAVE_PATH) != OK:
+	if c.load(SAVE_PATH) != OK and c.load(SAVE_PATH + ".new") != OK:
 		return
-	bests = c.get_value("stats", "bests", {"classic": c.get_value("stats", "best", 0.0)})
+	var saved_bests = c.get_value("stats", "bests", {"classic": c.get_value("stats", "best", 0.0)})
+	bests = saved_bests if saved_bests is Dictionary else {}
 	mode_id = c.get_value("player", "mode", "classic")
 	games = c.get_value("stats", "games", 0)
 	wins = c.get_value("stats", "wins", 0)
@@ -2326,6 +2338,15 @@ func _load() -> void:
 	Gfx.show_fps = c.get_value("settings", "show_fps", false)
 	big_stick = c.get_value("settings", "big_stick", false)
 	controls = c.get_value("settings", "controls", "stick")
+	# Anything that no longer exists goes back to the default
+	if not world_modes().has(mode_id):
+		mode_id = "classic"
+	if not preload("res://scripts/world.gd").MAPS.has(map_id):
+		map_id = "square"
+	if not preload("res://scripts/world.gd").BOSSES.has(boss_kind):
+		boss_kind = "king"
+	if controls != "stick" and controls != "tap":
+		controls = "stick"
 	# Saves from before the welcome screen: those players have already found their way
 	welcomed = c.get_value("player", "welcomed", games > 0 or prog.tutorial_done)
 	I18n.lang = c.get_value("settings", "lang", "")
@@ -2336,6 +2357,16 @@ func _load() -> void:
 
 static func world_difficulties() -> Array:
 	return ["easy", "normal", "hard"]
+
+
+## The modes the menu can pick (not the tutorial)
+static func world_modes() -> Array:
+	var out := []
+	var modes: Dictionary = preload("res://scripts/world.gd").MODES
+	for k in modes:
+		if not modes[k].get("hidden", false):
+			out.append(k)
+	return out
 
 
 func _save() -> void:
@@ -2366,4 +2397,7 @@ func _save() -> void:
 	c.set_value("settings", "colorblind", Patterns.on)
 	c.set_value("settings", "music", music.enabled)
 	c.set_value("settings", "muted", sfx.muted)
-	c.save(SAVE_PATH)
+	# Write a new file and then swap it in, so a crash while saving can't wipe progress
+	var tmp := SAVE_PATH + ".new"
+	if c.save(tmp) == OK:
+		DirAccess.rename_absolute(tmp, SAVE_PATH)

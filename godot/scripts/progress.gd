@@ -65,7 +65,7 @@ var tutorial_done := false
 static func blank_stats() -> Dictionary:
 	return {
 		"games": 0, "wins": 0, "kos": 0, "time": 0.0, "powerups": 0, "coins": 0,
-		"best_pct": 0.0, "best_loop": 0.0, "king_wins": 0, "queen_wins": 0, "wizard_wins": 0, "modes": [], "maps": [],
+		"best_pct": 0.0, "best_loop": 0.0, "best_streak": 0, "king_wins": 0, "queen_wins": 0, "wizard_wins": 0, "modes": [], "maps": [],
 	}
 
 
@@ -138,6 +138,7 @@ func _streak(today: String) -> Array:
 	var yesterday := Time.get_date_string_from_unix_time(Time.get_unix_time_from_datetime_string(today) - 86400)
 	streak = streak + 1 if streak_day == yesterday else 1
 	streak_day = today
+	stats.best_streak = maxi(stats.best_streak, streak)
 	var coins: int = STREAK_COINS[streak - 1] if streak <= STREAK_COINS.size() else 100
 	return [{"text": tr("Day %d streak") % streak if streak > 1 else tr("First game today"), "coins": coins, "kind": "streak"}]
 

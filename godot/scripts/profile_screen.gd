@@ -63,7 +63,7 @@ func refresh() -> void:
 		["Knockouts", str(s.kos)], ["Best claim", "%.1f%%" % s.best_pct],
 		["Biggest loop", "%.1f%%" % s.best_loop], ["Time played", "%dh %02dm" % [hours, mins] if hours else "%dm" % mins],
 		["Power-ups", str(s.powerups)], ["Coins picked up", str(s.coins)],
-		["Bosses beaten", str(s.king_wins + s.queen_wins + s.wizard_wins)], ["Best streak", tr("1 day") if p.streak == 1 else tr("%d days") % p.streak],
+		["Bosses beaten", str(s.king_wins + s.queen_wins + s.wizard_wins)], ["Best streak", _days(maxi(s.best_streak, p.streak))],
 	]
 	for r in rows:
 		var cell := HBoxContainer.new()
@@ -114,6 +114,10 @@ func refresh() -> void:
 			m.sfx.play("tap")
 			info.text = "%s: %s%s" % [tr(d.name), tr(d.desc), "  " + tr("(You have it!)") if have else ""])
 		tg.add_child(b)
+
+
+func _days(n: int) -> String:
+	return tr("1 day") if n == 1 else tr("%d days") % n
 
 
 func _save_name() -> void:

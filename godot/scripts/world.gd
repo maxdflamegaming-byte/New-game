@@ -1139,8 +1139,8 @@ func _call_guards(k: Player) -> void:
 	for c in COLORS:
 		if not used.has(c):
 			spare.append(c)
-	for name in ["Guard", "Knight"]:
-		var g := Player.new(players.size(), name, spare.pop_front() if spare.size() else Color("#8d97ab"), true)
+	for guard in ["Guard", "Knight"]:
+		var g := Player.new(players.size(), guard, spare.pop_front() if spare.size() else Color("#8d97ab"), true)
 		bots.give_personality(g, "hunter")
 		_tune(g)
 		Cosmetics.dress_bot(g)

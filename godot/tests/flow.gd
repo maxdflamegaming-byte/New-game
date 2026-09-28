@@ -36,6 +36,14 @@ func _run() -> void:
 	main.prog.tutorial_done = true # skip the first-game tutorial offer (tested on its own below)
 	I18n.lang = "en" # the checks below compare English text
 	I18n.apply()
+	# Start from the defaults, whatever an earlier run left in the save
+	main.boss_kind = "king"
+	main.difficulty = "normal"
+	main.map_id = "square"
+	main.controls = "stick"
+	main.my_color = 0
+	Patterns.on = false
+	main.crash_box.visible = false
 	var first_launch: bool = main.welcome.visible
 	main.welcomed = true
 	main.welcome.visible = false
@@ -118,6 +126,7 @@ func _run() -> void:
 		if w.map_id != m or not w.me.alive or w.wall[w.me.cell.y * w.N + w.me.cell.x] != 0:
 			bad.append(m)
 	ok("Every map starts with you on open ground", bad.is_empty(), str(bad))
+	main.map_id = "square"
 
 	# Timed: when the clock runs out the biggest player wins
 	await _play("timed")
@@ -135,7 +144,7 @@ func _run() -> void:
 	ok("Teams: you and 3 bots against 4", w.allies(me, mate) and not w.allies(me, foe) and w.players.size() == 9)
 	me.shield = 0.0
 	mate.shield = 0.0
-	var tcell: Vector2i = mate.cell + Vector2i(0, 5)
+	var tcell: Vector2i = mate.cell + Vector2i(0, 5 if mate.cell.y < w.N - 6 else -5)
 	var ti: int = tcell.y * w.N + tcell.x
 	w.trail[ti] = mate.id
 	mate.trail.append(ti)
@@ -164,6 +173,11 @@ func _run() -> void:
 	w.kill(w.me, king)
 	await _wait(1.4)
 	ok("Losing a life brings you back", w.me.alive and w.me.lives == 2 and main.state == "play", "%s %d %s" % [w.me.alive, w.me.lives, main.state])
+	# The King moving house (off the board for a moment) isn't a win
+	king.alive = false
+	main._check_end()
+	ok("A boss that's only moving house doesn't count as beaten", main.state == "play", main.state)
+	king.alive = true
 	while king.hp > 1:
 		king.shield = 0.0
 		w.kill(king, w.me)
@@ -366,6 +380,19 @@ func _run() -> void:
 	main._load()
 	ok("A save on Ultra at 120 FPS comes back as High at 60 FPS", Gfx.level == Gfx.HIGH and Gfx.fps == 60)
 	main._save()
+	# A broken or old save can't break the game
+	var odd := ConfigFile.new()
+	odd.load(main.SAVE_PATH)
+	odd.set_value("player", "mode", "tutorial")
+	odd.set_value("player", "map", "moon")
+	odd.set_value("player", "boss", "dragon")
+	odd.set_value("settings", "controls", "wiggle")
+	odd.set_value("stats", "bests", "oops")
+	odd.save(main.SAVE_PATH)
+	main._load()
+	ok("Unknown saved modes, maps, bosses and controls go back to the defaults", main.mode_id == "classic" and main.map_id == "square" and main.boss_kind == "king" and main.controls == "stick" and main.bests is Dictionary)
+	main._save()
+	ok("Saving leaves no half-written file behind", FileAccess.file_exists(main.SAVE_PATH) and not FileAccess.file_exists(main.SAVE_PATH + ".new"))
 	# Crash reports: the marker file, and a log report with the device details
 	CrashLog.running()
 	ok("A game that closes without saying goodbye counts as a crash next time", CrashLog.started())
@@ -388,6 +415,16 @@ func _run() -> void:
 	Gfx.fps = gfx_before[1]
 	Gfx.show_fps = gfx_before[2]
 	main._apply_gfx()
+	main._to_menu()
+	await process_frame
+
+	# A finger lifted while paused never reaches the game: the joystick mustn't stay stuck
+	await _play()
+	main._stick_index = 3
+	main._taps[5] = 1
+	main._pause()
+	main._resume()
+	ok("Pausing lets go of the joystick and tap-to-turn", main._stick_index == -1 and main._taps.is_empty())
 	main._to_menu()
 	await process_frame
 

@@ -50,6 +50,10 @@ jobs:
           # A script error leaves Godot running without quitting, so each test has a time limit
           timeout 900 "$HOME/godot" --headless --path godot -s tests/sim.gd
           timeout 900 "$HOME/godot" --headless --path godot -s tests/flow.gd
+          # A minute of random play, screens and settings: any script error fails the build
+          timeout 300 "$HOME/godot" --headless --path godot -s tests/monkey.gd -- 60 1 2>&1 | tee monkey.log
+          grep -q "MONKEY DONE" monkey.log
+          ! grep -q "SCRIPT ERROR" monkey.log
 
       # Everything below only runs when the workflow is started by hand
       - name: Get the Android export templates

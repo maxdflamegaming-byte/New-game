@@ -172,16 +172,16 @@ func _add_card(kind: String, id: String) -> void:
 
 ## Tap a card: wear it if it's yours, buy it if you can afford it
 func tap(kind: String, id: String) -> void:
-	var name: String = Cosmetics.items(kind)[id].name
+	var item_name: String = Cosmetics.items(kind)[id].name
 	if m.owned[kind].has(id):
 		m.equipped[kind] = id
 		m.sfx.play("tap")
-		info.text = tr("Now using %s.") % tr(name)
+		info.text = tr("Now using %s.") % tr(item_name)
 	else:
 		var cost := Cosmetics.price(kind, id)
 		if m.wallet < cost:
 			m.sfx.play("warn")
-			info.text = tr("%s costs %d coins. You need %d more: win games and grab coins to earn them!") % [tr(name), cost, cost - m.wallet]
+			info.text = tr("%s costs %d coins. You need %d more: win games and grab coins to earn them!") % [tr(item_name), cost, cost - m.wallet]
 			_shake(kind, id)
 			return
 		m.wallet -= cost
@@ -189,7 +189,7 @@ func tap(kind: String, id: String) -> void:
 		m.equipped[kind] = id
 		m.sfx.play("coin")
 		m.sfx.play("win")
-		info.text = tr("You got %s! It's on now.") % tr(name)
+		info.text = tr("You got %s! It's on now.") % tr(item_name)
 		for r in m.prog.award("shopper"):
 			m.wallet += r.coins
 			info.text += "  " + tr("%s: +%d coins!") % [r.text, r.coins]
