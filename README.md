@@ -108,6 +108,8 @@ python3 -m http.server 8000
 
 ## Color Claim HD (Godot)
 
+To open it on your own computer, play it there or export an APK yourself, see [PC-SETUP.md](PC-SETUP.md).
+
 `godot/` is Color Claim rebuilt in the free [Godot](https://godotengine.org) engine (4.7). It draws everything with the phone's GPU at the screen's full resolution, so it's sharp and smooth. So far it has:
 
 - **6 modes:** Classic (claim 50% to win), Timed (most land after 3 minutes), Daily (the same map and start for everyone today), Teams (you and 3 bots against 4, claim 50% together), Boss Battle and 2 Players (split screen on one phone, first to 40%)
