@@ -66,6 +66,15 @@ func _run() -> void:
 	Gfx.show_fps = false
 	main._apply_gfx()
 	main.prog.tutorial_done = true
+	main.welcomed = true
+	main.welcome.visible = false
+	main.crash_box.visible = false
+	Events.forced = "coins" # the menu shows an event
+	if not main.prog.stats.modes.has("hill"):
+		main.prog.stats.modes.append("hill") # no first-time hint cards in the pictures
+	for m in ["bumpers", "ice"]:
+		if not main.prog.stats.maps.has(m):
+			main.prog.stats.maps.append(m)
 	main.player_name = "You"
 	main.difficulty = "normal"
 	main.equipped = {"skin": "ninja", "trail": "stars", "pet": "dragon"}
@@ -86,24 +95,14 @@ func _run() -> void:
 	main._to_menu()
 	main.boss_kind = "king"
 
-	# 3. A hazard map: the Storm closing in
-	main.equipped = {"skin": "robot", "trail": "rainbow", "pet": "bee"}
-	if not main.prog.stats.maps.has("storm"):
-		main.prog.stats.maps.append("storm") # no first-time hint card in the picture
-	await _game("classic", "storm", 35.0)
-	var w = main.world
-	# Close the storm in once (you're kept in the game), then show the next ring coming
-	main.ending = true
-	w.storm_timer = 99.0
-	w._close_storm(w.storm_r - w.STORM_STEP * 2)
-	if not w.me.alive:
-		w.spawn(w.me, w.N / 2, w.N / 2)
-	main.ending = false
-	w.storm_next = maxf(w.STORM_MIN, w.storm_r - w.STORM_STEP)
-	main._snap_camera()
+	# 3. A new map: Pinball, with its bumpers, in reward-track gear
+	main.equipped = {"skin": "gold", "trail": "lightning", "pet": "fox"}
+	for kind in main.equipped:
+		if not main.owned[kind].has(main.equipped[kind]):
+			main.owned[kind].append(main.equipped[kind])
+	await _game("classic", "bumpers", 35.0)
 	main.tut_card.visible = false
-	await _wait(0.8)
-	await _shot("3-storm")
+	await _shot("3-pinball")
 	main._to_menu()
 
 	# 4. The shop
@@ -120,11 +119,12 @@ func _run() -> void:
 	await _shot("5-menu")
 
 	# 6. A win, with rewards
-	await _game("classic", "pillars", 30.0)
-	main.peak = 52.4
-	main.play_time = 146.0
+	await _game("hill", "square", 30.0)
+	main.tut_card.visible = false
+	main.peak = 34.6
+	main.play_time = 131.0
 	main.world.me.kills = 3
-	main._game_over(true, "You claimed 50% of the map!")
+	main._game_over(true, "You held the hill for 100 points!")
 	await _wait(3.0)
 	await _shot("6-results")
 	main._to_menu()

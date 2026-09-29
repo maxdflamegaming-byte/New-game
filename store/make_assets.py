@@ -19,12 +19,12 @@ NAVY = (29, 35, 66)
 SHOTS = [
     ("1-classic", "Loop back to claim the land!", ((79, 140, 255), (140, 92, 255))),
     ("2-boss", "Beat the King, the Queen and the Wizard", ((255, 93, 115), (255, 140, 66))),
-    ("3-storm", "4 wild hazard maps", ((75, 65, 110), (176, 107, 255))),
+    ("3-pinball", "11 maps, from Ice Rink to Pinball", ((255, 93, 158), (176, 107, 255))),
     ("4-shop", "Skins, trail effects and pets", ((176, 107, 255), (255, 122, 198))),
-    ("5-menu", "6 modes and 9 maps", ((79, 140, 255), (46, 196, 182))),
-    ("6-results", "Level up and earn coins", ((255, 184, 77), (255, 93, 115))),
+    ("5-menu", "7 modes and a new event every week", ((79, 140, 255), (46, 196, 182))),
+    ("6-results", "King of the Hill, levels and coins", ((255, 184, 77), (255, 93, 115))),
     ("7-missions", "New missions every day", ((255, 140, 66), (176, 107, 255))),
-    ("8-profile", "24 trophies to collect", ((140, 92, 255), (79, 140, 255))),
+    ("8-profile", "Level up for rewards you can't buy", ((140, 92, 255), (79, 140, 255))),
 ]
 
 
@@ -132,7 +132,7 @@ def feature_graphic():
         d.text((x, y), ch, font=font, fill=cols[i % len(cols)], stroke_width=12, stroke_fill=NAVY)
         x += d.textlength(ch, font=font) - 2
     d.text((60, 262), "Paint the map. Cut their trails.", font=ImageFont.truetype(FONT, 40), fill="white", stroke_width=6, stroke_fill=NAVY)
-    d.text((62, 322), "6 modes  ·  9 maps  ·  bosses & pets", font=ImageFont.truetype(FONT_MED, 30), fill=(255, 255, 255, 235), stroke_width=4, stroke_fill=NAVY)
+    d.text((62, 322), "7 modes  ·  11 maps  ·  bosses & pets", font=ImageFont.truetype(FONT_MED, 30), fill=(255, 255, 255, 235), stroke_width=4, stroke_fill=NAVY)
     icon = Image.open("godot/assets/icon_fg.png").convert("RGBA").resize((210, 210), Image.LANCZOS)
     bg.alpha_composite(icon, (250, 290))
     bg.convert("RGB").save("store/feature-graphic.png", optimize=True)
