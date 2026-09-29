@@ -16,6 +16,7 @@ signal storm_coming(radius: float)
 signal storm_hit(radius: float)
 signal trap_dropped(boss: Player, at: Vector2)
 signal blinked(boss: Player, from: Vector2, to: Vector2)
+signal bumped(p: Player, at: Vector2)
 
 const N := 80
 const SPEED := 7.5 # cells per second
@@ -36,6 +37,7 @@ const MODES := {
 	"teams": {"name": "Teams", "desc": "You + 3 bots vs 4 bots · first team to 50% wins", "win": 50.0, "teams": true},
 	"boss": {"name": "Boss", "desc": "Cut the King's trail to knock off his hearts · you have 3 lives", "boss": true},
 	"duo": {"name": "2 Players", "desc": "Two players on one screen · first to 40% wins", "win": 40.0, "duo": true},
+	"hill": {"name": "King of the Hill", "desc": "Own land on the glowing hill to score · first to 100 points wins", "hill": true, "goal": 100.0, "limit": 240.0},
 	"tutorial": {"name": "Tutorial", "desc": "Learn to play in 5 quick steps", "win": 15.0, "tutorial": true, "hidden": true},
 }
 
@@ -50,6 +52,7 @@ const KING_HEARTS := 5
 const MAPS := {
 	"square": "Square", "round": "Round", "pillars": "Pillars", "maze": "Maze", "islands": "Islands",
 	"saws": "Saw Mill", "storm": "Storm", "conveyor": "Conveyor", "portals": "Portals",
+	"ice": "Ice Rink", "bumpers": "Pinball",
 }
 
 ## The Boss Battle's bosses: beat one to unlock the next
@@ -68,6 +71,11 @@ const STORM_WARN := 5.0 # the next ring shows this long before it closes
 const STORM_STEP := 7.0 # cells it closes in each time
 const STORM_MIN := 13.0
 const SAW_SPEED := 4.5
+const ICE_TURN := 0.4 # on ice you turn this much slower...
+const ICE_SPEED := 1.15 # ...and slide this much faster
+const BUMPER_R := 1.7 # a Pinball bumper's radius, in cells
+const HILL_R := 9.0 # King of the Hill: the hill's radius
+const HILL_RATE := 6.5 # points a second for owning all of the hill
 
 ## Power-ups appear on the map; anyone (bots too) can grab them
 const POWERUPS := {
@@ -106,6 +114,7 @@ var coins_picked := 0 # by you, this game
 var looks := {} # your skin, trail and pet from the shop
 var difficulty := "normal"
 var boss_kind := "king" # which boss the Boss Battle brings
+var event := "" # this week's event (see Events), for everything but the tutorial and the menu
 var portals := [] # [[a, b], ...]: step into one end and pop out of the other
 var saws := [] # {corners, d, speed, pos, spin}: blades running round their tracks
 var belt := PackedByteArray() # per cell: 0 none, else an index into BELT_DIRS
@@ -115,6 +124,11 @@ var storm_r := 0.0 # the storm's safe circle (0 = no storm)
 var storm_next := 0.0 # where it closes in to next (while the warning shows)
 var storm_timer := 0.0
 var traps := [] # {pos, life, owner}: the Queen's spiky traps
+var ice := PackedByteArray() # Ice Rink: 1 where the floor is ice
+var bumpers := [] # Pinball: {pos, flash}
+var hill_r := 0.0 # King of the Hill: the hill's radius (0 = no hill)
+var hill_cells := PackedInt32Array()
+var points := {} # King of the Hill: player id -> points
 
 var _setting_up := false # no spawn events while a game is being set up
 var _power_timer := 3.0
@@ -131,6 +145,7 @@ func _init() -> void:
 	belt.resize(N * N)
 	avoid.resize(N * N)
 	tracks.resize(N * N)
+	ice.resize(N * N)
 	_seen.resize(N * N)
 	_stack.resize(N * N)
 	counts.resize(16)
@@ -159,6 +174,7 @@ func setup(my_color: int, my_name: String, demo := false, map := "square", mode_
 	trail.fill(0)
 	counts.fill(0)
 	_build_map()
+	_build_hill()
 	time = 0.0
 	won = false
 	land_version += 1
@@ -276,6 +292,8 @@ func _build_map() -> void:
 	belt.fill(0)
 	avoid.fill(0)
 	tracks.fill(0)
+	ice.fill(0)
+	bumpers.clear()
 	portals.clear()
 	saws.clear()
 	storm_r = 0.0
@@ -327,6 +345,36 @@ func _build_map() -> void:
 						for x in range(int(end.x) - 2, int(end.x) + 3):
 							if x >= 0 and y >= 0 and x < N and y < N and Vector2(x + 0.5, y + 0.5).distance_to(end) < 2.2:
 								avoid[y * N + x] = 1
+		"ice":
+			# Patches of ice: turning is slow and sliding is fast
+			var patches := [[0.26, 0.26, 0.13], [0.74, 0.26, 0.13], [0.26, 0.74, 0.13], [0.74, 0.74, 0.13], [0.5, 0.14, 0.08], [0.5, 0.86, 0.08]]
+			for pa in patches:
+				var pc := Vector2(N * pa[0], N * pa[1])
+				var pr: float = N * pa[2]
+				for y in N:
+					for x in N:
+						var d := Vector2(x + 0.5, y + 0.5) - pc
+						if Vector2(d.x, d.y * 1.25).length() <= pr:
+							ice[y * N + x] = 1
+		"bumpers":
+			# Round bumpers that bounce you away, in a ring and by the corners
+			var spots := []
+			for k in 6:
+				spots.append(Vector2(c, c) + Vector2.from_angle(k * TAU / 6 + PI / 6) * N * 0.3)
+			for q in [Vector2(0.14, 0.14), Vector2(0.86, 0.14), Vector2(0.14, 0.86), Vector2(0.86, 0.86)]:
+				spots.append(q * N)
+			for q in spots:
+				var at := Vector2(roundi(q.x) + 0.5, roundi(q.y) + 0.5)
+				bumpers.append({"pos": at, "flash": 0.0})
+				for y in range(int(at.y) - 4, int(at.y) + 5):
+					for x in range(int(at.x) - 4, int(at.x) + 5):
+						if x < 0 or y < 0 or x >= N or y >= N:
+							continue
+						var d := Vector2(x + 0.5, y + 0.5).distance_to(at)
+						if d < BUMPER_R - 0.5:
+							wall[y * N + x] = 1 # the bumper itself
+						elif d < BUMPER_R + 2.0:
+							avoid[y * N + x] = 1 # bots plan round it
 		"round":
 			var r := N / 2.0 - 1
 			for y in N:
@@ -414,6 +462,55 @@ func free_start_cells(x: int, y: int) -> PackedInt32Array:
 			if land[i] == 0 and trail[i] == 0 and wall[i] == 0:
 				cells.append(i)
 	return cells
+
+
+## King of the Hill: the hill in the middle of the map, and everyone's points at 0
+func _build_hill() -> void:
+	hill_cells = PackedInt32Array()
+	points = {}
+	hill_r = HILL_R if mode.get("hill", false) else 0.0
+	if hill_r <= 0:
+		return
+	var c := center()
+	for y in N:
+		for x in N:
+			if wall[y * N + x] == 0 and Vector2(x + 0.5, y + 0.5).distance_to(c) <= hill_r:
+				hill_cells.append(y * N + x)
+
+
+## Points for owning the hill: your share of it, every second
+func _score_hill(dt: float) -> void:
+	if hill_cells.is_empty():
+		return
+	var owned := {}
+	for i in hill_cells:
+		var id := land[i]
+		if id:
+			owned[id] = owned.get(id, 0) + 1
+	for id in owned:
+		var p: Player = players[id]
+		if p and p.alive:
+			points[id] = points.get(id, 0.0) + HILL_RATE * owned[id] / float(hill_cells.size()) * dt
+
+
+## Whoever has the most hill points (or null before anyone scores)
+func hill_leader() -> Player:
+	var best: Player = null
+	for p in players:
+		if p and points.get(p.id, 0.0) > (points.get(best.id, 0.0) if best else 0.0):
+			best = p
+	return best
+
+
+func on_ice(x: float, y: float) -> bool:
+	if x < 0 or y < 0 or x >= N or y >= N:
+		return false
+	return ice[int(y) * N + int(x)] == 1
+
+
+## How fast a square can turn where it is (slower on ice)
+func turn_rate(x: float, y: float) -> float:
+	return TURN * (ICE_TURN if on_ice(x, y) else 1.0)
 
 
 ## The nearest spot to (x, y) with room for a full starting patch
@@ -609,15 +706,15 @@ func _free_item_spot(margin: float) -> Vector2:
 func _update_items(dt: float) -> void:
 	_power_timer -= dt
 	if _power_timer <= 0:
-		_power_timer = randf_range(6.0, 10.0)
-		if powerups.size() < MAX_POWERUPS:
+		_power_timer = randf_range(6.0, 10.0) * (0.5 if event == "power" else 1.0)
+		if powerups.size() < MAX_POWERUPS + (2 if event == "power" else 0):
 			var q := _free_item_spot(10.0)
 			if q.x >= 0:
 				powerups.append({"pos": q, "kind": POWERUPS.keys().pick_random(), "age": 0.0})
 	_coin_timer -= dt
 	if _coin_timer <= 0:
-		_coin_timer = randf_range(3.0, 6.0)
-		if coins.size() < MAX_COINS:
+		_coin_timer = randf_range(3.0, 6.0) * (0.5 if event == "coinrain" else 1.0)
+		if coins.size() < MAX_COINS * (2 if event == "coinrain" else 1):
 			var q := _free_item_spot(0.0)
 			if q.x >= 0:
 				coins.append({"pos": q, "age": 0.0, "life": 25.0})
@@ -691,6 +788,10 @@ func speed_of(p: Player) -> float:
 		v *= DIFFICULTY.get(difficulty, DIFFICULTY.normal).speed
 	if p.is_boss:
 		v *= 1.28 if p.rage else 1.12
+	if event == "speed":
+		v *= 1.2
+	if on_ice(p.pos.x, p.pos.y):
+		v *= ICE_SPEED
 	if p.fx.speed > 0:
 		v *= 1.6
 	if freezer and freezer != p:
@@ -746,12 +847,32 @@ func move(p: Player, dt: float) -> void:
 
 func _step(p: Player, dt: float) -> void:
 	var diff := wrapf(p.desired - p.angle, -PI, PI)
-	var turn := clampf(diff, -TURN * dt, TURN * dt)
+	var rate := turn_rate(p.pos.x, p.pos.y)
+	var turn := clampf(diff, -rate * dt, rate * dt)
 	p.angle = wrapf(p.angle + turn, -PI, PI)
 	p.turning = turn / (TURN * dt) if dt > 0 else 0.0
 	var v := speed_of(p)
 	var nx := clampf(p.pos.x + cos(p.angle) * v * dt, 0.01, N - 0.01)
 	var ny := clampf(p.pos.y + sin(p.angle) * v * dt, 0.01, N - 0.01)
+	# Pinball: a bumper bounces you off the way a ball would
+	for b in bumpers:
+		var bpos: Vector2 = b.pos
+		var d: Vector2 = Vector2(nx, ny) - bpos
+		var reach: float = BUMPER_R + 0.45 * p.size
+		if d.length() < reach:
+			var n: Vector2 = d.normalized() if d.length() > 0.01 else Vector2.from_angle(p.angle + PI)
+			var dir := Vector2.from_angle(p.angle)
+			if dir.dot(n) < 0:
+				dir = dir - 2.0 * dir.dot(n) * n
+			p.angle = dir.angle()
+			p.desired = p.angle
+			var out: Vector2 = bpos + n * (reach + 0.05)
+			nx = clampf(out.x, 0.01, N - 0.01)
+			ny = clampf(out.y, 0.01, N - 0.01)
+			p.squash = 1.0
+			b.flash = 1.0
+			bumped.emit(p, b.pos)
+			break
 	# Walls aren't deadly: slide along them
 	if is_wall_at(nx, ny):
 		if not is_wall_at(p.pos.x, ny):
@@ -837,6 +958,10 @@ func update(dt: float) -> void:
 	check_bumps()
 	_update_items(dt)
 	_update_hazards(dt)
+	if hill_r > 0:
+		_score_hill(dt)
+	for b in bumpers:
+		b.flash = maxf(0.0, b.flash - dt * 3.0)
 
 
 # ---------- Hazard maps ----------
@@ -1074,8 +1199,8 @@ func _spawn_king() -> void:
 	k.is_boss = true
 	k.boss_kind = kind
 	k.size = 1.7
-	k.hp = b.hearts
-	k.max_hp = b.hearts
+	k.hp = b.hearts + (2 if event == "giants" else 0)
+	k.max_hp = k.hp
 	k.greed = 55
 	k.aggro = 0.7
 	k.loop_scale = 1.7

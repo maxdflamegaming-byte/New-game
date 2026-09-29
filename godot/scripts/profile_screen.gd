@@ -4,6 +4,7 @@ extends MenuScreen
 var info: Label
 var avatar: Control
 var name_edit: LineEdit
+var _reward_preview: Control
 
 
 func build(main) -> void:
@@ -49,6 +50,29 @@ func refresh() -> void:
 	xl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	right.add_child(xl)
 
+	# The reward track: what the next level brings
+	var nt: Array = m.next_track_item()
+	if not nt.is_empty():
+		var rc := card(false)
+		var prev := Control.new()
+		prev.custom_minimum_size = Vector2(110, 100)
+		prev.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		prev.draw.connect(func(): _draw_reward(prev, nt[1], nt[2]))
+		rc.add_child(prev)
+		var rl := VBoxContainer.new()
+		rl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		rl.alignment = BoxContainer.ALIGNMENT_CENTER
+		rc.add_child(rl)
+		var what: String = {"skin": "%s skin", "trail": "%s trail", "pet": "%s pet"}[nt[1]]
+		var t1: Label = m._label(tr("Next reward: %s") % (tr(what) % tr(Cosmetics.items(nt[1])[nt[2]].name)), 26, m.INK)
+		t1.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		t1.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		rl.add_child(t1)
+		var t2: Label = m._label(tr("Unlocks at level %d. Only earned by levelling up!") % nt[0], 22, m.MUTED, 0, m.INK, m.font_med)
+		t2.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		t2.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		rl.add_child(t2)
+		_reward_preview = prev
 	heading("STATS")
 	var s: Dictionary = p.stats
 	var grid := GridContainer.new()
@@ -130,6 +154,13 @@ func _save_name() -> void:
 func _process(_dt: float) -> void:
 	if visible and is_instance_valid(avatar):
 		avatar.queue_redraw()
+	if visible and is_instance_valid(_reward_preview):
+		_reward_preview.queue_redraw()
+
+
+## The next reward, shown the way the shop shows it
+func _draw_reward(c: Control, kind: String, id: String) -> void:
+	m.shop._draw_preview(c, kind, id)
 
 
 func _draw_avatar() -> void:

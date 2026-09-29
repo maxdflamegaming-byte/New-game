@@ -18,6 +18,7 @@ const MISSIONS := {
 	"teams": {"text": "Win a Teams game", "goal": 1, "stat": "win_teams", "reward": 120},
 	"boss": {"text": "Knock a heart off a boss", "goal": 1, "stat": "king_hits", "reward": 80},
 	"daily": {"text": "Play today's Daily", "goal": 1, "stat": "mode_daily", "reward": 60},
+	"hill": {"text": "Win a King of the Hill game", "goal": 1, "stat": "win_hill", "reward": 120},
 }
 
 const TROPHIES := {
@@ -48,8 +49,8 @@ const TROPHIES := {
 }
 const TROPHY_COINS := 25
 const STREAK_COINS := [20, 30, 40, 60, 80, 100, 150] # day 1..7, then 100 a day
-const ALL_MODES := ["classic", "timed", "daily", "teams", "boss", "duo"]
-const ALL_MAPS := ["square", "round", "pillars", "maze", "islands", "saws", "storm", "conveyor", "portals"]
+const ALL_MODES := ["classic", "timed", "daily", "teams", "boss", "duo", "hill"]
+const ALL_MAPS := ["square", "round", "pillars", "maze", "islands", "saws", "storm", "conveyor", "portals", "ice", "bumpers"]
 
 var xp := 0 # towards the next level
 var level := 1

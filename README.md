@@ -112,12 +112,14 @@ To open it on your own computer, play it there or export an APK yourself, see [P
 
 `godot/` is Color Claim rebuilt in the free [Godot](https://godotengine.org) engine (4.7). It draws everything with the phone's GPU at the screen's full resolution, so it's sharp and smooth. So far it has:
 
-- **6 modes:** Classic (claim 50% to win), Timed (most land after 3 minutes), Daily (the same map and start for everyone today), Teams (you and 3 bots against 4, claim 50% together), Boss Battle and 2 Players (split screen on one phone, first to 40%)
+- **7 modes:** Classic (claim 50% to win), Timed (most land after 3 minutes), Daily (the same map and start for everyone today), Teams (you and 3 bots against 4, claim 50% together), Boss Battle and 2 Players (split screen on one phone, first to 40%), and King of the Hill (own land on the glowing hill in the middle to score points; first to 100 wins, or the most points after 4 minutes)
 - **3 bosses:** the King (5 hearts, calls guards at half health); beat him to unlock the Queen (6 hearts, drops spiky traps), then the Wizard (7 hearts, blinks home and wipes his trail when you get close). You have 3 lives
-- **9 maps:** Square, Round, Pillars, Maze and Islands (animated water with foam and waves), plus 4 hazard maps: Saw Mill (blades on tracks cut trails), Storm (the arena closes in every 25 s after a warning ring), Conveyor (belts carry you) and Portals (step into one, pop out of its twin, trail and all). Walls are slid along, never deadly; bots understand every hazard
+- **11 maps:** Square, Round, Pillars, Maze and Islands (animated water with foam and waves), plus 4 hazard maps: Saw Mill (blades on tracks cut trails), Storm (the arena closes in every 25 s after a warning ring), Conveyor (belts carry you) and Portals (step into one, pop out of its twin, trail and all). Walls are slid along, never deadly; bots understand every hazard Plus Ice Rink (patches of ice where you slide 15% faster and turn much slower) and Pinball (round bumpers that bounce you off like a pinball)
 - **Power-ups:** Speed (1.6× for 4 s), Shield (6 s), Freeze (everyone else at half speed for 4 s), Ghost (cross your own trail for 5 s) and Paint Bomb (claims a circle of land), with icons, sparkles, effects on the squares and HUD chips showing the seconds left
 - **Gold coins** on the map, and a saved wallet: every game pays 2 per % claimed, 5 per knockout, 50 for a win (100 more for beating the King), plus what you picked up
 - **Shop:** spend coins on 8 skins (Stripes, Dots, Shades, Kitty, Ninja, Robot, Galaxy, Rainbow), 7 trail effects (Sparkles, Bubbles, Hearts, Stars, Confetti, Fire, Rainbow) and 5 pets that follow you (Chick, Slime, Boo, Bee, Dragon). A showcase shows your square driving around in your look. Bots wear shop items too.
+- **Reward track:** 6 exclusive items you can only earn by levelling up (Snow trail at level 3, Ice skin at 5, Lightning trail at 8, Lava skin at 12, a Fox pet at 16, Gold skin at 20); the profile shows the next one
+- **Weekly event:** one special rule for everyone, changing every Monday (Double Coins, Speed Week, Power Frenzy, Coin Rain, Giant Bosses), shown on the menu
 - **Levels and XP:** every game gives XP (more for land, knockouts and winning), and each level-up pays coins
 - **Daily missions:** 3 new ones every day (the same for everyone), paid as soon as you finish them; plus a **daily streak** bonus for your first game each day (20 coins up to 150 on day 7)
 - **22 trophies** (25 coins each) and a **profile** with your name, level, stats and trophies
@@ -131,6 +133,8 @@ To open it on your own computer, play it there or export an APK yourself, see [P
 - **New-player help:** hint cards in the first games, an explanation the first time you play each hazard map, and a tip after every knockout
 - The menu has a level badge and a dock for the Shop, Missions, Profile and Settings; the results screen shows your XP bar and each reward as it pops in
 - Smooth glowing trails, raised land, particles, a live bots-only game behind the menu, a touch joystick (one per player in 2 Players), a minimap, callouts, sound effects, and **music** made in code (on a background thread, so the game starts at once)
+- **Music:** three tracks made in code (the menu, a quicker one for games and a darker one for boss battles) that crossfade; screens fade and settle in, and buttons squish with a tiny buzz when pressed
+- **Ads, purchases and leaderboards:** ready in the game but switched off until the accounts exist; see [ONLINE-AND-MONEY.md](ONLINE-AND-MONEY.md)
 
 - `scripts/world.gd`: the board, rules and modes (movement, trails, capturing land, knockouts, bumps, the King)
 - `scripts/bots.gd`: bot brains (loops, the safe way home, trail safety, hunting)
@@ -138,7 +142,8 @@ To open it on your own computer, play it there or export an APK yourself, see [P
 - `scripts/split_view.gd`: the 2 Players split screen
 - `scripts/cosmetics.gd` and `scripts/shop.gd`: the skins, trail effects and pets, and the shop screen
 - `scripts/progress.gd`: levels, missions, the streak, trophies and stats
-- `scripts/gfx.gd`: the graphics quality levels and frame rate
+- `scripts/gfx.gd`: the graphics quality levels and frame rate; `scripts/shaders.gd`: the land and minimap shaders
+- `scripts/events.gd`: the weekly event; `scripts/services.gd`: ads, purchases and leaderboards (off for now); `scripts/crash_log.gd`: crash reports
 - `scripts/patterns.gd`: colourblind patterns; `scripts/i18n.gd` and `i18n/*.gd`: languages and translations
 - `scripts/menu_screen.gd`, `missions_screen.gd`, `profile_screen.gd` and `settings_screen.gd`: the menu's other screens
 - `scripts/main.gd`: game flow, controls, camera, HUD and screens

@@ -13,26 +13,27 @@ Color Claim: Pinta el mapa
 **Short description** (80/80)
 
 ```
-Sal, pinta el mapa y corta estelas rivales. ¡6 modos, jefes, aspectos, mascotas!
+Sal, pinta el mapa y corta estelas rivales. ¡7 modos, jefes, aspectos, mascotas!
 ```
 
-**Full description** (2118/4000)
+**Full description** (2460/4000)
 
 ```
 Sal de tu territorio, dibuja una estela y vuelve a casa para conquistar todo lo que rodees. Cuanto más territorio, más puntos. Pero cuidado: si alguien toca tu estela mientras estás fuera, ¡quedas eliminado!
 
 Color Claim es un juego de territorio rápido y colorido para partidas cortas o para horas. Corta las estelas rivales, coge potenciadores y pinta todo el mapa de tu color.
 
-6 FORMAS DE JUGAR
+7 FORMAS DE JUGAR
 • Clásico: sé el primero en conquistar el 50% del mapa
 • Contrarreloj: sé el más grande cuando se acaben los 3 minutos
 • Diario: el mapa y la salida de hoy, iguales para todos
 • Equipos: tú y 3 bots contra 4, conquistad juntos la mitad del mapa
 • Jefes: derrota al Rey y desbloquea a la Reina (suelta trampas con pinchos) y al Mago (se teletransporta)
 • 2 jugadores: pantalla dividida en un móvil, gana el primero en llegar al 40%
+• Rey de la colina: ten terreno en la colina brillante del centro y llega el primero a 100 puntos
 
-9 MAPAS
-Cuadrado, Redondo, Pilares, Laberinto e Islas, más 4 mapas con peligros: Aserradero (las sierras cortan estelas), Tormenta (la arena se cierra), Cinta (las cintas te llevan) y Portales (cruza el mapa, con estela y todo).
+11 MAPAS
+Cuadrado, Redondo, Pilares, Laberinto e Islas, más 4 mapas con peligros: Aserradero (las sierras cortan estelas), Tormenta (la arena se cierra), Cinta (las cintas te llevan) y Portales (cruza el mapa, con estela y todo). Nuevos: Pista de hielo (el hielo resbala) y Pinball (los rebotadores te lanzan lejos).
 
 POTENCIADORES
 Velocidad, Escudo, Congelar, Fantasma y Bomba de pintura. ¡Cógelos antes que los bots!
@@ -47,6 +48,8 @@ SIEMPRE HAY ALGO QUE HACER
 • 3 misiones nuevas cada día
 • Premio por racha diaria
 • 24 trofeos que conseguir
+• Recompensas exclusivas al subir de nivel: aspectos Hielo, Lava y Oro, estelas Nieve y Rayos y un zorro
+• Un evento cada semana: monedas dobles, semana veloz, lluvia de monedas y más
 • Niveles y XP, con monedas en cada subida de nivel
 
 JUEGA A TU MANERA
@@ -72,26 +75,27 @@ Color Claim: Pinte o mapa
 **Short description** (80/80)
 
 ```
-Saia, pinte o mapa e corte rastros rivais. 6 modos, chefões, visuais e mascotes!
+Saia, pinte o mapa e corte rastros rivais. 7 modos, chefões, visuais e mascotes!
 ```
 
-**Full description** (2098/4000)
+**Full description** (2439/4000)
 
 ```
 Saia do seu território, desenhe um rastro e volte para casa para conquistar tudo o que cercou. Quanto maior o seu território, maior a sua pontuação. Mas cuidado: se alguém tocar no seu rastro enquanto você está fora, você é eliminado!
 
 Color Claim é um jogo de território rápido e colorido, para partidas curtas ou para horas de diversão. Corte os rastros rivais, pegue power-ups e pinte o mapa todo com a sua cor.
 
-6 JEITOS DE JOGAR
+7 JEITOS DE JOGAR
 • Clássico: seja o primeiro a conquistar 50% do mapa
 • Cronometrado: seja o maior quando os 3 minutos acabarem
 • Diário: o mapa e o início de hoje, iguais para todos
 • Equipes: você e 3 bots contra 4, conquistem metade do mapa juntos
 • Chefões: derrote o Rei e desbloqueie a Rainha (solta armadilhas com espinhos) e o Mago (se teletransporta)
 • 2 jogadores: tela dividida em um celular, vence quem chegar a 40% primeiro
+• Rei da colina: tenha território na colina brilhante do centro e chegue primeiro a 100 pontos
 
-9 MAPAS
-Quadrado, Redondo, Pilares, Labirinto e Ilhas, mais 4 mapas com perigos: Serraria (lâminas cortam rastros), Tempestade (a arena se fecha), Esteira (as esteiras te levam) e Portais (atravesse o mapa, com rastro e tudo).
+11 MAPAS
+Quadrado, Redondo, Pilares, Labirinto e Ilhas, mais 4 mapas com perigos: Serraria (lâminas cortam rastros), Tempestade (a arena se fecha), Esteira (as esteiras te levam) e Portais (atravesse o mapa, com rastro e tudo). Novos: Pista de gelo (o gelo escorrega) e Pinball (os rebatedores te jogam longe).
 
 POWER-UPS
 Velocidade, Escudo, Congelar, Fantasma e Bomba de tinta. Pegue antes dos bots!
@@ -106,6 +110,8 @@ SEMPRE TEM ALGO PARA FAZER
 • 3 missões novas por dia
 • Bônus de sequência diária
 • 24 troféus para colecionar
+• Recompensas exclusivas ao subir de nível: visuais Gelo, Lava e Ouro, rastros Neve e Raios e uma raposa
+• Um evento por semana: moedas em dobro, semana veloz, chuva de moedas e mais
 • Níveis e XP, com moedas a cada nível
 
 JOGUE COMO QUISER
@@ -131,10 +137,10 @@ Color Claim: नक्शा रंगो
 **Short description** (72/80)
 
 ```
-बाहर निकलो, नक्शा रंगो, दुश्मन की लकीर काटो। 6 मोड, बॉस, स्किन और पालतू!
+बाहर निकलो, नक्शा रंगो, दुश्मन की लकीर काटो। 7 मोड, बॉस, स्किन और पालतू!
 ```
 
-**Full description** (1866/4000)
+**Full description** (2159/4000)
 
 ```
 अपनी ज़मीन से बाहर निकलें, लकीर बनाएँ और घर लौटकर घेरे के अंदर का सब जीत लें। जितनी बड़ी ज़मीन, उतना बड़ा स्कोर। पर सावधान: बाहर रहते हुए अगर किसी ने आपकी लकीर छू ली, तो आप बाहर!
@@ -148,9 +154,10 @@ Color Claim एक तेज़ और रंगीन गेम है, जि�
 • टीमें: आप और 3 बॉट बनाम 4, मिलकर आधा नक्शा जीतें
 • बॉस: राजा को हराएँ, फिर रानी (काँटेदार जाल गिराती है) और जादूगर (गायब हो जाता है) को अनलॉक करें
 • 2 खिलाड़ी: एक फ़ोन पर स्प्लिट स्क्रीन, पहले 40% वाला जीतेगा
+• पहाड़ी का राजा: बीच की चमकती पहाड़ी पर ज़मीन रखें और सबसे पहले 100 अंक पाएँ
 
-9 नक्शे
-चौकोर, गोल, खंभे, भूलभुलैया और द्वीप, और 4 ख़तरनाक नक्शे: आरा मिल (आरियाँ लकीर काटती हैं), तूफ़ान (मैदान सिकुड़ता है), कन्वेयर (बेल्ट आपको ले जाती है) और पोर्टल (लकीर समेत नक्शे के पार जाएँ)।
+11 नक्शे
+चौकोर, गोल, खंभे, भूलभुलैया और द्वीप, और 4 ख़तरनाक नक्शे: आरा मिल (आरियाँ लकीर काटती हैं), तूफ़ान (मैदान सिकुड़ता है), कन्वेयर (बेल्ट आपको ले जाती है) और पोर्टल (लकीर समेत नक्शे के पार जाएँ)। नए: आइस रिंक (बर्फ़ पर फिसलन) और पिनबॉल (बंपर दूर उछालते हैं)।
 
 पावर-अप
 रफ़्तार, ढाल, फ़्रीज़, भूत और पेंट बम। बॉट से पहले उठा लें!
@@ -165,6 +172,8 @@ Color Claim एक तेज़ और रंगीन गेम है, जि�
 • हर दिन 3 नए मिशन
 • रोज़ खेलने का स्ट्रीक बोनस
 • जीतने के लिए 24 ट्रॉफ़ियाँ
+• लेवल बढ़ाने पर खास इनाम: बर्फ़, लावा और सोना स्किन, बर्फ़बारी और बिजली ट्रेल, और एक लोमड़ी
+• हर हफ़्ते नया इवेंट: डबल सिक्के, स्पीड वीक, सिक्कों की बारिश और भी बहुत कुछ
 • लेवल और XP, हर नए लेवल पर सिक्के
 
 अपने तरीके से खेलें
@@ -190,26 +199,27 @@ Color Claim: Warnai Peta
 **Short description** (75/80)
 
 ```
-Keluar, warnai peta, potong jejak lawan. 6 mode, bos, skin, dan peliharaan!
+Keluar, warnai peta, potong jejak lawan. 7 mode, bos, skin, dan peliharaan!
 ```
 
-**Full description** (2073/4000)
+**Full description** (2396/4000)
 
 ```
 Keluar dari wilayahmu, buat jejak, lalu kembali pulang untuk menguasai semua yang ada di dalamnya. Makin luas wilayahmu, makin tinggi skormu. Tapi hati-hati: kalau ada yang menyentuh jejakmu saat kamu di luar, kamu tersingkir!
 
 Color Claim adalah game wilayah yang cepat dan penuh warna, seru dimainkan sebentar maupun berjam-jam. Potong jejak lawan, ambil power-up, dan warnai seluruh peta dengan warnamu.
 
-6 CARA BERMAIN
+7 CARA BERMAIN
 • Klasik: jadilah yang pertama menguasai 50% peta
 • Berwaktu: jadilah yang terbesar saat 3 menit habis
 • Harian: peta dan titik awal hari ini, sama untuk semua
 • Tim: kamu dan 3 bot melawan 4, kuasai setengah peta bersama
 • Bos: kalahkan Raja, lalu buka Ratu (menjatuhkan jebakan berduri) dan Penyihir (bisa berteleportasi)
 • 2 Pemain: layar terbagi di satu ponsel, pertama ke 40% menang
+• Raja Bukit: kuasai wilayah di bukit bercahaya di tengah dan jadilah yang pertama capai 100 poin
 
-9 PETA
-Persegi, Bundar, Pilar, Labirin, dan Pulau, plus 4 peta berbahaya: Penggergajian (gergaji memotong jejak), Badai (arena menyempit), Konveyor (sabuk membawamu), dan Portal (lintasi peta, lengkap dengan jejaknya).
+11 PETA
+Persegi, Bundar, Pilar, Labirin, dan Pulau, plus 4 peta berbahaya: Penggergajian (gergaji memotong jejak), Badai (arena menyempit), Konveyor (sabuk membawamu), dan Portal (lintasi peta, lengkap dengan jejaknya). Baru: Arena Es (es licin) dan Pinball (bumper memantulkanmu).
 
 POWER-UP
 Cepat, Perisai, Beku, Hantu, dan Bom Cat. Ambil sebelum bot mendahuluimu!
@@ -224,6 +234,8 @@ SELALU ADA YANG BISA DILAKUKAN
 • 3 misi baru setiap hari
 • Bonus streak harian
 • 24 trofi untuk dikumpulkan
+• Hadiah eksklusif saat naik level: skin Es, Lava, dan Emas, jejak Salju dan Petir, serta seekor rubah
+• Event baru tiap minggu: koin ganda, minggu kilat, hujan koin, dan lainnya
 • Level dan XP, dengan koin di setiap naik level
 
 MAIN SESUKAMU
@@ -249,26 +261,27 @@ Color Claim: Раскрась карту
 **Short description** (79/80)
 
 ```
-Выходи, раскрашивай карту и режь чужие следы. 6 режимов, боссы, скины, питомцы!
+Выходи, раскрашивай карту и режь чужие следы. 7 режимов, боссы, скины, питомцы!
 ```
 
-**Full description** (2002/4000)
+**Full description** (2302/4000)
 
 ```
 Выйдите со своей территории, оставьте след и вернитесь домой, чтобы захватить всё внутри. Чем больше территория, тем больше очков. Но осторожно: если кто-то коснётся вашего следа, пока вы снаружи, — вы выбыли!
 
 Color Claim — быстрая и яркая игра о захвате территории: на пару минут или на несколько часов. Режьте следы соперников, собирайте бонусы и раскрасьте всю карту в свой цвет.
 
-6 РЕЖИМОВ
+7 РЕЖИМОВ
 • Классика: первым захватите 50% карты
 • На время: будьте крупнейшим, когда истекут 3 минуты
 • Ежедневный: сегодняшняя карта и старт — одни для всех
 • Команды: вы и 3 бота против 4, захватите половину карты вместе
 • Босс: победите Короля, затем откройте Королеву (оставляет шипастые ловушки) и Волшебника (телепортируется)
 • 2 игрока: разделённый экран на одном телефоне, побеждает первый до 40%
+• Царь горы: владей землёй на светящемся холме в центре и первым набери 100 очков
 
-9 КАРТ
-Квадрат, Круг, Колонны, Лабиринт и Острова, а также 4 опасные карты: Лесопилка (пилы режут следы), Буря (арена сужается), Конвейер (ленты несут вас) и Порталы (пересекайте карту вместе со следом).
+11 КАРТ
+Квадрат, Круг, Колонны, Лабиринт и Острова, а также 4 опасные карты: Лесопилка (пилы режут следы), Буря (арена сужается), Конвейер (ленты несут вас) и Порталы (пересекайте карту вместе со следом). Новые: Каток (на льду скользко) и Пинбол (отбойники отталкивают).
 
 БОНУСЫ
 Скорость, Щит, Заморозка, Призрак и Бомба-краска. Успейте раньше ботов!
@@ -283,6 +296,8 @@ Color Claim — быстрая и яркая игра о захвате терр
 • 3 новых задания каждый день
 • Бонус за ежедневную серию
 • 24 трофея
+• Эксклюзивные награды за уровни: скины Лёд, Лава и Золото, следы Снег и Молния и лиса
+• Каждую неделю новое событие: двойные монеты, неделя скорости, монетный дождь и другое
 • Уровни и опыт, монеты за каждый новый уровень
 
 ИГРАЙТЕ КАК УДОБНО
@@ -308,26 +323,27 @@ Color Claim: Haritayı Boya
 **Short description** (79/80)
 
 ```
-Dışarı çık, haritayı boya, rakip izleri kes! 6 mod, boss, kostüm, evcil hayvan!
+Dışarı çık, haritayı boya, rakip izleri kes! 7 mod, boss, kostüm, evcil hayvan!
 ```
 
-**Full description** (1965/4000)
+**Full description** (2267/4000)
 
 ```
 Bölgenden çık, bir iz çiz ve içindeki her yeri almak için eve dön. Bölgen ne kadar büyükse puanın o kadar yüksek. Ama dikkat: dışarıdayken biri izine dokunursa elenirsin!
 
 Color Claim, kısa molalarda ya da saatlerce oynanabilen hızlı ve renkli bir bölge oyunu. Rakip izleri kes, güçlendiricileri kap ve tüm haritayı kendi rengine boya.
 
-6 OYUN MODU
+7 OYUN MODU
 • Klasik: haritanın %50'sini ilk alan sen ol
 • Süreli: 3 dakika bittiğinde en büyük sen ol
 • Günlük: bugünün haritası ve başlangıcı, herkes için aynı
 • Takımlar: sen ve 3 bot, 4 bota karşı; haritanın yarısını birlikte alın
 • Boss: Kral'ı yen, sonra Kraliçe'yi (dikenli tuzaklar bırakır) ve Büyücü'yü (ışınlanır) aç
 • 2 Oyuncu: tek telefonda bölünmüş ekran, %40'a ilk ulaşan kazanır
+• Tepenin Kralı: ortadaki parlayan tepede toprak sahibi ol ve 100 puana ilk sen ulaş
 
-9 HARİTA
-Kare, Yuvarlak, Sütunlar, Labirent ve Adalar; ayrıca 4 tehlikeli harita: Kereste Fabrikası (bıçaklar izleri keser), Fırtına (arena daralır), Konveyör (bantlar seni taşır) ve Portallar (izinle birlikte haritanın öbür ucuna geç).
+11 HARİTA
+Kare, Yuvarlak, Sütunlar, Labirent ve Adalar; ayrıca 4 tehlikeli harita: Kereste Fabrikası (bıçaklar izleri keser), Fırtına (arena daralır), Konveyör (bantlar seni taşır) ve Portallar (izinle birlikte haritanın öbür ucuna geç). Yeni: Buz Pisti (buz kaygan) ve Pinball (tamponlar seni sektirir).
 
 GÜÇLENDİRİCİLER
 Hız, Kalkan, Dondur, Hayalet ve Boya Bombası. Botlardan önce kap!
@@ -342,6 +358,8 @@ HER ZAMAN YAPACAK BİR ŞEY VAR
 • Her gün 3 yeni görev
 • Günlük seri bonusu
 • Toplanacak 24 kupa
+• Seviye atladıkça özel ödüller: Buz, Lav ve Altın görünümleri, Kar ve Şimşek izleri ve bir tilki
+• Her hafta yeni etkinlik: çifte altın, hız haftası, altın yağmuru ve dahası
 • Seviye ve XP, her seviyede jeton
 
 İSTEDİĞİN GİBİ OYNA

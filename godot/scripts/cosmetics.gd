@@ -14,6 +14,10 @@ const SKINS := {
 	"robot": {"name": "Robot", "price": 400},
 	"galaxy": {"name": "Galaxy", "price": 600},
 	"rainbow": {"name": "Rainbow", "price": 800},
+	# The reward track: not for sale, they unlock as you level up
+	"ice": {"name": "Ice", "level": 5},
+	"lava": {"name": "Lava", "level": 12},
+	"gold": {"name": "Gold", "level": 20},
 }
 
 const TRAILS := {
@@ -25,6 +29,8 @@ const TRAILS := {
 	"confetti": {"name": "Confetti", "price": 400},
 	"fire": {"name": "Fire", "price": 450},
 	"rainbow": {"name": "Rainbow", "price": 600},
+	"snow": {"name": "Snow", "level": 3},
+	"lightning": {"name": "Lightning", "level": 8},
 }
 
 const PETS := {
@@ -34,6 +40,7 @@ const PETS := {
 	"ghost": {"name": "Boo", "price": 400},
 	"bee": {"name": "Bee", "price": 450},
 	"dragon": {"name": "Dragon", "price": 900},
+	"fox": {"name": "Fox", "level": 16},
 }
 
 ## What each shop tab sells, and the free thing everyone starts with
@@ -165,11 +172,79 @@ const DRAGON_WING := """<svg xmlns="http://www.w3.org/2000/svg" width="64" heigh
 <path d="M12 52 C24 36 36 22 54 10 M20 50 C30 42 38 36 44 30" fill="none" stroke="#1f8f50" stroke-width="2" stroke-linecap="round"/>
 </svg>"""
 
-const PET_SVGS := {"chick": CHICK, "slime": SLIME, "ghost": BOO, "bee": BEE, "dragon": DRAGON}
+const FOX := """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+<path d="M48 50 C62 50 62 30 54 26 C58 36 52 44 44 44 Z" fill="#ff8a3d" stroke="#c9561a" stroke-width="2.5" stroke-linejoin="round"/>
+<path d="M54 26 C60 30 60 38 57 42 C55 36 54 31 54 26 Z" fill="#ffffff"/>
+<ellipse cx="32" cy="46" rx="15" ry="13" fill="#ff8a3d" stroke="#c9561a" stroke-width="3"/>
+<ellipse cx="32" cy="50" rx="8" ry="8" fill="#fff4e8"/>
+<path d="M12 12 L20 30 L26 18 Z" fill="#ff8a3d" stroke="#c9561a" stroke-width="2.5" stroke-linejoin="round"/>
+<path d="M52 12 L44 30 L38 18 Z" fill="#ff8a3d" stroke="#c9561a" stroke-width="2.5" stroke-linejoin="round"/>
+<path d="M15 16 L20 26 L23 19 Z M49 16 L44 26 L41 19 Z" fill="#3a2230"/>
+<path d="M14 26 C14 16 50 16 50 26 C50 34 40 40 32 42 C24 40 14 34 14 26 Z" fill="#ff8a3d" stroke="#c9561a" stroke-width="3" stroke-linejoin="round"/>
+<path d="M18 30 C24 32 28 36 32 42 C36 36 40 32 46 30 C44 38 38 41 32 42 C26 41 20 38 18 30 Z" fill="#fff4e8"/>
+<circle cx="25" cy="27" r="3.6" fill="#26304a"/><circle cx="39" cy="27" r="3.6" fill="#26304a"/>
+<circle cx="26.2" cy="25.8" r="1.3" fill="#ffffff"/><circle cx="40.2" cy="25.8" r="1.3" fill="#ffffff"/>
+<ellipse cx="32" cy="36" rx="3" ry="2.2" fill="#26304a"/>
+</svg>"""
+
+## Reward-track skin patterns
+const FROST := """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+<defs><clipPath id="c"><rect x="1" y="1" width="62" height="62" rx="15"/></clipPath></defs>
+<g clip-path="url(#c)" fill="none" stroke="#ffffff" stroke-linecap="round">
+<path d="M6 58 L20 40 L16 30 M20 40 L32 36 M50 6 L42 22 L48 30 M42 22 L30 24" stroke-width="2.4"/>
+<path d="M14 12 L14 22 M9 17 L19 17 M10.5 13.5 L17.5 20.5 M17.5 13.5 L10.5 20.5" stroke-width="2"/>
+<path d="M50 44 L50 56 M44 50 L56 50 M45.8 45.8 L54.2 54.2 M54.2 45.8 L45.8 54.2" stroke-width="2"/>
+</g></svg>"""
+
+const CRACKS := """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+<defs><clipPath id="c"><rect x="1" y="1" width="62" height="62" rx="15"/></clipPath></defs>
+<g clip-path="url(#c)" fill="none" stroke="#ffffff" stroke-linecap="round" stroke-linejoin="round">
+<path d="M-2 20 L12 24 L18 16 L30 22 L38 12 L52 16 L66 8" stroke-width="3.5"/>
+<path d="M-2 46 L10 42 L20 50 L32 44 L42 52 L54 46 L66 50" stroke-width="3.5"/>
+<path d="M30 22 L28 34 L32 44 M18 16 L14 4 M52 16 L56 30 L54 46" stroke-width="2.5"/>
+</g></svg>"""
+
+const SHINE := """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+<defs><clipPath id="c"><rect x="1" y="1" width="62" height="62" rx="15"/></clipPath>
+<linearGradient id="g" x1="0" y1="0" x2="1" y2="0">
+<stop offset="0" stop-color="#ffffff" stop-opacity="0"/><stop offset="0.5" stop-color="#ffffff" stop-opacity="1"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+</linearGradient></defs>
+<g clip-path="url(#c)"><rect x="22" y="-20" width="16" height="104" fill="url(#g)" transform="rotate(30 32 32)"/></g>
+</svg>"""
+
+## Trail particles for the reward track
+const SNOWFLAKE := """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+<g stroke="#ffffff" stroke-width="5" stroke-linecap="round" fill="none">
+<path d="M32 6 L32 58 M9.5 19 L54.5 45 M9.5 45 L54.5 19"/>
+<path d="M24 10 L32 18 L40 10 M24 54 L32 46 L40 54" stroke-width="4"/>
+</g></svg>"""
+
+const BOLT := """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+<path d="M36 2 L14 36 L30 36 L24 62 L50 24 L34 24 Z" fill="#ffffff" stroke-linejoin="round"/>
+</svg>"""
+
+const PET_SVGS := {"chick": CHICK, "slime": SLIME, "ghost": BOO, "bee": BEE, "dragon": DRAGON, "fox": FOX}
 
 
 static func items(kind: String) -> Dictionary:
 	return KINDS[kind].items
+
+
+## The level that unlocks a reward-track item (0 for things the shop sells)
+static func unlock_level(kind: String, id: String) -> int:
+	return items(kind).get(id, {}).get("level", 0)
+
+
+## Every reward-track item as [level, kind, id], lowest level first
+static func track() -> Array:
+	var out := []
+	for kind in KINDS:
+		for id in items(kind):
+			var lv := unlock_level(kind, id)
+			if lv > 0:
+				out.append([lv, kind, id])
+	out.sort_custom(func(a, b): return a[0] < b[0])
+	return out
 
 
 static func price(kind: String, id: String) -> int:
@@ -184,7 +259,7 @@ static func dress_bot(p: Player) -> void:
 
 
 static func _pick(from: Dictionary, chance: float) -> String:
-	var keys := from.keys()
+	var keys := from.keys().filter(func(k): return not from[k].has("level"))
 	if randf() > chance:
 		return keys[0]
 	return keys[1 + randi() % (keys.size() - 1)]
@@ -211,6 +286,15 @@ static func draw_square(ci: CanvasItem, at: Vector2, s: float, color: Color, dar
 	if skin == "galaxy":
 		base = Color("#2b2458").lerp(color, 0.25)
 		under = base.darkened(0.45)
+	elif skin == "ice":
+		base = color.lerp(Color("#e6f7ff"), 0.6)
+		under = color.lerp(Color("#7fc8e8"), 0.5).darkened(0.2)
+	elif skin == "lava":
+		base = Color("#3a2224")
+		under = Color("#1c0f12")
+	elif skin == "gold":
+		base = Color("#ffcf3f")
+		under = Color("#b07a00")
 	# Cat ears poke out behind the top edge
 	if skin == "cat":
 		for sx: float in [-1.0, 1.0]:
@@ -237,6 +321,19 @@ static func draw_square(ci: CanvasItem, at: Vector2, s: float, color: Color, dar
 			# The colours slide round as it moves
 			var k := 0.55 + 0.2 * sin(t * 2.0)
 			ci.draw_texture_rect(Art.tex(RAINBOW, px), r, false, Color(1, 1, 1, k))
+		"ice":
+			ci.draw_texture_rect(Art.tex(FROST, px), r, false, Color(1, 1, 1, 0.75))
+		"lava":
+			# Glowing cracks that pulse, in your colour's warm side
+			var glow := Color("#ff7a1a").lerp(color, 0.25)
+			ci.draw_texture_rect(Art.tex(CRACKS, px), r, false, Color(glow, 0.65 + 0.35 * sin(t * 4.0)))
+		"gold":
+			# A shine that flashes across, and a twinkle on the corner
+			var glint := maxf(0.0, sin(t * 2.2))
+			ci.draw_texture_rect(Art.tex(SHINE, px), r, false, Color(1, 1, 1, 0.12 + 0.5 * glint * glint))
+			var tw := maxf(0.0, sin(t * 3.1 + 1.0))
+			var sp := s * 0.26 * tw
+			ci.draw_texture_rect(Art.tex(Art.SPARK, 64), Rect2(Vector2(s * 0.3, -s * 0.34) - Vector2(sp, sp) / 2, Vector2(sp, sp)), false)
 		"robot":
 			# Panel lines and bolts
 			ci.draw_rect(Rect2(-s * 0.36, s * 0.14, s * 0.72, s * 0.2), Color(0.1, 0.12, 0.2, 0.25), true)
@@ -403,6 +500,23 @@ static func make_emitter(fx: String, scale: float, color: Color) -> CPUParticles
 			e.scale_amount_min = 0.14 * scale
 			e.scale_amount_max = 0.24 * scale
 			e.amount = 36
+		"snow":
+			e.texture = Art.tex(SNOWFLAKE, 64)
+			e.color = Color("#f2fbff")
+			e.gravity = Vector2(0, 45.0 * scale)
+			e.angular_velocity_min = -120.0
+			e.angular_velocity_max = 120.0
+			e.lifetime = 1.6
+			e.amount = 18
+		"lightning":
+			e.texture = Art.tex(BOLT, 64)
+			e.color = Color("#8ff4ff")
+			e.initial_velocity_min = 40.0 * scale
+			e.initial_velocity_max = 90.0 * scale
+			e.angle_min = -180.0
+			e.angle_max = 180.0
+			e.lifetime = 0.35
+			e.amount = 26
 		"fire":
 			e.texture = Art.tex(Art.GLOW, 64)
 			var flame := Gradient.new()

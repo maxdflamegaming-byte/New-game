@@ -109,6 +109,12 @@ var boss_row: HBoxContainer
 var menu_col: VBoxContainer
 var _storm_warned := false
 var modes_row: HFlowContainer
+var event_pill: PanelContainer # this week's event, on the menu
+var event_label: Label
+var event_desc: Label
+var ad_btn: Button # results: double coins for watching an ad (off until ads are set up)
+var _earned_this_game := 0
+var _last_earned := 0
 var mode_desc: Label
 var best_label: Label
 var swatches: HBoxContainer
@@ -180,6 +186,7 @@ func _ready() -> void:
 	world.storm_hit.connect(_on_storm_hit)
 	world.trap_dropped.connect(_on_trap)
 	world.blinked.connect(_on_blinked)
+	world.bumped.connect(_on_bumped)
 	_build_ui()
 	_start_demo()
 	if not welcomed:
@@ -197,7 +204,9 @@ func _start_demo() -> void:
 	world.looks = equipped
 	world.difficulty = "normal"
 	world.boss_kind = "king"
+	world.event = ""
 	world.setup(my_color, player_name, true, map_id)
+	music.play_track("menu")
 	view.rebuild()
 	_snap_camera()
 	_show(menu)
@@ -216,8 +225,10 @@ func start_game(mode := "") -> void:
 	world.looks = equipped
 	world.difficulty = difficulty
 	world.boss_kind = boss_kind if boss_unlocked(boss_kind) else "king"
+	world.event = "" if play_mode == "tutorial" or Events.current() == "none" else Events.current()
 	CrashLog.note("game  mode %s  map %s  boss %s  %s" % [play_mode, world.map_id, world.boss_kind, difficulty])
 	world.setup(my_color, player_name, false, map_id, play_mode)
+	music.play_track("boss" if world.mode.get("boss", false) else "game")
 	view.rebuild()
 	if world.p2:
 		_split_on()
@@ -344,6 +355,19 @@ func _check_end() -> void:
 			_win(tr("Your team claimed %d%% of the map!") % int(goal))
 		elif world.team_pct(1) >= goal:
 			_lose(tr("The other team claimed %d%% first.") % int(goal), 0.6)
+	elif m.get("hill", false):
+		# King of the Hill: first to the goal, or the most points when time's up
+		var leader: Player = world.hill_leader()
+		var mine: float = world.points.get(me.id, 0.0)
+		if mine >= m.goal:
+			_win(tr("You held the hill for %d points!") % int(m.goal))
+		elif leader and leader != me and world.points.get(leader.id, 0.0) >= m.goal:
+			_lose(tr("%s held the hill first.") % tr(leader.name), 0.6)
+		elif play_time >= m.limit:
+			if leader == me or leader == null:
+				_win(tr("Time's up and you hold the most hill points!"))
+			else:
+				_lose(tr("Time's up! %s held the hill longest.") % tr(leader.name), 0.6)
 	elif m.get("boss", false):
 		# Beaten when his hearts are gone (he can be off the board for a moment while he moves)
 		if world.king and world.king.hp <= 0:
@@ -404,6 +428,7 @@ func _game_over(won: bool, reason: String, who: Player = null) -> void:
 	if state == "over":
 		return
 	state = "over"
+	tut_card.visible = false # a hint mustn't sit on top of the results
 	CrashLog.note("over  won %s  %.0fs  fps %d" % [won, play_time, Engine.get_frames_per_second()])
 	_split_off(true)
 	over_title.label_settings.font_color = YELLOW if won else Color.WHITE
@@ -414,6 +439,7 @@ func _game_over(won: bool, reason: String, who: Player = null) -> void:
 	over_xp.text = ""
 	over_xp_bar.visible = false
 	var rewards := []
+	_earned_this_game = 0
 	if play_mode == "tutorial":
 		over_title.text = "Well done!"
 		over_stats.text = "You know how to play. Now take on the real bots!"
@@ -445,10 +471,14 @@ func _game_over(won: bool, reason: String, who: Player = null) -> void:
 			bests[key] = score
 		var earned: int = roundi(score * 2) + world.me.kills * 5 + (50 if won else 0) + world.coins_picked
 		if won and world.mode.get("boss", false):
-			earned += world.BOSSES[world.boss_kind].bonus
+			earned += world.BOSSES[world.boss_kind].bonus * (2 if world.event == "giants" else 1)
 		var mult: float = world.DIFFICULTY[difficulty].coins
 		earned = roundi(earned * mult)
+		var event_x2: bool = world.event == "coins"
+		if event_x2:
+			earned *= 2
 		wallet += earned
+		_earned_this_game = earned
 		var level_before: int = prog.level
 		var xp_before: float = float(prog.xp) / Progress.need(prog.level)
 		var gained := Progress.xp_for({"pct": score, "kos": world.me.kills, "won": won})
@@ -459,7 +489,8 @@ func _game_over(won: bool, reason: String, who: Player = null) -> void:
 			"boss": world.boss_kind,
 			"wallet": wallet,
 		}, world.today())
-		over_coins.text = tr("+%d coins") % earned + ("  (x%s %s)" % [str(mult), tr(world.DIFFICULTY[difficulty].name)] if mult != 1.0 else "")
+		over_coins.text = tr("+%d coins") % earned + ("  (x%s %s)" % [str(mult), tr(world.DIFFICULTY[difficulty].name)] if mult != 1.0 else "") \
+				+ ("  (x2 %s)" % tr(Events.info("coins").name) if event_x2 else "")
 		over_title.text = "You win!" if won else "Game over"
 		over_stats.text = (tr("Best size %.1f%%  ·  1 knockout  ·  %s") % [score, _fmt_time(play_time)]) if world.me.kills == 1 \
 			else tr("Best size %.1f%%  ·  %d knockouts  ·  %s") % [score, world.me.kills, _fmt_time(play_time)]
@@ -479,11 +510,38 @@ func _game_over(won: bool, reason: String, who: Player = null) -> void:
 			tw.tween_method(_set_xp_fill, 0.0, to, 0.5)
 		else:
 			tw.tween_method(_set_xp_fill, xp_before, to, 0.8)
+	rewards.append_array(_grant_track())
 	for r in rewards:
 		wallet += r.coins
+	# Online extras (they do nothing until switched on, see Services)
+	_last_earned = 0 if play_mode == "tutorial" or world.p2 else _earned_this_game
+	ad_btn.visible = _last_earned > 0 and Services.rewarded_ready()
+	if play_mode != "tutorial" and not world.p2:
+		Services.submit_scores(prog.stats.best_pct, prog.stats.wins)
 	_save()
 	_show_rewards(rewards)
 	_show(over_screen)
+
+
+## Reward-track items you've reached the level for: they're yours now (and on the results)
+func _grant_track() -> Array:
+	var out := []
+	for t in Cosmetics.track():
+		var kind: String = t[1]
+		var id: String = t[2]
+		if t[0] <= prog.level and not owned[kind].has(id):
+			owned[kind].append(id)
+			var what: String = {"skin": "%s skin", "trail": "%s trail", "pet": "%s pet"}[kind]
+			out.append({"text": tr("Unlocked: %s!") % (tr(what) % tr(Cosmetics.items(kind)[id].name)), "coins": 0, "kind": "unlock"})
+	return out
+
+
+## The next thing on the reward track: [level, kind, id], or [] when you have it all
+func next_track_item() -> Array:
+	for t in Cosmetics.track():
+		if not owned[t[1]].has(t[2]):
+			return t
+	return []
 
 
 func _flash(c: Color) -> void:
@@ -501,7 +559,8 @@ func _show_rewards(rewards: Array) -> void:
 	for c in over_rewards.get_children():
 		c.queue_free()
 	over_rewards.visible = not rewards.is_empty()
-	var colors := {"level": Color("#8d7bd6"), "mission": Color("#2ec48a"), "streak": Color("#ff8a1f"), "trophy": Color("#e0a800")}
+	var colors := {"level": Color("#8d7bd6"), "mission": Color("#2ec48a"), "streak": Color("#ff8a1f"), "trophy": Color("#e0a800"),
+		"unlock": Color("#6a57b8"), "event": Color("#ff5d9e")}
 	var id := _game_id
 	for i in rewards.size():
 		var r: Dictionary = rewards[i]
@@ -515,8 +574,9 @@ func _show_rewards(rewards: Array) -> void:
 		row.add_theme_constant_override("separation", 10)
 		pill.add_child(row)
 		row.add_child(_label(r.text, 26, Color.WHITE))
-		row.add_child(_icon(Art.COIN, 26, Color.WHITE))
-		row.add_child(_label("+%d" % r.coins, 26, Color("#fff1a8")))
+		if r.coins > 0:
+			row.add_child(_icon(Art.COIN, 26, Color.WHITE))
+			row.add_child(_label("+%d" % r.coins, 26, Color("#fff1a8")))
 		pill.modulate.a = 0.0
 		over_rewards.add_child(pill)
 		var tw := pill.create_tween()
@@ -787,6 +847,15 @@ func _on_blinked(k: Player, _from: Vector2, _to: Vector2) -> void:
 	_toast(tr("The %s blinked home! Cut his trail from further away") % tr(k.name))
 
 
+func _on_bumped(p: Player, _at: Vector2) -> void:
+	if state == "menu":
+		return
+	if p == world.me or p.pos.distance_to(world.me.pos) < 12:
+		sfx.play("boing")
+	if p == world.me:
+		_vibrate(25)
+
+
 func _on_guards(_k: Player) -> void:
 	if state == "menu":
 		return
@@ -869,6 +938,8 @@ const MAP_HINTS := {
 	"storm": "Storm: the arena closes in. Stay inside the ring!",
 	"conveyor": "Conveyor: belts carry you along. Use them to go fast!",
 	"portals": "Portals: step in one and pop out of its twin, trail and all!",
+	"ice": "Ice Rink: on the ice you slide fast and turn slowly. Plan your loops!",
+	"bumpers": "Pinball: bumpers bounce you away. Watch your trail!",
 }
 
 
@@ -883,7 +954,9 @@ func _hint(key: String, text: String, anyone := false) -> void:
 
 
 func _start_hints() -> void:
-	if MAP_HINTS.has(world.map_id) and not prog.stats.maps.has(world.map_id):
+	if world.mode.get("hill", false) and not prog.stats.modes.has("hill"):
+		_hint("mode", "King of the Hill: own land inside the glowing ring to score points!", true)
+	elif MAP_HINTS.has(world.map_id) and not prog.stats.maps.has(world.map_id):
 		_hint("map", MAP_HINTS[world.map_id], true)
 	elif _tap_mode():
 		_hint("start", "Hold the left or right side of the screen to turn. Loop back to your land to claim!")
@@ -1406,6 +1479,9 @@ func _update_mode_pill() -> void:
 		key = "teams %.1f %.1f" % [world.team_pct(0), world.team_pct(1)]
 	elif m.get("boss", false) and world.king:
 		key = "boss %s %d %d %d" % [world.king.name, world.king.hp, world.king.max_hp, world.me.lives]
+	elif m.get("hill", false):
+		var hl: Player = world.hill_leader()
+		key = "hill %d %s %d %d" % [int(world.points.get(world.me.id, 0.0)), hl.name if hl else "", int(world.points.get(hl.id, 0.0)) if hl else 0, ceili(m.limit - play_time)]
 	elif m.get("duo", false) or m.get("daily", false):
 		key = "%s %s" % [mode_id, world.map_id]
 	key += " " + I18n.lang
@@ -1429,6 +1505,14 @@ func _update_mode_pill() -> void:
 		parts.append(_label("  " + tr("You"), 26, INK))
 		for i in 3:
 			parts.append(_icon(Art.HEART, 22, world.me.color if i < world.me.lives else Color("#d5dbe8")))
+	elif m.get("hill", false):
+		var leader: Player = world.hill_leader()
+		var left: float = maxf(0.0, m.limit - play_time)
+		parts.append(_icon(Art.CROWN, 28, Color.WHITE))
+		parts.append(_label(tr("You %d") % int(world.points.get(world.me.id, 0.0)), 28, Color("#1f5fd6")))
+		if leader and leader != world.me:
+			parts.append(_label("·  %s %d" % [tr(leader.name), int(world.points.get(leader.id, 0.0))], 24, Color("#d6304a")))
+		parts.append(_label("·  " + _fmt_time(ceilf(left)), 24, Color("#ff3c50") if left <= 15 else MUTED, 0, INK, font_med))
 	elif m.get("duo", false):
 		parts.append(_label(tr("First to %d%%") % int(m.win), 24, INK))
 	elif m.get("daily", false):
@@ -1551,7 +1635,18 @@ func _button(text: String, bg: Color, fg: Color, edge: Color, size := 34) -> But
 	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	b.focus_mode = Control.FOCUS_NONE
 	b.pressed.connect(func(): sfx.play("tap"))
+	_squishy(b)
 	return b
+
+
+## Buttons squish a little when pressed and spring back, with a tiny buzz
+func _squishy(b: Button) -> void:
+	b.button_down.connect(func():
+		b.pivot_offset = b.size / 2
+		b.create_tween().tween_property(b, "scale", Vector2(0.94, 0.94), 0.06)
+		_vibrate(8))
+	b.button_up.connect(func():
+		b.create_tween().tween_property(b, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT))
 
 
 func _card(bg: Color = Color(1, 1, 1, 0.9)) -> PanelContainer:
@@ -1578,9 +1673,14 @@ func _show(screen: Control) -> void:
 		if s and s != screen:
 			s.visible = false
 	if screen:
+		# Fade in with a slight zoom, like it's settling into place
 		screen.visible = true
 		screen.modulate.a = 0.0
-		create_tween().tween_property(screen, "modulate:a", 1.0, 0.25)
+		screen.pivot_offset = screen.size / 2
+		screen.scale = Vector2(1.03, 1.03)
+		var tw := create_tween().set_parallel()
+		tw.tween_property(screen, "modulate:a", 1.0, 0.22)
+		tw.tween_property(screen, "scale", Vector2.ONE, 0.28).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	hud.visible = state != "menu"
 
 
@@ -1936,6 +2036,17 @@ func _build_menu(safe: Vector4) -> void:
 			tw.tween_property(l, "position:y", -10.0, 0.6).set_trans(Tween.TRANS_SINE)
 			tw.tween_property(l, "position:y", 0.0, 0.6).set_trans(Tween.TRANS_SINE)
 	col.add_child(title)
+	# This week's event
+	event_pill = PanelContainer.new()
+	event_pill.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	var er := VBoxContainer.new()
+	er.add_theme_constant_override("separation", 0)
+	event_pill.add_child(er)
+	event_label = _label("", 24, Color.WHITE)
+	er.add_child(event_label)
+	event_desc = _label("", 20, Color(1, 1, 1, 0.92), 0, INK, font_med)
+	er.add_child(event_desc)
+	col.add_child(event_pill)
 	var tag := _label("Loop back to your land to claim it. Cut other trails, and protect yours!", 26, Color(1, 1, 1, 0.92), 0, INK, font_med)
 	tag.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	tag.custom_minimum_size.x = 560
@@ -2144,7 +2255,7 @@ func _refresh_menu() -> void:
 		if not boss_unlocked(boss_kind):
 			boss_kind = "king"
 		var next: String = {"king": "queen", "queen": "wizard"}.get(boss_kind, "")
-		mode_desc.text = tr("%s: %d hearts · you have 3 lives") % [tr(world.BOSSES[boss_kind].name), world.BOSSES[boss_kind].hearts]
+		mode_desc.text = tr("%s: %d hearts · you have 3 lives") % [tr(world.BOSSES[boss_kind].name), world.BOSSES[boss_kind].hearts + (2 if Events.current() == "giants" else 0)]
 		if next != "" and not boss_unlocked(next):
 			mode_desc.text += "  ·  " + tr("Beat the %s to unlock the %s") % [tr(world.BOSSES[boss_kind].name), tr(world.BOSSES[next].name)]
 		for bb in boss_row.get_children():
@@ -2175,6 +2286,19 @@ func _refresh_menu() -> void:
 			mb.add_theme_stylebox_override(k, st)
 		for k in ["font_color", "font_hover_color", "font_pressed_color"]:
 			mb.add_theme_color_override(k, Color("#5a3200") if on else Color.WHITE)
+	var ev: Dictionary = Events.info()
+	event_pill.visible = not ev.is_empty()
+	if ev.is_empty():
+		ev = {"name": "", "desc": "", "color": "#ffffff"}
+	var left := Events.days_left()
+	event_label.text = tr("EVENT: %s") % tr(ev.name) + "  ·  " + (tr("last day!") if left == 1 else tr("%d days left") % left)
+	event_desc.text = tr(ev.desc)
+	var est := _style(Color(ev.color), 20)
+	est.content_margin_left = 16
+	est.content_margin_right = 16
+	est.content_margin_top = 6
+	est.content_margin_bottom = 6
+	event_pill.add_theme_stylebox_override("panel", est)
 	wallet_label.text = str(wallet)
 	level_label.text = tr("Level %d  ·  %s") % [prog.level, tr(player_name)]
 	level_bar.set_meta("fill", float(prog.xp) / Progress.need(prog.level))
@@ -2263,6 +2387,23 @@ func _build_over() -> void:
 	again.pressed.connect(func(): start_game())
 	col.add_child(again)
 	again_btn = again
+	# Double coins for watching an ad (only shown once ads are switched on, see Services)
+	ad_btn = _button("Watch an ad: double coins", Color("#2ec48a"), Color.WHITE, Color("#1f8f5f"), 30)
+	ad_btn.custom_minimum_size = Vector2(380, 84)
+	ad_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	ad_btn.visible = false
+	ad_btn.pressed.connect(func():
+		ad_btn.disabled = true
+		Services.show_rewarded(func(watched: bool):
+			ad_btn.disabled = false
+			if watched and _last_earned > 0:
+				wallet += _last_earned
+				over_coins.text = tr("+%d coins") % (_last_earned * 2)
+				_last_earned = 0
+				ad_btn.visible = false
+				sfx.play("coin")
+				_save()))
+	col.add_child(ad_btn)
 	var menu_btn := _button("Menu", Color(1, 1, 1, 0.92), INK, Color("#c7cfe0"), 32)
 	menu_btn.custom_minimum_size = Vector2(380, 84)
 	menu_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -2338,6 +2479,7 @@ func _load() -> void:
 	Gfx.show_fps = c.get_value("settings", "show_fps", false)
 	big_stick = c.get_value("settings", "big_stick", false)
 	controls = c.get_value("settings", "controls", "stick")
+	_grant_track() # players already past a reward's level get it straight away
 	# Anything that no longer exists goes back to the default
 	if not world_modes().has(mode_id):
 		mode_id = "classic"

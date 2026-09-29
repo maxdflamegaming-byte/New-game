@@ -42,6 +42,7 @@ var _belt_marks := [] # [pos, dir]: where the arrows on the conveyor belts go
 var _waves := PackedVector2Array() # spots on the sea where wave crests roll
 var _icons := {}
 var _coin: Texture2D
+var _crown: Texture2D
 var _flashes := [] # {cells, life, max, origin}
 var _fades := [] # {cells, color, life}
 var _rings := [] # {pos, color, life, size}
@@ -72,6 +73,7 @@ func setup(world, ui_font: Font, px: int) -> void:
 	_add_mat = CanvasItemMaterial.new()
 	_add_mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
 	_coin = Art.tex(Art.COIN, 96)
+	_crown = Art.tex(Art.CROWN, 128)
 	for k in Art.ICONS:
 		_icons[k] = Art.tex(Art.ICONS[k], 96)
 	var ck := Image.create(64, 64, false, Image.FORMAT_RGBA8)
@@ -167,11 +169,11 @@ func _process(dt: float) -> void:
 	if w.map_id == "islands" and (Gfx.level > Gfx.LOW or Engine.get_process_frames() % 3 == 0):
 		_water.queue_redraw()
 	_items.queue_redraw()
-	if not w.portals.is_empty() or w.storm_r > 0 or not w.traps.is_empty() or w.map_id == "conveyor":
-		_hazards.queue_redraw()
-	elif _hazards_drawn:
-		_hazards.queue_redraw() # clear what's left from the last map
-	_hazards_drawn = not w.portals.is_empty() or w.storm_r > 0 or not w.traps.is_empty() or w.map_id == "conveyor"
+	var hazards: bool = not w.portals.is_empty() or w.storm_r > 0 or not w.traps.is_empty() or w.map_id == "conveyor" \
+			or not w.bumpers.is_empty() or w.hill_r > 0
+	if hazards or _hazards_drawn:
+		_hazards.queue_redraw() # (once more after a map without them, to clear it)
+	_hazards_drawn = hazards
 	_update_trails()
 	# Effects fade out
 	for f in _flashes:
@@ -362,6 +364,22 @@ func _draw_floor() -> void:
 						var mid := Vector2(x + 0.5, y + 0.5) * CELL + off
 						var half := dir * CELL * 0.5
 						_floor.draw_line(mid - half, mid + half, Color("#5b6378"), CELL * 0.16)
+	# Ice Rink: pale blue ice with a few bright scratches
+	if w.map_id == "ice":
+		var ice_col := Color("#a9dcff")
+		for y in n:
+			var x := 0
+			while x < n:
+				if w.ice[y * n + x] == 0:
+					x += 1
+					continue
+				var e := x
+				while e + 1 < n and w.ice[y * n + e + 1] == 1:
+					e += 1
+				_floor.draw_rect(Rect2(x * CELL, y * CELL, (e - x + 1) * CELL, CELL), ice_col)
+				if (x * 7 + y * 3) % 5 == 0 and e - x > 2:
+					_floor.draw_line(Vector2(x + 1, y + 0.7) * CELL, Vector2(x + 2.4, y + 0.3) * CELL, Color(1, 1, 1, 0.8), CELL * 0.08, true)
+				x = e + 1
 	# Saw tracks: rails the blades run along
 	for s in w.saws:
 		var corners: Array = s.corners
@@ -391,8 +409,9 @@ func _draw_floor() -> void:
 					_floor.draw_rect(Rect2(px, py, f, CELL), foam)
 				if x < n - 1 and wall[i + 1] != 2:
 					_floor.draw_rect(Rect2(px + CELL - f, py, f, CELL), foam)
-	# Pillars and maze walls: raised blocks with a lit top edge
-	for pass_i in 3:
+	# Pillars and maze walls: raised blocks with a lit top edge (Pinball's bumpers are drawn
+	# round, over their walls)
+	for pass_i in (0 if not w.bumpers.is_empty() else 3):
 		for y in n:
 			var x := 0
 			while x < n:
@@ -774,6 +793,32 @@ func _draw_air() -> void:
 
 func _draw_hazards() -> void:
 	var t := Time.get_ticks_msec() / 1000.0
+	# King of the Hill: a glowing ring in the leader's colour
+	if w.hill_r > 0:
+		var hc: Vector2 = w.center() * CELL
+		var leader: Player = w.hill_leader()
+		var pulse := 0.5 + 0.5 * sin(t * 3.0)
+		var rr: float = w.hill_r * CELL
+		_hazards.draw_circle(hc, rr, Color(1, 0.85, 0.3, 0.12 + 0.06 * pulse), true, -1, true)
+		# A gold ring, with the leader's colour running inside it
+		_hazards.draw_arc(hc, rr, 0, TAU, 96, Color("#5a3200"), CELL * 0.6, true)
+		_hazards.draw_arc(hc, rr, 0, TAU, 96, Color("#ffc233").lerp(Color.WHITE, 0.3 * pulse), CELL * 0.42, true)
+		if leader:
+			_hazards.draw_arc(hc, rr - CELL * 0.55, 0, TAU, 96, Color(leader.color, 0.8), CELL * 0.25, true)
+		_hazards.draw_arc(hc, rr + CELL * 0.6, 0, TAU, 96, Color(1, 0.9, 0.5, 0.45 * pulse), CELL * 0.14, true)
+		var cs := CELL * 3.0
+		_hazards.draw_texture_rect(_crown, Rect2(hc - Vector2(cs, cs) / 2 + Vector2(0, sin(t * 2.0) * CELL * 0.2), Vector2(cs, cs)), false, Color(1, 1, 1, 0.55))
+	# Pinball: bumpers light up when something bounces off them
+	for b in w.bumpers:
+		var at: Vector2 = b.pos * CELL
+		var r: float = w.BUMPER_R * CELL
+		var f: float = b.flash
+		_hazards.draw_circle(at + Vector2(0, CELL * 0.35), r, Color(0.06, 0.08, 0.16, 0.25), true, -1, true)
+		_hazards.draw_circle(at, r * (1.0 + 0.12 * f), Color("#ff5d9e").lerp(Color.WHITE, f * 0.6), true, -1, true)
+		_hazards.draw_circle(at, r * 0.72, Color("#ffd23f").lerp(Color.WHITE, f * 0.5), true, -1, true)
+		_hazards.draw_circle(at, r * 0.4, Color("#ff5d9e"), true, -1, true)
+		_hazards.draw_arc(at, r * (1.0 + 0.12 * f), 0, TAU, 48, Color(1, 1, 1, 0.7), CELL * 0.12, true)
+		_hazards.draw_circle(at + Vector2(-r * 0.3, -r * 0.35), r * 0.16, Color(1, 1, 1, 0.8), true, -1, true)
 	# Conveyor: arrows sliding along the belts
 	var shift := fmod(t * w.BELT_SPEED, 2.0)
 	for m in _belt_marks:

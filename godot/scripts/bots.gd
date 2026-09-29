@@ -116,7 +116,8 @@ func safe_steps(p: Player, desired: float, steps := LOOK, dt := 0.05) -> int:
 	var cy := p.cell.y
 	var v: float = w.speed_of(p)
 	for k in steps:
-		a += clampf(wrapf(desired - a, -PI, PI), -w.TURN * dt, w.TURN * dt)
+		var rate: float = w.turn_rate(x, y)
+		a += clampf(wrapf(desired - a, -PI, PI), -rate * dt, rate * dt)
 		var nx := clampf(x + cos(a) * v * dt, 0.01, n - 0.01)
 		var ny := clampf(y + sin(a) * v * dt, 0.01, n - 0.01)
 		# Walls aren't deadly: slide along them exactly like the real move does
@@ -184,6 +185,9 @@ func plan_loop(p: Player) -> void:
 	for tries in 10:
 		var shrink := 1.0 if tries < 6 else 0.5
 		var a := randf() * TAU
+		# King of the Hill: most loops head for the hill
+		if w.hill_r > 0 and randf() < 0.65 and p.pos.distance_to(w.center()) > 3.0:
+			a = (w.center() - p.pos).angle() + randf_range(-0.7, 0.7)
 		var length := randf_range(5, 11 + minf(10, w.counts[p.id] / 60.0)) * p.loop_scale * tight * shrink
 		var wid := randf_range(4, 10) * p.loop_scale * tight * shrink * (1 if randf() < 0.5 else -1)
 		var A := (p.pos + Vector2.from_angle(a) * length).clamp(Vector2(1.5, 1.5), Vector2(n - 1.5, n - 1.5))

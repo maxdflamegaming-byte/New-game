@@ -36,6 +36,7 @@ func _run() -> void:
 	main.prog.tutorial_done = true # skip the first-game tutorial offer (tested on its own below)
 	I18n.lang = "en" # the checks below compare English text
 	I18n.apply()
+	Events.forced = "none" # the checks below measure the normal rules (events are tested on their own)
 	# Start from the defaults, whatever an earlier run left in the save
 	main.boss_kind = "king"
 	main.difficulty = "normal"
@@ -668,7 +669,9 @@ func _run() -> void:
 	shop_cfg.set_value("shop", "owned_pet", [])
 	shop_cfg.save(main.SAVE_PATH)
 	main._load()
-	ok("Unknown or unowned items fall back safely", main.equipped.skin == "plain" and main.owned.skin == ["plain", "cat"] and main.equipped.pet == "none" and main.owned.pet == ["none"])
+	var bought_skins: Array = main.owned.skin.filter(func(id): return Cosmetics.unlock_level("skin", id) == 0)
+	var bought_pets: Array = main.owned.pet.filter(func(id): return Cosmetics.unlock_level("pet", id) == 0)
+	ok("Unknown or unowned items fall back safely", main.equipped.skin == "plain" and bought_skins == ["plain", "cat"] and main.equipped.pet == "none" and bought_pets == ["none"])
 	main._to_menu()
 	await process_frame
 
@@ -679,5 +682,125 @@ func _run() -> void:
 		await _wait(0.25)
 	ok("Music is ready and loops", main.music.stream != null and main.music.stream.loop_mode == AudioStreamWAV.LOOP_FORWARD)
 
+	main.music.play_track("boss")
+	for t in 40:
+		if main.music._playing_track == "boss":
+			break
+		await _wait(0.25)
+	ok("Music switches tracks (menu, game, boss)", main.music._playing_track == "boss" and main.music._streams.size() == 3)
+	main.music.play_track("menu")
+
+	await _phase5()
+
 	print("%d failed" % fails)
 	quit(1 if fails else 0)
+
+
+## The reward track, weekly events, Ice Rink, Pinball and King of the Hill
+func _phase5() -> void:
+	var w = main.world
+	# ---------- Phase 5: reward p5_track, weekly events, new maps and mode ----------
+	var p5_track: Array = Cosmetics.track()
+	ok("The reward p5_track has 6 items, lowest level first", p5_track.size() == 6 and p5_track[0][0] <= p5_track[5][0])
+	ok("Reward-p5_track items can't be bought", Cosmetics.price("skin", "gold") == 0 and Cosmetics.unlock_level("skin", "gold") == 20)
+	var p5_keep_prog: Progress = main.prog
+	var p5_keep_owned: Dictionary = main.owned.duplicate(true)
+	main.prog = Progress.new()
+	main.prog.level = 1
+	for kind in main.owned:
+		main.owned[kind] = main.owned[kind].filter(func(id): return Cosmetics.unlock_level(kind, id) == 0)
+	ok("Nothing on the p5_track at level 1", main._grant_track().is_empty())
+	main.prog.level = 8
+	var p5_got: Array = main._grant_track()
+	ok("Reaching level 8 unlocks the first three rewards", p5_got.size() == 3 and main.owned.trail.has("snow") and main.owned.skin.has("ice") and main.owned.trail.has("lightning") and p5_got[0].kind == "unlock")
+	ok("The next reward is the Lava skin at level 12", main.next_track_item() == [12, "skin", "lava"])
+	main.shop.open()
+	main.shop.show_tab("skin")
+	var p5_before: int = main.wallet
+	main.shop.tap("skin", "gold")
+	ok("Tapping a locked reward says what level it needs (and costs nothing)", not main.owned.skin.has("gold") and main.wallet == p5_before and main.shop.info.text.contains("20"))
+	main.shop.close()
+	var p5_bots_ok := true
+	for i in 200:
+		var bp := Player.new(3, "b", Color.RED, true)
+		Cosmetics.dress_bot(bp)
+		if Cosmetics.unlock_level("skin", bp.skin) > 0 or Cosmetics.unlock_level("trail", bp.trail_fx) > 0 or Cosmetics.unlock_level("pet", bp.pet) > 0:
+			p5_bots_ok = false
+	ok("Bots never wear reward-p5_track items (they're earned)", p5_bots_ok)
+	main.prog = p5_keep_prog
+	main.owned = p5_keep_owned
+
+	# Weekly events: the date picks one, the same all week, a new one on Monday
+	Events.forced = ""
+	var p5_mon := Events.current("2026-09-28")
+	ok("The same event all week long", Events.current("2026-10-04") == p5_mon and Events.current("2026-10-05") != p5_mon)
+	ok("Days left counts down to Sunday", Events.days_left("2026-09-28") == 7 and Events.days_left("2026-10-04") == 1)
+	Events.forced = "speed"
+	await _play("classic")
+	var p5_plain_speed := 0.0
+	w.event = ""
+	p5_plain_speed = w.speed_of(w.me)
+	w.event = "speed"
+	ok("Speed Week makes everyone faster", is_equal_approx(w.speed_of(w.me), p5_plain_speed * 1.2))
+	Events.forced = "giants"
+	await _play("boss")
+	ok("Giant Bosses gives the boss 2 more hearts", w.king.max_hp == w.BOSSES[w.boss_kind].hearts + 2)
+	Events.forced = "coins"
+	await _play("classic")
+	main.peak = 20.0
+	main._game_over(false, "test")
+	ok("Double Coins shows on the results", main.over_coins.text.contains("x2"))
+	main._to_menu()
+	await process_frame
+	ok("The menu shows the event", main.event_pill.visible and main.event_label.text.contains("Double Coins"))
+	Events.forced = "none"
+	main._refresh_menu()
+	ok("With no event the banner hides", not main.event_pill.visible)
+
+	# Ice Rink: slow turning, fast sliding
+	main.map_id = "ice"
+	await _play("classic")
+	var p5_ice_at := -1
+	for i in w.N * w.N:
+		if w.ice[i] == 1 and w.wall[i] == 0:
+			p5_ice_at = i
+			break
+	ok("Ice Rink has ice", p5_ice_at >= 0)
+	var p5_ix: int = p5_ice_at % w.N
+	var p5_iy: int = p5_ice_at / w.N
+	ok("On ice you turn slower", is_equal_approx(w.turn_rate(p5_ix + 0.5, p5_iy + 0.5), w.TURN * w.ICE_TURN) and is_equal_approx(w.turn_rate(w.N / 2.0, w.N / 2.0), w.TURN))
+
+	# Pinball: a bumper bounces you back the way you came
+	main.map_id = "bumpers"
+	await _play("classic")
+	var p5_bump: Dictionary = w.bumpers[0]
+	var p5_bme: Player = w.me
+	p5_bme.shield = 99.0
+	p5_bme.pos = p5_bump.pos + Vector2(w.BUMPER_R + 1.0, 0)
+	p5_bme.cell = Vector2i(int(p5_bme.pos.x), int(p5_bme.pos.y))
+	p5_bme.angle = PI # heading straight at it
+	p5_bme.desired = PI
+	var p5_bounced := [false]
+	w.bumped.connect(func(p, _at): if p == p5_bme: p5_bounced[0] = true, CONNECT_ONE_SHOT)
+	for f in 20:
+		w.move(p5_bme, 1.0 / 60)
+	ok("A bumper bounces you away", p5_bounced[0] and cos(p5_bme.angle) > 0.5 and p5_bme.pos.distance_to(p5_bump.pos) >= w.BUMPER_R, "angle %.2f" % p5_bme.angle)
+	ok("Bots keep their plans away from bumpers", w.avoid[int(p5_bump.pos.y) * w.N + int(p5_bump.pos.x + w.BUMPER_R + 1.0)] == 1)
+	main.map_id = "square"
+
+	# King of the Hill: points for owning the hill, first to 100 wins
+	await _play("hill")
+	ok("King of the Hill has a hill in the middle", w.hill_r > 0 and not w.hill_cells.is_empty())
+	for i in w.hill_cells:
+		w.set_land(i, w.me.id)
+	w.points = {}
+	w._score_hill(1.0)
+	ok("Owning all the hill scores the full rate", is_equal_approx(w.points.get(w.me.id, 0.0), w.HILL_RATE))
+	ok("And puts you in the lead", w.hill_leader() == w.me)
+	w.points[w.me.id] = 100.0
+	main._check_end()
+	ok("100 points wins", main.state == "won")
+	await _wait(1.8)
+	main._to_menu()
+	await process_frame
+	Events.forced = "none"

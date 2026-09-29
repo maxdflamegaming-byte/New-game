@@ -177,6 +177,12 @@ func tap(kind: String, id: String) -> void:
 		m.equipped[kind] = id
 		m.sfx.play("tap")
 		info.text = tr("Now using %s.") % tr(item_name)
+	elif Cosmetics.unlock_level(kind, id) > 0:
+		# The reward track: earned by levelling up, never sold
+		m.sfx.play("warn")
+		info.text = tr("Reach level %d to unlock %s. It's free!") % [Cosmetics.unlock_level(kind, id), tr(item_name)]
+		_shake(kind, id)
+		return
 	else:
 		var cost := Cosmetics.price(kind, id)
 		if m.wallet < cost:
@@ -228,12 +234,18 @@ func refresh() -> void:
 		var icon: TextureRect = c[5]
 		var price_l: Label = c[6]
 		icon.visible = not mine and not using
+		# Reward-track items show a star (earned by levelling up) instead of a coin
+		icon.texture = Art.tex(Cosmetics.STAR, 64) if Cosmetics.unlock_level(kind, id) > 0 else Art.tex(Art.COIN, 64)
+		icon.modulate = Color("#8d7bd6") if Cosmetics.unlock_level(kind, id) > 0 else Color.WHITE
 		if using:
 			price_l.text = "Using"
 			price_l.label_settings.font_color = Color("#d27a06")
 		elif mine:
-			price_l.text = "Owned" if Cosmetics.price(kind, id) > 0 else "Free"
+			price_l.text = "Owned" if Cosmetics.price(kind, id) > 0 or Cosmetics.unlock_level(kind, id) > 0 else "Free"
 			price_l.label_settings.font_color = Color("#2a9d5c")
+		elif Cosmetics.unlock_level(kind, id) > 0:
+			price_l.text = tr("Level %d") % Cosmetics.unlock_level(kind, id)
+			price_l.label_settings.font_color = Color("#6a57b8")
 		else:
 			var cost := Cosmetics.price(kind, id)
 			price_l.text = str(cost)
@@ -426,6 +438,12 @@ func _draw_trail_bits(c: Control, id: String, pts: PackedVector2Array, t: float)
 		"fire":
 			svg = Art.GLOW
 			tint = Color("#ff8a1f")
+		"snow":
+			svg = Cosmetics.SNOWFLAKE
+			tint = Color("#e8f7ff")
+		"lightning":
+			svg = Cosmetics.BOLT
+			tint = Color("#8ff4ff")
 		_:
 			return
 	var tex := Art.tex(svg, 64)
@@ -434,13 +452,13 @@ func _draw_trail_bits(c: Control, id: String, pts: PackedVector2Array, t: float)
 		var i := 1 + k * 1.6
 		var p: Vector2 = pts[int(i)]
 		var life := fmod(t * 0.8 + k * 0.37, 1.0)
-		var drift := Vector2(sin(k * 7.0) * 14, -life * 26 if id in ["bubbles", "hearts", "fire"] else cos(k * 5.0) * 14)
+		var drift := Vector2(sin(k * 7.0) * 14, -life * 26 if id in ["bubbles", "hearts", "fire"] else life * 22 if id == "snow" else cos(k * 5.0) * 14)
 		var s := (22.0 + 8 * sin(k * 3.0)) * (1.0 - life * 0.6) * (1.8 if id == "fire" else 1.0)
 		var col := tint
 		if id == "confetti":
 			col = confetti[k % confetti.size()]
 			s *= 0.6
 		col.a = 1.0 - life
-		c.draw_set_transform(p + drift, t * 2.0 + k if id in ["stars", "sparkle", "confetti"] else 0.0)
+		c.draw_set_transform(p + drift, t * 2.0 + k if id in ["stars", "sparkle", "confetti", "snow"] else 0.0)
 		c.draw_texture_rect(tex, Rect2(-s / 2, -s / 2, s, s), false, col)
 	c.draw_set_transform(Vector2.ZERO)

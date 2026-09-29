@@ -21,13 +21,15 @@ func _init() -> void:
 	w.storm_hit.connect(func(_r): count.call("storm closed in"))
 	w.trap_dropped.connect(func(_k, _at): count.call("traps dropped"))
 	w.blinked.connect(func(_k, _a, _b): count.call("wizard blinks"))
+	w.bumped.connect(func(_p, _at): count.call("bumper bounces"))
 	w.knocked_out.connect(func(_v, k, how, _lost): if k == null: count.call("knocked out by " + how))
 	# Every mode (maps rotating), then long games on each hazard map and against each boss
 	var games := []
 	for game in modes.size() + 2:
 		games.append([modes[game % modes.size()], w.MAPS.keys()[game % w.MAPS.size()], 60.0, "king"])
-	for map in ["saws", "storm", "conveyor", "portals"]:
+	for map in ["saws", "storm", "conveyor", "portals", "ice", "bumpers"]:
 		games.append(["classic", map, 150.0 if map != "storm" else 240.0, "king"])
+	games.append(["hill", "square", 150.0, "king"])
 	games.append(["boss", "square", 120.0, "queen"])
 	games.append(["boss", "pillars", 120.0, "wizard"])
 	for game in games.size():
@@ -74,6 +76,11 @@ func _init() -> void:
 					for i in p.trail:
 						if w.trail[i] != p.id and w.trail[i] != 0:
 							issues["trail list mismatch"] = issues.get("trail list mismatch", 0) + 1
+		if w.hill_r > 0:
+			var top := 0.0
+			for id in w.points:
+				top = maxf(top, w.points[id])
+			events["hill: top score"] = int(top)
 	var ms := Time.get_ticks_msec() - t0
 	var sizes := []
 	for p in w.players:
@@ -85,7 +92,7 @@ func _init() -> void:
 	print("hazards: ", events)
 	# These always happen in these games (the rarer ones, like portal jumps and the Wizard's
 	# blink, depend on the bots, so tests/flow.gd checks those directly instead)
-	for need in ["storm closed in", "traps dropped"]:
+	for need in ["storm closed in", "traps dropped", "hill: top score"]:
 		if not events.has(need):
 			issues["never happened: " + need] = 1
 	print("ISSUES: ", issues if issues else "none")
