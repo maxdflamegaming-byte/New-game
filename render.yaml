@@ -1,0 +1,11 @@
+# Render Blueprint for the Color Claim online server (see SERVER.md).
+# Render -> New -> Blueprint -> pick this repository; it reads this file.
+services:
+  - type: web
+    name: color-claim-server
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter # always on (the free plan sleeps, which drops everyone's games)
+    region: singapore # pick the region closest to most of your players
+    autoDeploy: true
+    branch: claude/game-ideas-brainstorm-g3f06o

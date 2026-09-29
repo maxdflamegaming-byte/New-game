@@ -112,6 +112,11 @@ var modes_row: HFlowContainer
 var event_pill: PanelContainer # this week's event, on the menu
 var event_label: Label
 var event_desc: Label
+var net # the online message node (scripts/net/net.gd)
+var connect_box: Control # "Connecting..." and online messages
+var connect_label: Label
+var connect_cancel: Button
+var online # the online client (scripts/net/client.gd)
 var ad_btn: Button # results: double coins for watching an ad (off until ads are set up)
 var _earned_this_game := 0
 var _last_earned := 0
@@ -169,6 +174,17 @@ func _ready() -> void:
 	add_child(music)
 	world = preload("res://scripts/world.gd").new()
 	add_child(world)
+	# Online play: the message node sits at the root (the server has one at the same path)
+	net = preload("res://scripts/net/net.gd").new()
+	net.name = "Net"
+	get_tree().root.add_child.call_deferred(net)
+	online = preload("res://scripts/net/client.gd").new()
+	online.world = world
+	online.net = net
+	add_child(online)
+	online.round_started.connect(_on_online_round)
+	online.round_over.connect(_on_online_round_over)
+	online.failed.connect(_on_online_failed)
 	view = preload("res://scripts/board_view.gd").new()
 	add_child(view)
 	view.setup(world, font, 128)
@@ -214,6 +230,9 @@ func _start_demo() -> void:
 
 
 func start_game(mode := "") -> void:
+	if (mode if mode != "" else mode_id) == "online":
+		_start_online()
+		return
 	# The first game ever offers the tutorial
 	if mode == "" and state == "menu" and prog.stats.games == 0 and not prog.tutorial_done and not ask_box.get_meta("asked", false):
 		ask_box.set_meta("asked", true)
@@ -293,12 +312,14 @@ func _process(delta: float) -> void:
 			slowmo = maxf(0.0, slowmo - dt)
 			if state == "play":
 				_steer()
-			world.update(dt * k)
+			if not world.online:
+				world.update(dt * k)
 			play_time += dt * k
 			if me.alive:
 				peak = maxf(peak, world.pct(me))
-			if state == "play":
+			if state == "play" and not world.online:
 				_check_end()
+			if state == "play":
 				if _tut_step > 0:
 					_update_tutorial()
 				else:
@@ -613,8 +634,144 @@ func _resume() -> void:
 
 
 func _to_menu() -> void:
+	if online.is_on():
+		online.stop()
+	connect_box.visible = false
 	hud.visible = false
 	_start_demo()
+
+
+# ---------- Online ----------
+
+## Play online: connect (or, already in a room, come back into its round)
+func _start_online() -> void:
+	ask_box.visible = false
+	play_mode = "online"
+	if online.status == "in":
+		_online_play()
+		return
+	var url: String = OnlineConfig.server_url()
+	if url == "":
+		_online_message(tr("Online play is coming soon!"))
+		return
+	_game_id += 1
+	_split_off()
+	state = "connecting"
+	connect_label.text = tr("Connecting...")
+	connect_box.visible = true
+	online.start(url, {"name": player_name if player_name != "You" else tr("Player"), "color": my_color,
+		"skin": equipped.skin, "trail": equipped.trail, "pet": equipped.pet})
+	CrashLog.note("online  connecting to %s" % url)
+
+
+## A round's board from the server: the first one after connecting, or the next round
+func _on_online_round(first: bool) -> void:
+	view.rebuild()
+	music.play_track("game")
+	if first or state == "connecting":
+		connect_box.visible = false
+		_online_play()
+	else:
+		# A new round started: if you're playing, you're straight in; on the results, Play again
+		# takes you in
+		_snap_camera()
+		if state == "play":
+			online.respawn()
+		elif state == "over":
+			over_best.text = tr("The next round has started!")
+
+
+## Into the round: you appear on the board
+func _online_play() -> void:
+	online.respawn()
+	_game_id += 1
+	state = "play"
+	peak = 0.0
+	play_time = 0.0
+	slowmo = 0.0
+	ending = false
+	_kos.clear()
+	_marks.clear()
+	_power_count = 0
+	_best_loop = 0.0
+	_multi = 0
+	_lives_lost = 0
+	_king_hits = 0
+	_tut_step = 0
+	_hints.clear()
+	_release_touches()
+	_death_how = ""
+	world.coins_picked = 0
+	_update_tutorial()
+	_show(null)
+	hud.visible = true
+	_pill_key = ""
+	_chip_key = ""
+	_snap_camera()
+	_update_hud()
+
+
+func _on_online_round_over(d: Dictionary) -> void:
+	if state != "play":
+		return
+	var me: Player = world.me
+	if me and int(d.get("winner", 0)) == me.id:
+		_win(tr("You claimed 50% of the map and won the round!") if not d.get("timeout", false) else tr("Time's up and you're the biggest!"))
+	else:
+		_lose(tr("%s won the round.") % str(d.get("name", "?")), 0.4)
+
+
+func _on_online_failed(reason: String) -> void:
+	connect_box.visible = false
+	var text: String = {
+		"connect": tr("Can't reach the online server. Check your internet and try again."),
+		"timeout": tr("Can't reach the online server. Check your internet and try again."),
+		"dropped": tr("The connection to the server was lost."),
+		"full": tr("The server is full right now. Try again in a minute."),
+		"version": tr("Please update the game to play online."),
+	}.get(reason, tr("Something went wrong online. Try again."))
+	CrashLog.note("online  failed: %s" % reason)
+	if state != "menu":
+		_to_menu()
+	_online_message(text)
+
+
+## A short message on the menu (online problems)
+func _online_message(text: String) -> void:
+	connect_label.text = text
+	connect_cancel.text = tr("OK")
+	connect_box.visible = true
+
+
+func _build_connect_box() -> void:
+	connect_box = Control.new()
+	connect_box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	connect_box.visible = false
+	ui_layer.add_child(connect_box)
+	_dim(connect_box, Color(0.08, 0.1, 0.2, 0.6), Color(0.08, 0.1, 0.2, 0.8))
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	connect_box.add_child(center)
+	var c := _card(Color(1, 1, 1, 0.97))
+	center.add_child(c)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 16)
+	c.add_child(col)
+	col.add_child(_label("Online", 48, INK))
+	connect_label = _label("", 28, MUTED, 0, INK, font_med)
+	connect_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	connect_label.custom_minimum_size.x = 520
+	col.add_child(connect_label)
+	connect_cancel = _button("Cancel", Color(0.12, 0.15, 0.27, 0.08), INK, Color(0.12, 0.15, 0.27, 0.1), 28)
+	connect_cancel.custom_minimum_size = Vector2(0, 80)
+	connect_cancel.pressed.connect(func():
+		connect_box.visible = false
+		if state == "connecting":
+			online.stop()
+			state = "menu"
+			_show(menu)
+		connect_cancel.text = tr("Cancel"))
+	col.add_child(connect_cancel)
 
 
 # ---------- 2 Players: split screen ----------
@@ -1479,6 +1636,8 @@ func _update_mode_pill() -> void:
 		key = "teams %.1f %.1f" % [world.team_pct(0), world.team_pct(1)]
 	elif m.get("boss", false) and world.king:
 		key = "boss %s %d %d %d" % [world.king.name, world.king.hp, world.king.max_hp, world.me.lives]
+	elif m.get("online", false):
+		key = "online %d %d" % [online.room, world.humans_in_room()]
 	elif m.get("hill", false):
 		var hl: Player = world.hill_leader()
 		key = "hill %d %s %d %d" % [int(world.points.get(world.me.id, 0.0)), hl.name if hl else "", int(world.points.get(hl.id, 0.0)) if hl else 0, ceili(m.limit - play_time)]
@@ -1513,6 +1672,9 @@ func _update_mode_pill() -> void:
 		if leader and leader != world.me:
 			parts.append(_label("·  %s %d" % [tr(leader.name), int(world.points.get(leader.id, 0.0))], 24, Color("#d6304a")))
 		parts.append(_label("·  " + _fmt_time(ceilf(left)), 24, Color("#ff3c50") if left <= 15 else MUTED, 0, INK, font_med))
+	elif m.get("online", false):
+		var people: int = world.humans_in_room()
+		parts.append(_label(tr("Online") + "  ·  " + (tr("1 player") if people == 1 else tr("%d players") % people), 24, Color("#1f5fd6")))
 	elif m.get("duo", false):
 		parts.append(_label(tr("First to %d%%") % int(m.win), 24, INK))
 	elif m.get("daily", false):
@@ -1914,6 +2076,7 @@ func _build_ui() -> void:
 	settings_screen.build(self)
 	_build_ask()
 	_build_crash_box()
+	_build_connect_box()
 	_build_welcome()
 
 
@@ -2078,6 +2241,8 @@ func _build_menu(safe: Vector4) -> void:
 	for id in world.MODES:
 		if world.MODES[id].get("hidden", false):
 			continue
+		if id == "online" and OnlineConfig.server_url() == "":
+			continue # online play shows up once there's a server (see SERVER.md)
 		var b := Button.new()
 		b.text = world.MODES[id].name
 		b.focus_mode = Control.FOCUS_NONE
@@ -2319,8 +2484,8 @@ func _refresh_menu() -> void:
 		for k in ["font_color", "font_hover_color", "font_pressed_color"]:
 			db.add_theme_color_override(k, INK if on else Color.WHITE)
 	for mb in maps_row.get_children():
-		mb.disabled = mode_id == "daily"
-		var picked: bool = mb.get_meta("id") == map_id and mode_id != "daily"
+		mb.disabled = mode_id == "daily" or mode_id == "online"
+		var picked: bool = mb.get_meta("id") == map_id and mode_id != "daily" and mode_id != "online"
 		var st := _style(Color.WHITE if picked else Color(1, 1, 1, 0.16), 18)
 		st.content_margin_left = 16
 		st.content_margin_right = 16
@@ -2481,7 +2646,7 @@ func _load() -> void:
 	controls = c.get_value("settings", "controls", "stick")
 	_grant_track() # players already past a reward's level get it straight away
 	# Anything that no longer exists goes back to the default
-	if not world_modes().has(mode_id):
+	if not world_modes().has(mode_id) or (mode_id == "online" and OnlineConfig.server_url() == ""):
 		mode_id = "classic"
 	if not preload("res://scripts/world.gd").MAPS.has(map_id):
 		map_id = "square"

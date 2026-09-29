@@ -29,6 +29,7 @@ const COLORS: Array[Color] = [
 	Color("#b06bff"), Color("#ff7ac6"), Color("#8bd346"), Color("#ff8c42"),
 ]
 const BOT_NAMES := ["Mango", "Zigzag", "Pixel", "Turbo", "Luna", "Nacho", "Bloop"]
+const MORE_NAMES := ["Nova", "Dash", "Kiwi", "Pogo", "Mochi", "Ziggy", "Blip", "Rocket"] # online rooms need a few more
 
 const MODES := {
 	"classic": {"name": "Classic", "desc": "Claim 50% of the map to win", "win": 50.0},
@@ -38,6 +39,7 @@ const MODES := {
 	"boss": {"name": "Boss", "desc": "Cut the King's trail to knock off his hearts · you have 3 lives", "boss": true},
 	"duo": {"name": "2 Players", "desc": "Two players on one screen · first to 40% wins", "win": 40.0, "duo": true},
 	"hill": {"name": "King of the Hill", "desc": "Own land on the glowing hill to score · first to 100 points wins", "hill": true, "goal": 100.0, "limit": 240.0},
+	"online": {"name": "Online", "desc": "Play people from around the world · claim 50% to win the round", "win": 50.0, "online": true},
 	"tutorial": {"name": "Tutorial", "desc": "Learn to play in 5 quick steps", "win": 15.0, "tutorial": true, "hidden": true},
 }
 
@@ -151,6 +153,181 @@ func _init() -> void:
 	counts.resize(16)
 
 
+# ---------- Online rooms ----------
+# On the server a room is a World with no local player: people join and leave mid-game, and
+# bots fill the empty places. On a phone playing online, the World only mirrors what the
+# server sends (see scripts/net/): nothing is simulated there.
+
+const ROOM_SIZE := 8
+
+var online := false # an online room (server) or a mirror of one (phone)
+
+
+## A server room: bots only for now, on `map`; people are added with add_human()
+func setup_room(map: String) -> void:
+	_setting_up = true
+	online = true
+	mode_id = "online"
+	mode = MODES.online
+	map_id = map if MAPS.has(map) else "square"
+	event = ""
+	land.fill(0)
+	trail.fill(0)
+	counts.fill(0)
+	_build_map()
+	_build_hill()
+	time = 0.0
+	won = false
+	land_version += 1
+	powerups.clear()
+	coins.clear()
+	traps.clear()
+	freezer = null
+	coins_picked = 0
+	_power_timer = 3.0
+	_coin_timer = 3.0
+	players = [null]
+	me = null
+	p2 = null
+	king = null
+	for i in ROOM_SIZE:
+		_add_bot()
+	_setting_up = false
+
+
+## The lowest free player id (ids index `players`; 0 is never used)
+func _free_id() -> int:
+	for i in range(1, players.size()):
+		if players[i] == null:
+			return i
+	return players.size() if players.size() < 16 else -1
+
+
+func _free_color(wanted := -1) -> Color:
+	var used := []
+	for p in players:
+		if p:
+			used.append(p.color)
+	if wanted >= 0 and wanted < COLORS.size() and not used.has(COLORS[wanted]):
+		return COLORS[wanted]
+	for c in COLORS:
+		if not used.has(c):
+			return c
+	return COLORS[randi() % COLORS.size()]
+
+
+func _put(p: Player) -> void:
+	if p.id >= players.size():
+		players.resize(p.id + 1)
+	players[p.id] = p
+
+
+func _add_bot() -> Player:
+	var id := _free_id()
+	if id < 0:
+		return null
+	var names := BOT_NAMES + MORE_NAMES
+	for p in players:
+		if p:
+			names.erase(p.name)
+	var b := Player.new(id, names.pick_random() if not names.is_empty() else "Bot", _free_color(), true)
+	bots.give_personality(b, bots.PERSONA_MIX.pick_random())
+	_tune(b)
+	Cosmetics.dress_bot(b)
+	b.team = b.id
+	_put(b)
+	spawn(b)
+	return b
+
+
+func humans_in_room() -> int:
+	var n := 0
+	for p in players:
+		if p and not p.is_bot:
+			n += 1
+	return n
+
+
+## Someone joins: a bot makes room for them. Returns their player, or null if the room's full.
+func add_human(p_name: String, color_idx: int, looks_in: Dictionary) -> Player:
+	if humans_in_room() >= ROOM_SIZE:
+		return null
+	var count := 0
+	for p in players:
+		if p:
+			count += 1
+	if count >= ROOM_SIZE:
+		for p in players:
+			if p and p.is_bot:
+				remove_player(p)
+				break
+	var id := _free_id()
+	var h := Player.new(id, p_name, _free_color(color_idx), false)
+	h.skin = looks_in.get("skin", "plain")
+	h.trail_fx = looks_in.get("trail", "none")
+	h.pet = looks_in.get("pet", "none")
+	h.team = h.id
+	_put(h)
+	spawn(h)
+	return h
+
+
+## Someone leaves (or a bot makes room): their land and trail go, and a bot may come back
+func remove_player(p: Player) -> void:
+	for i in N * N:
+		if trail[i] == p.id:
+			trail[i] = 0
+		if land[i] == p.id:
+			set_land(i, 0)
+	land_version += 1
+	p.alive = false
+	players[p.id] = null
+	if freezer == p:
+		freezer = null
+
+
+## Keeps the room at ROOM_SIZE players by adding bots
+func fill_with_bots() -> void:
+	var count := 0
+	for p in players:
+		if p:
+			count += 1
+	while count < ROOM_SIZE:
+		if _add_bot() == null:
+			break
+		count += 1
+
+
+## A phone playing online: the board from the server (its walls, since the Maze is random),
+## with nothing simulated here
+func setup_mirror(map: String, walls: PackedByteArray) -> void:
+	online = true
+	mode_id = "online"
+	mode = MODES.online
+	map_id = map if MAPS.has(map) else "square"
+	event = ""
+	land.fill(0)
+	trail.fill(0)
+	counts.fill(0)
+	_build_map()
+	if walls.size() == N * N:
+		wall = walls
+		play_cells = 0
+		for i in N * N:
+			if wall[i] == 0:
+				play_cells += 1
+		map_version += 1
+	land_version += 1
+	powerups.clear()
+	coins.clear()
+	traps.clear()
+	freezer = null
+	players = [null]
+	me = null
+	p2 = null
+	king = null
+
+
 ## Today's date, which picks the Daily map and start
 static func today() -> String:
 	return Time.get_date_string_from_system()
@@ -160,6 +337,7 @@ static func today() -> String:
 ## with personalities
 func setup(my_color: int, my_name: String, demo := false, map := "square", mode_name := "classic") -> void:
 	_setting_up = true
+	online = false
 	mode_id = mode_name if MODES.has(mode_name) else "classic"
 	mode = MODES[mode_id]
 	map_id = map if MAPS.has(map) else "square"
@@ -912,7 +1090,7 @@ func check_bumps() -> void:
 		for b in range(a + 1, players.size()):
 			var p: Player = players[a]
 			var q: Player = players[b]
-			if not p.alive or not q.alive or allies(p, q):
+			if p == null or q == null or not p.alive or not q.alive or allies(p, q):
 				continue
 			if p.pos.distance_to(q.pos) > (1.5 if p.is_boss or q.is_boss else 0.9):
 				continue

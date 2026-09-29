@@ -691,6 +691,15 @@ func _run() -> void:
 	main.music.play_track("menu")
 
 	await _phase5()
+	# Online: hidden until there's a server; if picked anyway, it says so instead of breaking
+	var mode_names: Array = main.modes_row.get_children().map(func(b): return b.text)
+	ok("Online stays out of the menu until there's a server", not mode_names.has("Online"))
+	main.mode_id = "online"
+	main.start_game()
+	await process_frame
+	ok("Online with no server says it's coming soon", main.state == "menu" and main.connect_box.visible and main.connect_label.text.contains("soon"))
+	main.connect_box.visible = false
+	main.mode_id = "classic"
 
 	print("%d failed" % fails)
 	quit(1 if fails else 0)

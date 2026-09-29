@@ -134,6 +134,7 @@ To open it on your own computer, play it there or export an APK yourself, see [P
 - The menu has a level badge and a dock for the Shop, Missions, Profile and Settings; the results screen shows your XP bar and each reward as it pops in
 - Smooth glowing trails, raised land, particles, a live bots-only game behind the menu, a touch joystick (one per player in 2 Players), a minimap, callouts, sound effects, and **music** made in code (on a background thread, so the game starts at once)
 - **Music:** three tracks made in code (the menu, a quicker one for games and a darker one for boss battles) that crossfade; screens fade and settle in, and buttons squish with a tiny buzz when pressed
+- **Online play:** rooms of 8 on a game server, filled with bots so there's never a wait; people from anywhere drop in, rounds are Classic rules on a new map each time, and your phone only sends its steering. Built and tested (a local server with test players on every push, and the server's Docker image), switched on once the server is hosted; see [SERVER.md](SERVER.md)
 - **Ads, purchases and leaderboards:** ready in the game but switched off until the accounts exist; see [ONLINE-AND-MONEY.md](ONLINE-AND-MONEY.md)
 
 - `scripts/world.gd`: the board, rules and modes (movement, trails, capturing land, knockouts, bumps, the King)
@@ -143,6 +144,7 @@ To open it on your own computer, play it there or export an APK yourself, see [P
 - `scripts/cosmetics.gd` and `scripts/shop.gd`: the skins, trail effects and pets, and the shop screen
 - `scripts/progress.gd`: levels, missions, the streak, trophies and stats
 - `scripts/gfx.gd`: the graphics quality levels and frame rate; `scripts/shaders.gd`: the land and minimap shaders
+- `scripts/net/`: online play (the shared messages, the server's rooms, the phone's client); `server/run.gd` starts the server
 - `scripts/events.gd`: the weekly event; `scripts/services.gd`: ads, purchases and leaderboards (off for now); `scripts/crash_log.gd`: crash reports
 - `scripts/patterns.gd`: colourblind patterns; `scripts/i18n.gd` and `i18n/*.gd`: languages and translations
 - `scripts/menu_screen.gd`, `missions_screen.gd`, `profile_screen.gd` and `settings_screen.gd`: the menu's other screens

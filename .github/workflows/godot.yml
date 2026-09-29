@@ -54,6 +54,20 @@ jobs:
           timeout 300 "$HOME/godot" --headless --path godot -s tests/monkey.gd -- 60 1 2>&1 | tee monkey.log
           grep -q "MONKEY DONE" monkey.log
           ! grep -q "SCRIPT ERROR" monkey.log
+          # Online: a local server and two players for 40 seconds; each phone's board must match
+          # the server's on every snapshot
+          timeout 120 "$HOME/godot" --headless --path godot -s server/run.gd -- 9080 --round=25 > server.log 2>&1 &
+          SERVER=$!
+          sleep 3
+          timeout 100 "$HOME/godot" --headless --path godot -s tests/online_client.gd -- --server=ws://127.0.0.1:9080 --name=Alice --seconds=40 > alice.log 2>&1 &
+          ALICE=$!
+          timeout 100 "$HOME/godot" --headless --path godot -s tests/online_client.gd -- --server=ws://127.0.0.1:9080 --name=Bob --seconds=40 > bob.log 2>&1 || true
+          wait $ALICE || true
+          kill $SERVER || true
+          cat server.log alice.log bob.log | grep -a "RESULT\|\[server\]" || true
+          grep -a "RESULT Alice" alice.log | grep -q "board_mismatches=0"
+          grep -a "RESULT Bob" bob.log | grep -q "board_mismatches=0"
+          ! grep -a -q "SCRIPT ERROR" server.log alice.log bob.log
 
       # Everything below only runs when the workflow is started by hand
       - name: Get the Android export templates

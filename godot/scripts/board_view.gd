@@ -135,8 +135,18 @@ func rebuild() -> void:
 	_floor.queue_redraw()
 
 
-## A trail rope and a view for every player (the King's guards join mid-game)
+## A trail rope and a view for every player (the King's guards join mid-game; online, people
+## come and go, and a new player can take a free place's number)
 func _ensure_views() -> void:
+	for id in views.keys():
+		var now: Player = w.players[id] if id < w.players.size() else null
+		if now != views[id].p:
+			views[id].queue_free()
+			views.erase(id)
+			for ropes in lines.get(id, []):
+				for l in ropes:
+					l.queue_free()
+			lines.erase(id)
 	for p in w.players:
 		if p == null or views.has(p.id):
 			continue
@@ -152,7 +162,7 @@ func _ensure_views() -> void:
 func _process(dt: float) -> void:
 	if w == null or w.players.is_empty():
 		return
-	if views.size() < w.players.size() - 1:
+	if w.online or views.size() < w.players.size() - 1:
 		_ensure_views()
 	if w.map_version != _map_version:
 		_map_version = w.map_version

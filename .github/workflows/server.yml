@@ -1,0 +1,55 @@
+# Builds the online server's Docker image (the same one Render or Fly.io builds) and checks it
+# works: starts it, then a test player joins, plays for 30 seconds and checks its board
+# matches the server's on every snapshot.
+name: Online server (Docker)
+
+on:
+  push:
+    branches: [main, claude/game-ideas-brainstorm-g3f06o]
+    paths:
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'godot/scripts/**'
+      - 'godot/server/**'
+      - '.github/workflows/server.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: server-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GODOT_VERSION: "4.7.2"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the server image
+        run: docker build -t color-claim-server .
+
+      - name: Start it
+        run: |
+          docker run -d --name server -p 8080:8080 color-claim-server
+          sleep 8
+          docker logs server
+
+      - name: Get Godot for the test player
+        run: |
+          wget -q "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q "Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" "$HOME/godot"
+          "$HOME/godot" --headless --path godot --import || true
+
+      - name: A test player joins and plays
+        run: |
+          timeout 120 "$HOME/godot" --headless --path godot -s tests/online_client.gd -- --server=ws://127.0.0.1:8080 --name=Tester --seconds=30 | tee player.log
+          docker logs server
+          grep -a "RESULT Tester" player.log | grep -q "board_mismatches=0"
+          ! grep -a -q "SCRIPT ERROR" player.log
+          ! docker logs server 2>&1 | grep -a -q "SCRIPT ERROR"
