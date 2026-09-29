@@ -70,6 +70,8 @@ func _run() -> void:
 	main.welcome.visible = false
 	main.crash_box.visible = false
 	Events.forced = "coins" # the menu shows an event
+	I18n.lang = "en" # the English listing's pictures, whatever an earlier run saved
+	I18n.apply()
 	if not main.prog.stats.modes.has("hill"):
 		main.prog.stats.modes.append("hill") # no first-time hint cards in the pictures
 	for m in ["bumpers", "ice"]:
