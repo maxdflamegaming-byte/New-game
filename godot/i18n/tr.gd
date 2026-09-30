@@ -390,4 +390,5 @@ const T := {
 	"1 player": "1 oyuncu",
 	"%d players": "%d oyuncu",
 	"Player": "Oyuncu",
+	"Waking up the server... The first game after a quiet spell can take up to a minute.": "Sunucu uyanıyor... Sessiz bir aradan sonraki ilk oyun bir dakika kadar sürebilir.",
 }
