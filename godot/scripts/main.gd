@@ -104,11 +104,18 @@ var over_stats: Label
 var over_best: Label
 var over_coins: Label
 var wallet_label: Label
-var maps_row: HFlowContainer
-var boss_row: HBoxContainer
 var menu_col: VBoxContainer
 var _storm_warned := false
-var modes_row: HFlowContainer
+var mode_card: Button # the home screen's card: the mode you'll play (tap to choose)
+var mode_icon_box: PanelContainer
+var mode_icon: TextureRect
+var mode_name_label: Label
+var mode_info_label: Label
+var change_pill: PanelContainer
+var change_label: Label
+var new_dot: Label
+var unlock_label: Label # the next thing a level-up brings
+var modes_screen: Control
 var event_pill: PanelContainer # this week's event, on the menu
 var event_label: Label
 var event_desc: Label
@@ -121,9 +128,7 @@ var pg: PlayGames # Google Play Games: sign-in and the cloud save (quiet without
 var ad_btn: Button # results: double coins for watching an ad (off until ads are set up)
 var _earned_this_game := 0
 var _last_earned := 0
-var mode_desc: Label
 var best_label: Label
-var swatches: HBoxContainer
 var shop: Control
 var missions_screen: Control
 var profile_screen: Control
@@ -131,7 +136,6 @@ var settings_screen: Control
 var level_label: Label
 var level_bar: Control
 var missions_badge: Label
-var diff_row: HBoxContainer
 var over_rewards: VBoxContainer
 var over_xp: Label
 var over_xp_bar: Control
@@ -141,6 +145,7 @@ var crash_box: Control # "the game closed last time", with a button to copy the 
 var crashed_last_time := false
 var welcome: Control # the very first launch: pick a language, then the tutorial
 var welcomed := false
+var new_unlocks: Array = [] # "mode:teams", "map:maze"... opened but not yet seen on the Modes screen
 var _welcome_pick := ""
 var _welcome_buttons := {}
 var tut_card: PanelContainer
@@ -487,6 +492,7 @@ func _game_over(won: bool, reason: String, who: Player = null) -> void:
 	over_xp.text = ""
 	over_xp_bar.visible = false
 	var rewards := []
+	var level_at_start: int = prog.level
 	_earned_this_game = 0
 	if play_mode == "tutorial":
 		over_title.text = "Well done!"
@@ -559,6 +565,7 @@ func _game_over(won: bool, reason: String, who: Player = null) -> void:
 		else:
 			tw.tween_method(_set_xp_fill, xp_before, to, 0.8)
 	rewards.append_array(_grant_track())
+	rewards.append_array(_unlock_rewards(level_at_start))
 	for r in rewards:
 		wallet += r.coins
 	# Online extras (they do nothing until switched on, see Services)
@@ -581,6 +588,20 @@ func _grant_track() -> Array:
 			owned[kind].append(id)
 			var what: String = {"skin": "%s skin", "trail": "%s trail", "pet": "%s pet"}[kind]
 			out.append({"text": tr("Unlocked: %s!") % (tr(what) % tr(Cosmetics.items(kind)[id].name)), "coins": 0, "kind": "unlock"})
+	return out
+
+
+## New modes and maps that a level-up opened: shown with the rewards, and marked NEW on the
+## Modes screen until you've seen them
+func _unlock_rewards(level_before: int) -> Array:
+	var out := []
+	for u in Unlocks.opened_between(level_before, prog.level):
+		if u[0] == "mode" and u[1] == "online" and OnlineConfig.server_url() == "":
+			continue
+		var name: String = world.MODES[u[1]].name if u[0] == "mode" else world.MAPS[u[1]]
+		out.append({"text": (tr("New mode: %s!") if u[0] == "mode" else tr("New map: %s!")) % tr(name), "coins": 0, "kind": "unlock"})
+		if not new_unlocks.has(u[0] + ":" + u[1]):
+			new_unlocks.append(u[0] + ":" + u[1])
 	return out
 
 
@@ -844,7 +865,7 @@ func _back() -> void:
 			if crash_box.visible:
 				crash_box.visible = false
 				return
-			for sc in [shop, missions_screen, profile_screen, settings_screen]:
+			for sc in [shop, missions_screen, profile_screen, settings_screen, modes_screen]:
 				if sc.visible:
 					sc.close()
 					return
@@ -1861,7 +1882,7 @@ func _screen() -> Control:
 
 
 func _show(screen: Control) -> void:
-	for s in [menu, pause_screen, over_screen, shop, missions_screen, profile_screen, settings_screen]:
+	for s in [menu, pause_screen, over_screen, shop, missions_screen, profile_screen, settings_screen, modes_screen]:
 		if s and s != screen:
 			s.visible = false
 	if screen:
@@ -2104,6 +2125,9 @@ func _build_ui() -> void:
 	settings_screen = preload("res://scripts/settings_screen.gd").new()
 	ui_layer.add_child(settings_screen)
 	settings_screen.build(self)
+	modes_screen = preload("res://scripts/modes_screen.gd").new()
+	ui_layer.add_child(modes_screen)
+	modes_screen.build(self)
 	_build_ask()
 	_build_crash_box()
 	_build_connect_box()
@@ -2240,112 +2264,85 @@ func _build_menu(safe: Vector4) -> void:
 	event_desc = _label("", 20, Color(1, 1, 1, 0.92), 0, INK, font_med)
 	er.add_child(event_desc)
 	col.add_child(event_pill)
-	var tag := _label("Loop back to your land to claim it. Cut other trails, and protect yours!", 26, Color(1, 1, 1, 0.92), 0, INK, font_med)
-	tag.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	tag.custom_minimum_size.x = 560
-	col.add_child(tag)
 	col.add_child(Control.new())
-	var pick := _label("YOUR COLOUR", 22, Color(1, 1, 1, 0.75))
-	col.add_child(pick)
-	swatches = HBoxContainer.new()
-	swatches.alignment = BoxContainer.ALIGNMENT_CENTER
-	swatches.add_theme_constant_override("separation", 12)
-	col.add_child(swatches)
-	for i in world.COLORS.size():
-		var b := Button.new()
-		b.custom_minimum_size = Vector2(52, 52)
-		b.focus_mode = Control.FOCUS_NONE
-		b.pressed.connect(func():
-			my_color = i
-			_save()
-			sfx.play("tap")
-			_refresh_menu())
-		swatches.add_child(b)
-	col.add_child(_label("MODE", 22, Color(1, 1, 1, 0.75)))
-	modes_row = HFlowContainer.new()
-	modes_row.alignment = FlowContainer.ALIGNMENT_CENTER
-	modes_row.add_theme_constant_override("h_separation", 8)
-	modes_row.add_theme_constant_override("v_separation", 8)
-	modes_row.custom_minimum_size.x = 600
-	col.add_child(modes_row)
-	for id in world.MODES:
-		if world.MODES[id].get("hidden", false):
-			continue
-		if id == "online" and OnlineConfig.server_url() == "":
-			continue # online play shows up once there's a server (see SERVER.md)
-		var b := Button.new()
-		b.text = world.MODES[id].name
-		b.focus_mode = Control.FOCUS_NONE
-		b.add_theme_font_override("font", font)
-		b.add_theme_font_size_override("font_size", 24)
-		b.pressed.connect(func():
-			mode_id = id
-			_save()
-			sfx.play("tap")
-			_refresh_menu())
-		modes_row.add_child(b)
-	mode_desc = _label("", 22, Color(1, 1, 1, 0.85), 0, INK, font_med)
-	mode_desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	mode_desc.custom_minimum_size.x = 600
-	col.add_child(mode_desc)
-	col.add_child(_label("MAP", 22, Color(1, 1, 1, 0.75)))
-	maps_row = HFlowContainer.new()
-	maps_row.alignment = FlowContainer.ALIGNMENT_CENTER
-	maps_row.add_theme_constant_override("h_separation", 8)
-	maps_row.add_theme_constant_override("v_separation", 8)
-	maps_row.custom_minimum_size.x = 620
-	col.add_child(maps_row)
-	for id in world.MAPS:
-		var mb := Button.new()
-		mb.text = world.MAPS[id]
-		mb.set_meta("id", id)
-		mb.focus_mode = Control.FOCUS_NONE
-		mb.add_theme_font_override("font", font)
-		mb.add_theme_font_size_override("font_size", 22)
-		mb.pressed.connect(func():
-			map_id = id
-			_save()
-			sfx.play("tap")
-			_start_demo())
-		maps_row.add_child(mb)
-	# The bosses (shown for the Boss Battle): beat one to unlock the next
-	boss_row = HBoxContainer.new()
-	boss_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	boss_row.add_theme_constant_override("separation", 8)
-	col.add_child(boss_row)
-	for id in world.BOSSES:
-		var bb := Button.new()
-		bb.text = world.BOSSES[id].name
-		bb.set_meta("id", id)
-		bb.focus_mode = Control.FOCUS_NONE
-		bb.add_theme_font_override("font", font)
-		bb.add_theme_font_size_override("font_size", 22)
-		bb.pressed.connect(func():
-			if not boss_unlocked(id):
-				return
-			boss_kind = id
-			_save()
-			sfx.play("tap")
-			_refresh_menu())
-		boss_row.add_child(bb)
-	col.add_child(_label("BOTS", 22, Color(1, 1, 1, 0.75)))
-	diff_row = HBoxContainer.new()
-	diff_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	diff_row.add_theme_constant_override("separation", 8)
-	col.add_child(diff_row)
-	for id in world.DIFFICULTY:
-		var db := Button.new()
-		db.text = world.DIFFICULTY[id].name
-		db.set_meta("id", id)
-		db.focus_mode = Control.FOCUS_NONE
-		db.add_theme_font_override("font", font)
-		db.add_theme_font_size_override("font_size", 22)
-		db.pressed.connect(func():
-			difficulty = id
-			_save()
-			sfx.play("tap")
-			_refresh_menu())
-		diff_row.add_child(db)
+	# What you'll play: a big card with the mode, its map and the bots. Tap it to choose.
+	mode_card = Button.new()
+	mode_card.focus_mode = Control.FOCUS_NONE
+	mode_card.custom_minimum_size = Vector2(600, 150)
+	mode_card.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	for k in ["normal", "hover", "pressed"]:
+		var cs := _style(Color(1, 1, 1, 0.96) if k != "pressed" else Color(0.94, 0.95, 0.98), 30, 3 if k == "pressed" else 8, Color("#c7cfe0"))
+		cs.shadow_color = Color(0.08, 0.1, 0.2, 0.25)
+		cs.shadow_size = 16
+		cs.shadow_offset = Vector2(0, 6)
+		mode_card.add_theme_stylebox_override(k, cs)
+	mode_card.pressed.connect(func():
+		sfx.play("tap")
+		modes_screen.open())
+	var mrow := HBoxContainer.new()
+	mrow.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	mrow.offset_left = 18
+	mrow.offset_right = -18
+	mrow.offset_top = 14
+	mrow.offset_bottom = -20
+	mrow.add_theme_constant_override("separation", 16)
+	mrow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mode_card.add_child(mrow)
+	mode_icon_box = PanelContainer.new()
+	mode_icon_box.custom_minimum_size = Vector2(104, 104)
+	mode_icon_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	mode_icon_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mrow.add_child(mode_icon_box)
+	mode_icon = TextureRect.new()
+	mode_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	mode_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	mode_icon.custom_minimum_size = Vector2(64, 64)
+	mode_icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	mode_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	mode_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mode_icon_box.add_child(mode_icon)
+	var mtext := VBoxContainer.new()
+	mtext.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mtext.alignment = BoxContainer.ALIGNMENT_CENTER
+	mtext.add_theme_constant_override("separation", 0)
+	mtext.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	mrow.add_child(mtext)
+	var mk := _label("GAME MODE", 18, MUTED)
+	mk.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	mtext.add_child(mk)
+	mode_name_label = _label("", 38, INK)
+	mode_name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	mode_name_label.clip_text = true
+	mtext.add_child(mode_name_label)
+	mode_info_label = _label("", 22, MUTED, 0, INK, font_med)
+	mode_info_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	mode_info_label.clip_text = true
+	mtext.add_child(mode_info_label)
+	# "Change", with a NEW dot when a level-up has opened something
+	change_pill = PanelContainer.new()
+	var chs := _style(Color("#eef1f8"), 18)
+	chs.content_margin_left = 14
+	chs.content_margin_right = 14
+	chs.content_margin_top = 6
+	chs.content_margin_bottom = 8
+	change_pill.add_theme_stylebox_override("panel", chs)
+	change_pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	change_pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	change_label = _label("Change", 22, Color("#3d7bea"))
+	change_pill.add_child(change_label)
+	mrow.add_child(change_pill)
+	new_dot = _label("NEW", 16, Color.WHITE)
+	var nds := _style(Color("#ff3c50"), 12)
+	nds.content_margin_left = 8
+	nds.content_margin_right = 8
+	nds.content_margin_bottom = 2
+	var nd := PanelContainer.new()
+	nd.add_theme_stylebox_override("panel", nds)
+	nd.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	nd.add_child(new_dot)
+	nd.position = Vector2(540, -12)
+	mode_card.add_child(nd)
+	col.add_child(mode_card)
 	col.add_child(Control.new())
 	var play := _button("PLAY", YELLOW, Color("#5a3200"), Color("#d27a06"), 64)
 	play.custom_minimum_size = Vector2(380, 120)
@@ -2358,6 +2355,8 @@ func _build_menu(safe: Vector4) -> void:
 	pulse.tween_property(play, "scale", Vector2.ONE, 0.7).set_trans(Tween.TRANS_SINE)
 	best_label = _label("", 26, Color(1, 1, 1, 0.85), 0, INK, font_med)
 	col.add_child(best_label)
+	unlock_label = _label("", 22, Color("#d8cfff"), 0, INK, font_med)
+	col.add_child(unlock_label)
 	# The dock: Shop, Missions, Profile and Settings
 	var dock := HBoxContainer.new()
 	dock.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -2426,61 +2425,42 @@ func _fit_menu() -> void:
 func _refresh_menu() -> void:
 	# Once the layout has settled
 	get_tree().create_timer(0.05).timeout.connect(_fit_menu)
-	for i in swatches.get_child_count():
-		var b: Button = swatches.get_child(i)
-		var s := StyleBoxFlat.new()
-		s.bg_color = world.COLORS[i]
-		s.set_corner_radius_all(14)
-		s.anti_aliasing = true
-		if i == my_color:
-			s.set_border_width_all(5)
-			s.border_color = Color.WHITE
-		else:
-			s.border_width_bottom = 5
-			s.border_color = world.COLORS[i].darkened(0.3)
-		for st in ["normal", "hover", "pressed"]:
-			b.add_theme_stylebox_override(st, s)
+	if not Unlocks.mode_open(mode_id, prog.level):
+		mode_id = "classic"
+	if not Unlocks.map_open(map_id, prog.level):
+		map_id = "square"
 	var b: float = bests.get("daily-" + world.today() if mode_id == "daily" else mode_id, 0.0)
-	best_label.text = (tr("Best: %.1f%%   ·   Wins: %d") % [b, wins]) if games > 0 else tr("Pick a mode and a map, then play!")
-	if difficulty != "normal":
+	best_label.text = (tr("Best: %.1f%%   ·   Wins: %d") % [b, wins]) if games > 0 else tr("Loop back to your land to claim it!")
+	if difficulty != "normal" and mode_id != "online":
 		best_label.text += "   ·   " + tr("Coins x%s") % str(world.DIFFICULTY[difficulty].coins)
-	mode_desc.text = tr(world.MODES[mode_id].desc)
-	boss_row.visible = mode_id == "boss"
-	if mode_id == "boss":
-		if not boss_unlocked(boss_kind):
-			boss_kind = "king"
-		var next: String = {"king": "queen", "queen": "wizard"}.get(boss_kind, "")
-		mode_desc.text = tr("%s: %d hearts · you have 3 lives") % [tr(world.BOSSES[boss_kind].name), world.BOSSES[boss_kind].hearts + (2 if Events.current() == "giants" else 0)]
-		if next != "" and not boss_unlocked(next):
-			mode_desc.text += "  ·  " + tr("Beat the %s to unlock the %s") % [tr(world.BOSSES[boss_kind].name), tr(world.BOSSES[next].name)]
-		for bb in boss_row.get_children():
-			var id: String = bb.get_meta("id")
-			var open := boss_unlocked(id)
-			var on: bool = id == boss_kind
-			var st := _style(Color("#ff5d73") if on else Color(1, 1, 1, 0.16 if open else 0.06), 18)
-			st.content_margin_left = 16
-			st.content_margin_right = 16
-			st.content_margin_top = 6
-			st.content_margin_bottom = 6
-			for k in ["normal", "hover", "pressed", "disabled"]:
-				bb.add_theme_stylebox_override(k, st)
-			for k in ["font_color", "font_hover_color", "font_pressed_color", "font_disabled_color"]:
-				bb.add_theme_color_override(k, Color.WHITE if open else Color(1, 1, 1, 0.35))
-			bb.text = world.BOSSES[id].name if open else tr("%s (locked)") % tr(world.BOSSES[id].name)
-	if mode_id == "daily":
-		var h: int = absi(world.today().hash())
-		mode_desc.text += "  ·  " + tr("Today's map: %s") % tr(world.MAPS.values()[h % world.MAPS.size()])
-	for mb in modes_row.get_children():
-		var on: bool = mb.text == world.MODES[mode_id].name
-		var st := _style(YELLOW if on else Color(1, 1, 1, 0.16), 18)
-		st.content_margin_left = 18
-		st.content_margin_right = 18
-		st.content_margin_top = 8
-		st.content_margin_bottom = 8
-		for k in ["normal", "hover", "pressed"]:
-			mb.add_theme_stylebox_override(k, st)
-		for k in ["font_color", "font_hover_color", "font_pressed_color"]:
-			mb.add_theme_color_override(k, Color("#5a3200") if on else Color.WHITE)
+	# The mode card
+	var look: Dictionary = preload("res://scripts/modes_screen.gd").LOOK.get(mode_id, {"color": "#3d7bea"})
+	var ibs := _style(Color(look.color), 26, 6, Color(look.color).darkened(0.3))
+	mode_icon_box.add_theme_stylebox_override("panel", ibs)
+	mode_icon.texture = Art.tex(Art.MODE_ICONS.get(mode_id, Art.MODE_ICONS.classic), 128)
+	mode_name_label.text = tr(world.MODES[mode_id].name)
+	var bots := tr("%s bots") % tr(world.DIFFICULTY[difficulty].name)
+	match mode_id:
+		"online":
+			mode_info_label.text = tr("Real players + bots")
+		"daily":
+			var h: int = absi(world.today().hash())
+			mode_info_label.text = tr("Today's map: %s") % tr(world.MAPS.values()[h % world.MAPS.size()])
+		"boss":
+			if not boss_unlocked(boss_kind):
+				boss_kind = "king"
+			var hearts: int = world.BOSSES[boss_kind].hearts + (2 if Events.current() == "giants" else 0)
+			mode_info_label.text = tr(world.BOSSES[boss_kind].name) + "  ·  " + tr("%d hearts") % hearts
+		_:
+			mode_info_label.text = tr(world.MAPS[map_id]) + "  ·  " + bots
+	new_dot.get_parent().visible = not new_unlocks.is_empty()
+	new_dot.get_parent().position = Vector2(mode_card.size.x - 70, -12) if mode_card.size.x > 0 else Vector2(540, -12)
+	# What the next level brings
+	var nxt := Unlocks.next_after(prog.level)
+	unlock_label.visible = not nxt.is_empty() and not (nxt[1] == "mode" and nxt[2] == "online" and OnlineConfig.server_url() == "")
+	if unlock_label.visible:
+		var what: String = world.MODES[nxt[2]].name if nxt[1] == "mode" else world.MAPS[nxt[2]]
+		unlock_label.text = (tr("Level %d unlocks the %s mode") if nxt[1] == "mode" else tr("Level %d unlocks the %s map")) % [nxt[0], tr(what)]
 	var ev: Dictionary = Events.info()
 	event_pill.visible = not ev.is_empty()
 	if ev.is_empty():
@@ -2496,35 +2476,12 @@ func _refresh_menu() -> void:
 	event_pill.add_theme_stylebox_override("panel", est)
 	wallet_label.text = str(wallet)
 	level_label.text = tr("Level %d  ·  %s") % [prog.level, tr(player_name)]
-	level_bar.set_meta("fill", float(prog.xp) / Progress.need(prog.level))
+	level_bar.set_meta("fill", clampf(float(prog.xp) / Progress.need(prog.level), 0.0, 1.0))
 	level_bar.queue_redraw()
 	prog.ensure_day(world.today())
 	var done := prog.missions.filter(func(m): return m.done).size()
 	missions_badge.text = "%d/3" % done
 	missions_badge.get_parent().visible = done < 3
-	for db in diff_row.get_children():
-		var on: bool = db.get_meta("id") == difficulty
-		var st := _style(Color.WHITE if on else Color(1, 1, 1, 0.16), 18)
-		st.content_margin_left = 18
-		st.content_margin_right = 18
-		st.content_margin_top = 8
-		st.content_margin_bottom = 8
-		for k in ["normal", "hover", "pressed"]:
-			db.add_theme_stylebox_override(k, st)
-		for k in ["font_color", "font_hover_color", "font_pressed_color"]:
-			db.add_theme_color_override(k, INK if on else Color.WHITE)
-	for mb in maps_row.get_children():
-		mb.disabled = mode_id == "daily" or mode_id == "online"
-		var picked: bool = mb.get_meta("id") == map_id and mode_id != "daily" and mode_id != "online"
-		var st := _style(Color.WHITE if picked else Color(1, 1, 1, 0.16), 18)
-		st.content_margin_left = 16
-		st.content_margin_right = 16
-		st.content_margin_top = 8
-		st.content_margin_bottom = 8
-		for k in ["normal", "hover", "pressed"]:
-			mb.add_theme_stylebox_override(k, st)
-		for k in ["font_color", "font_hover_color", "font_pressed_color"]:
-			mb.add_theme_color_override(k, INK if picked else Color.WHITE)
 
 
 func _build_pause() -> void:
@@ -2675,10 +2632,13 @@ func _load() -> void:
 	big_stick = c.get_value("settings", "big_stick", false)
 	controls = c.get_value("settings", "controls", "stick")
 	_grant_track() # players already past a reward's level get it straight away
-	# Anything that no longer exists goes back to the default
-	if not world_modes().has(mode_id) or (mode_id == "online" and OnlineConfig.server_url() == ""):
+	var unseen = c.get_value("player", "new_unlocks", [])
+	new_unlocks = unseen if unseen is Array else []
+	# Anything that no longer exists (or isn't unlocked yet) goes back to the default
+	if not world_modes().has(mode_id) or (mode_id == "online" and OnlineConfig.server_url() == "") \
+			or not Unlocks.mode_open(mode_id, prog.level):
 		mode_id = "classic"
-	if not preload("res://scripts/world.gd").MAPS.has(map_id):
+	if not preload("res://scripts/world.gd").MAPS.has(map_id) or not Unlocks.map_open(map_id, prog.level):
 		map_id = "square"
 	if not preload("res://scripts/world.gd").BOSSES.has(boss_kind):
 		boss_kind = "king"
@@ -2730,6 +2690,7 @@ func _save() -> void:
 	c.set_value("settings", "big_stick", big_stick)
 	c.set_value("settings", "controls", controls)
 	c.set_value("player", "welcomed", welcomed)
+	c.set_value("player", "new_unlocks", new_unlocks)
 	c.set_value("settings", "lang", I18n.lang)
 	c.set_value("settings", "colorblind", Patterns.on)
 	c.set_value("settings", "music", music.enabled)

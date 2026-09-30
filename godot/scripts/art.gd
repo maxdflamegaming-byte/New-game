@@ -145,6 +145,54 @@ const FLAME := """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"
 <path d="M32 30 C36 38 42 40 42 48 C42 54 38 58 32 58 C26 58 22 54 22 48 C22 42 28 40 32 30 Z" fill="#ffd23f"/>
 </svg>"""
 
+## Mode icons (white, tinted when drawn) and the lock for things not unlocked yet
+const MODE_ICONS := {
+	"classic": """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+<rect x="12" y="6" width="6" height="54" rx="3" fill="#ffffff"/>
+<path d="M18 8 C30 2 38 14 54 8 L54 34 C38 40 30 28 18 34 Z" fill="#ffffff"/>
+</svg>""",
+	"timed": """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+<rect x="26" y="2" width="12" height="7" rx="3" fill="#ffffff"/>
+<circle cx="32" cy="36" r="24" fill="none" stroke="#ffffff" stroke-width="6"/>
+<path d="M32 36 L32 22 M32 36 L42 42" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+</svg>""",
+	"daily": """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+<rect x="6" y="12" width="52" height="46" rx="8" fill="#ffffff"/>
+<rect x="6" y="12" width="52" height="14" rx="6" fill="#000000" fill-opacity="0.25"/>
+<rect x="16" y="4" width="7" height="16" rx="3" fill="#ffffff"/><rect x="41" y="4" width="7" height="16" rx="3" fill="#ffffff"/>
+<path d="M22 42 L29 49 L43 34" fill="none" stroke="#000000" stroke-opacity="0.35" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>""",
+	"teams": """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+<circle cx="21" cy="20" r="10" fill="#ffffff"/><path d="M2 56 C2 42 10 34 21 34 C32 34 40 42 40 56 Z" fill="#ffffff"/>
+<circle cx="45" cy="18" r="9" fill="#ffffff" fill-opacity="0.8"/><path d="M34 34 C38 31 41 30 45 30 C55 30 62 38 62 52 L42 52 C42 44 39 38 34 34 Z" fill="#ffffff" fill-opacity="0.8"/>
+</svg>""",
+	"boss": """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+<path d="M6 20 L20 32 L32 10 L44 32 L58 20 L52 52 L12 52 Z" fill="#ffffff" stroke="#ffffff" stroke-width="4" stroke-linejoin="round"/>
+<rect x="12" y="46" width="40" height="8" rx="3" fill="#000000" fill-opacity="0.2"/>
+</svg>""",
+	"duo": """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+<rect x="4" y="16" width="28" height="28" rx="8" fill="#ffffff"/>
+<rect x="32" y="22" width="28" height="28" rx="8" fill="#ffffff" fill-opacity="0.8"/>
+<circle cx="13" cy="28" r="3" fill="#000000" fill-opacity="0.4"/><circle cx="23" cy="28" r="3" fill="#000000" fill-opacity="0.4"/>
+<circle cx="41" cy="34" r="3" fill="#000000" fill-opacity="0.4"/><circle cx="51" cy="34" r="3" fill="#000000" fill-opacity="0.4"/>
+</svg>""",
+	"hill": """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+<path d="M2 58 L26 22 L36 36 L44 26 L62 58 Z" fill="#ffffff"/>
+<rect x="24" y="4" width="4" height="20" fill="#ffffff"/><path d="M28 5 L42 10 L28 15 Z" fill="#ffffff"/>
+</svg>""",
+	"online": """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+<circle cx="32" cy="32" r="26" fill="none" stroke="#ffffff" stroke-width="5"/>
+<ellipse cx="32" cy="32" rx="11" ry="26" fill="none" stroke="#ffffff" stroke-width="4"/>
+<path d="M8 24 L56 24 M8 40 L56 40" stroke="#ffffff" stroke-width="4"/>
+</svg>""",
+}
+
+const LOCK := """<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">
+<path d="M18 28 L18 20 C18 6 46 6 46 20 L46 28" fill="none" stroke="#ffffff" stroke-width="7"/>
+<rect x="10" y="28" width="44" height="32" rx="7" fill="#ffffff"/>
+<circle cx="32" cy="42" r="5" fill="#000000" fill-opacity="0.35"/><rect x="30" y="44" width="4" height="9" fill="#000000" fill-opacity="0.35"/>
+</svg>"""
+
 static var _cache := {}
 
 

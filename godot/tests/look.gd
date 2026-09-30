@@ -52,6 +52,21 @@ func _run() -> void:
 	elif what == "menu":
 		await create_timer(1.5).timeout
 		await _shot("menu")
+	elif what.begins_with("modes"):
+		# modes or modes:<level> (a new player sees most things locked)
+		if what.contains(":"):
+			main.prog.level = int(what.split(":")[1])
+			main.mode_id = what.split(":")[2] if what.split(":").size() > 2 else main.mode_id
+			main.new_unlocks = ["mode:online", "map:pillars"]
+			main._refresh_menu()
+			await create_timer(0.5).timeout
+			await _shot("menu-level%d" % main.prog.level)
+		main.modes_screen.open()
+		await create_timer(0.8).timeout
+		await _shot(what.replace(":", "-"))
+		main.modes_screen.scroller.scroll_vertical = 10000
+		await create_timer(0.5).timeout
+		await _shot(what.replace(":", "-") + "-bottom")
 	elif what == "settings":
 		main.settings_screen.open()
 		await create_timer(0.8).timeout

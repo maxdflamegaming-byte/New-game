@@ -61,6 +61,7 @@ func _run() -> void:
 	ok("Speed makes you 1.6x faster", is_equal_approx(w.speed_of(me), base * 1.6), str(w.speed_of(me)))
 	me.fx.speed = 0.0
 	var bot: Player = w.players[2]
+	bot.skill_speed = 1.0 # (rookies and pros move a little slower or faster)
 	w._grab(bot, "freeze", bot.pos)
 	w._update_items(0.0)
 	ok("Someone else's Freeze halves your speed", is_equal_approx(w.speed_of(me), base * 0.5) and is_equal_approx(w.speed_of(bot), base))
@@ -693,9 +694,9 @@ func _run() -> void:
 
 	await _phase5()
 	await _bot_skills()
+	await _unlocks()
 	# Online: hidden until there's a server; if picked anyway, it says so instead of breaking
-	var mode_names: Array = main.modes_row.get_children().map(func(b): return b.text)
-	ok("Online is in the menu (there's a server)", mode_names.has("Online"))
+	ok("Online is in the menu (there's a server)", OnlineConfig.server_url() != "" and preload("res://scripts/modes_screen.gd").ORDER.has("online"))
 	OnlineConfig.off = true # the checks never touch the real server
 	main.mode_id = "online"
 	main.start_game()
@@ -864,3 +865,55 @@ func _bot_skills() -> void:
 	ok("Badges on rookies and pros", badges == skills.count("rookie") + skills.count("pro"), "%d badges" % badges)
 	main._to_menu()
 	await _wait(0.3)
+
+
+## Modes and maps open with levels; the home card and the Modes screen follow
+func _unlocks() -> void:
+	ok("Level 1: only Classic, on the Square or Round", Unlocks.mode_open("classic", 1) and not Unlocks.mode_open("timed", 1)
+		and Unlocks.map_open("round", 1) and not Unlocks.map_open("pillars", 1))
+	var opened := Unlocks.opened_between(3, 4)
+	ok("Level 4 opens Teams and the Islands", opened.has(["mode", "teams"]) and opened.has(["map", "islands"]), str(opened))
+	ok("Everything is open by level 10", Unlocks.next_after(10).is_empty() and Unlocks.next_after(1)[0] == 2)
+	var keep_prog: Progress = main.prog
+	var keep := [main.mode_id, main.map_id, main.new_unlocks.duplicate()]
+	main.prog = Progress.new()
+	main.prog.level = 3
+	main.mode_id = "teams"
+	main.map_id = "storm"
+	main._refresh_menu()
+	ok("A locked mode or map falls back to Classic on the Square", main.mode_id == "classic" and main.map_id == "square")
+	ok("The home card shows the mode", main.mode_name_label.text == "Classic" and main.mode_info_label.text.contains("Square"), main.mode_info_label.text)
+	ok("The home tells you what's next", main.unlock_label.visible and main.unlock_label.text.contains("Teams"), main.unlock_label.text)
+	main.new_unlocks.clear()
+	main.prog.level = 4
+	var rewards: Array = main._unlock_rewards(3)
+	var texts := rewards.map(func(r): return r.text)
+	ok("Levelling up announces what opened", texts.has("New mode: Teams!") and texts.has("New map: Islands!"), str(texts))
+	ok("...and marks it NEW", main.new_unlocks.has("mode:teams") and main.new_unlocks.has("map:islands"))
+	main._refresh_menu()
+	ok("The home card shows NEW", main.new_dot.get_parent().visible)
+	# The Modes screen
+	main.modes_screen.open()
+	await process_frame
+	var cards: Array = main.modes_screen.body.get_child(1).get_children()
+	var locked := 0
+	for c in cards:
+		if c.get_child(0).get_child(2).text.begins_with("Unlocks at level"):
+			locked += 1
+	ok("The Modes screen shows every mode, locked ones with their level", cards.size() == 8 and locked == 3, "%d cards, %d locked" % [cards.size(), locked])
+	var boss_card: Button = cards[7]
+	boss_card.pressed.emit()
+	ok("A locked mode can't be picked", main.mode_id == "classic")
+	var teams_card: Button = cards[4]
+	teams_card.pressed.emit()
+	ok("An unlocked mode can", main.mode_id == "teams")
+	main.modes_screen.close()
+	await process_frame
+	ok("Leaving the Modes screen: NEW is seen", main.new_unlocks.is_empty() and main.menu.visible and main.mode_name_label.text == "Teams")
+	var pic: Texture2D = preload("res://scripts/modes_screen.gd").preview("maze")
+	ok("Map pictures are drawn", pic != null and pic.get_width() == main.world.N)
+	main.prog = keep_prog
+	main.mode_id = keep[0]
+	main.map_id = keep[1]
+	main.new_unlocks = keep[2]
+	main._refresh_menu()

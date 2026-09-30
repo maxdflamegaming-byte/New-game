@@ -11,6 +11,16 @@ func build(main) -> void:
 	frame(main, "PROFILE")
 
 
+var _recolored := false # a new colour: the menu's background game restarts on the way out
+
+
+func close() -> void:
+	super()
+	if _recolored:
+		_recolored = false
+		m._start_demo()
+
+
 func refresh() -> void:
 	super()
 	clear()
@@ -49,6 +59,36 @@ func refresh() -> void:
 	var xl: Label = m._label(tr("%d / %d XP to level %d") % [p.xp, Progress.need(p.level), p.level + 1], 22, m.MUTED, 0, m.INK, m.font_med)
 	xl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	right.add_child(xl)
+
+	# Your colour
+	heading("YOUR COLOUR")
+	var sw := HBoxContainer.new()
+	sw.alignment = BoxContainer.ALIGNMENT_CENTER
+	sw.add_theme_constant_override("separation", 12)
+	body.add_child(sw)
+	for i in m.world.COLORS.size():
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(64, 64)
+		b.focus_mode = Control.FOCUS_NONE
+		var s := StyleBoxFlat.new()
+		s.bg_color = m.world.COLORS[i]
+		s.set_corner_radius_all(16)
+		s.anti_aliasing = true
+		if i == m.my_color:
+			s.set_border_width_all(6)
+			s.border_color = Color.WHITE
+		else:
+			s.border_width_bottom = 6
+			s.border_color = m.world.COLORS[i].darkened(0.3)
+		for k in ["normal", "hover", "pressed"]:
+			b.add_theme_stylebox_override(k, s)
+		b.pressed.connect(func():
+			m.my_color = i
+			m._save()
+			m.sfx.play("tap")
+			_recolored = true
+			refresh())
+		sw.add_child(b)
 
 	# The reward track: what the next level brings
 	var nt: Array = m.next_track_item()
