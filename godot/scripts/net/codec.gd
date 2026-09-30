@@ -9,7 +9,7 @@ const STRIDE := 10
 ## Who a player is (sent when they appear)
 static func info(p: Player) -> Dictionary:
 	return {"id": p.id, "name": p.name, "color": p.color.to_html(false), "bot": p.is_bot,
-		"skin": p.skin, "trail": p.trail_fx, "pet": p.pet}
+		"skin": p.skin, "trail": p.trail_fx, "pet": p.pet, "skill": p.skill}
 
 
 static func from_info(d: Dictionary) -> Player:
@@ -26,6 +26,8 @@ static func from_info(d: Dictionary) -> Player:
 				p.trail_fx = v
 			"pet":
 				p.pet = v
+	var skill := str(d.get("skill", ""))
+	p.skill = skill if skill == "rookie" or skill == "regular" or skill == "pro" else ""
 	p.team = p.id
 	return p
 

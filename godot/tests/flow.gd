@@ -692,6 +692,7 @@ func _run() -> void:
 	main.music.play_track("menu")
 
 	await _phase5()
+	await _bot_skills()
 	# Online: hidden until there's a server; if picked anyway, it says so instead of breaking
 	var mode_names: Array = main.modes_row.get_children().map(func(b): return b.text)
 	ok("Online is in the menu (there's a server)", mode_names.has("Online"))
@@ -815,3 +816,51 @@ func _phase5() -> void:
 	main._to_menu()
 	await process_frame
 	Events.forced = "none"
+
+
+## Bot skill levels: the mix follows the difficulty (or an online room's players), each level
+## plays differently, and rookies and pros wear a badge
+func _bot_skills() -> void:
+	var w = main.world
+	var counts := {"rookie": 0, "regular": 0, "pro": 0}
+	for d in ["easy", "hard"]:
+		w.difficulty = d
+		for i in 400:
+			counts[w.pick_skill()] += 1
+		ok("%s bots: the right mix of skills" % d.capitalize(),
+			(counts.rookie > counts.pro) if d == "easy" else (counts.pro > counts.rookie * 3), str(counts))
+		counts = {"rookie": 0, "regular": 0, "pro": 0}
+	w.difficulty = "normal"
+	var low: Array = w.skill_mix_for_level(1)
+	var high: Array = w.skill_mix_for_level(40)
+	ok("Online: newcomers meet mostly rookies, high levels mostly pros", low[0] > low[2] and high[2] > high[0] and high[2] >= 0.5, "%s %s" % [low, high])
+	w.skill_mix = [0.0, 0.0, 1.0]
+	ok("A room's own mix wins over the difficulty", w.pick_skill() == "pro")
+	w.skill_mix = []
+	var r := Player.new(1, "R", Color.RED, true)
+	var pr := Player.new(2, "P", Color.BLUE, true)
+	r.aggro = 0.4
+	pr.aggro = 0.4
+	w.bots.give_skill(r, "rookie")
+	w.bots.give_skill(pr, "pro")
+	ok("Rookies are slower to decide, drift and look less far ahead", r.think_every > pr.think_every and r.wobble > 0 and r.look < pr.look)
+	ok("Pros hunt more", pr.aggro > r.aggro, "%.2f %.2f" % [pr.aggro, r.aggro])
+	var info := NetCodec.info(pr)
+	ok("Online players see each bot's skill", NetCodec.from_info(info).skill == "pro" and NetCodec.from_info({"skill": "boss"}).skill == "")
+	# A game's bots all have a skill, and the badges show on rookies and pros only
+	main.difficulty = "normal"
+	await _play()
+	var skills := []
+	var badges := 0
+	for p in w.players:
+		if p and p.is_bot:
+			skills.append(p.skill)
+	for v in main.view.views.values():
+		var b = v.get_node_or_null("SkillBadge")
+		if b:
+			badges += 1
+			ok("Badge matches its bot", v.p.skill == "rookie" or v.p.skill == "pro", v.p.skill)
+	ok("Every bot in a game has a skill", not skills.has("") and skills.size() == 7, str(skills))
+	ok("Badges on rookies and pros", badges == skills.count("rookie") + skills.count("pro"), "%d badges" % badges)
+	main._to_menu()
+	await _wait(0.3)

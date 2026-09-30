@@ -10,6 +10,13 @@ const PERSONAS := {
 }
 const PERSONA_MIX := ["hunter", "turtle", "explorer", "collector", "wildcard", "hunter", "explorer"]
 const THINK_EVERY := 0.25
+## Skill levels. Rookies decide slowly, their aim drifts, they spot danger late and they get
+## greedy; pros decide fast, look further ahead, hunt more, flee sooner and keep loops tight.
+const SKILLS := {
+	"rookie": {"think": 0.5, "look": 9, "wobble": 0.6, "aggro": 0.5, "greed": 1.4, "flee": -2.0, "speed": 0.93},
+	"regular": {"think": THINK_EVERY, "look": 16, "wobble": 0.0, "aggro": 1.0, "greed": 1.0, "flee": 0.0, "speed": 1.0},
+	"pro": {"think": 0.15, "look": 20, "wobble": 0.0, "aggro": 1.4, "greed": 0.8, "flee": 2.0, "speed": 1.0},
+}
 const LOOK := 16 # steps of 0.05 s the safety check looks ahead
 const OFFSETS := [0.5, -0.5, 1.0, -1.0, 1.5, -1.5, 2.0, -2.0, 2.6, -2.6, PI]
 
@@ -37,6 +44,18 @@ func give_personality(p: Player, id: String) -> void:
 		p.loop_scale = d.loop
 	p.flee = d.get("flee", 5)
 	p.grab_chance = d.get("grab", 0.5)
+
+
+func give_skill(p: Player, id: String) -> void:
+	var d: Dictionary = SKILLS.get(id, SKILLS.regular)
+	p.skill = id if SKILLS.has(id) else "regular"
+	p.think_every = d.think
+	p.look = d.look
+	p.wobble = d.wobble
+	p.aggro = clampf(p.aggro * d.aggro + (0.1 if id == "pro" else 0.0), 0.0, 1.0)
+	p.greed *= d.greed
+	p.flee = maxf(2.0, p.flee + d.flee)
+	p.skill_speed = d.speed
 
 
 # ---------- Pathfinding ----------
@@ -283,7 +302,8 @@ func think(p: Player) -> void:
 func steer(p: Player, dt: float) -> void:
 	p.think -= dt
 	if p.think <= 0:
-		p.think = THINK_EVERY
+		p.think = p.think_every
+		p.drift = randf_range(-p.wobble, p.wobble) if p.wobble > 0.0 else 0.0
 		think(p)
 	while not p.wp.is_empty() and p.pos.distance_to(p.wp[0]) < 0.8:
 		p.wp.pop_front()
@@ -311,18 +331,18 @@ func steer(p: Player, dt: float) -> void:
 		else:
 			target = nearest_own(p)
 	if target != null:
-		p.desired = (target - p.pos).angle()
+		p.desired = (target - p.pos).angle() + p.drift
 
 	# Last-moment safety: never steer into our own trail. Try nearby directions and keep
 	# whichever survives longest.
-	if p.trail.size() > 0 and safe_steps(p, p.desired) < LOOK:
+	if p.trail.size() > 0 and safe_steps(p, p.desired, p.look) < p.look:
 		var best_dir := p.desired
 		var best_steps := -1
 		for off in OFFSETS:
-			var s := safe_steps(p, p.desired + off)
+			var s := safe_steps(p, p.desired + off, p.look)
 			if s > best_steps:
 				best_steps = s
 				best_dir = p.desired + off
-			if s >= LOOK:
+			if s >= p.look:
 				break
 		p.desired = best_dir

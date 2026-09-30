@@ -405,4 +405,6 @@ const T := {
 	"Sign in with Google Play Games": "Google Play Games से साइन इन करें",
 	"Leaderboards": "लीडरबोर्ड",
 	"Welcome back! Your progress is restored from Google Play Games.": "फिर से स्वागत है! आपकी प्रगति Google Play Games से वापस आ गई।",
+	"PRO": "प्रो",
+	"ROOKIE": "नया",
 }

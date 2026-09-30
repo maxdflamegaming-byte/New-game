@@ -45,9 +45,39 @@ func setup(player: Player, tex_px: int, font: Font, world = null) -> void:
 	label.size = Vector2(240, 44)
 	label.position = Vector2(-120, -CELL * (1.6 + 0.65 * p.size))
 	add_child(label)
+	_add_skill_badge(font)
 	_emitter = Cosmetics.make_emitter(p.trail_fx, 1.0 + 0.5 * (p.size - 1.0), p.color)
 	if _emitter:
 		add_child(_emitter)
+
+
+## A small tag over a bot's name: green ROOKIE or gold PRO (regular bots have none)
+func _add_skill_badge(font: Font) -> void:
+	if not p.is_bot or p.is_boss or (p.skill != "rookie" and p.skill != "pro"):
+		return
+	var pro := p.skill == "pro"
+	var badge := PanelContainer.new()
+	var st := StyleBoxFlat.new()
+	st.bg_color = Color("#ffb52e") if pro else Color("#3fbf7f")
+	st.set_corner_radius_all(9)
+	st.content_margin_left = 8
+	st.content_margin_right = 8
+	st.content_margin_top = 0
+	st.content_margin_bottom = 1
+	badge.add_theme_stylebox_override("panel", st)
+	var t := Label.new()
+	var ls := LabelSettings.new()
+	ls.font = font
+	ls.font_size = 16
+	ls.font_color = Color("#5a3200") if pro else Color.WHITE
+	t.label_settings = ls
+	t.text = tr("PRO") if pro else tr("ROOKIE")
+	badge.add_child(t)
+	badge.name = "SkillBadge"
+	add_child(badge)
+	# Centred just above the name
+	var w := t.get_minimum_size().x + 16
+	badge.position = Vector2(-w / 2.0, label.position.y - 16)
 
 
 func _process(_dt: float) -> void:

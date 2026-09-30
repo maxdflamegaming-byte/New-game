@@ -1,6 +1,6 @@
 # The online server: how to put it on the internet
 
-Online play works like this. A small server runs the real game in **rooms of 8**. People from anywhere join a room, and **bots fill the empty places**, so nobody waits for a match. Phones send only their steering; the server sends back what's happening about 15 times a second (roughly 12 KB/s, or 40 MB per hour of play).
+Online play works like this. A small server runs the real game in **rooms of 8**. People from anywhere join a room, and **bots fill the empty places**, so nobody waits for a match. The bots' skill follows the people in the room: newcomers meet mostly rookie bots, and high-level players mostly pros. Phones send only their steering; the server sends back what's happening about 15 times a second (roughly 12 KB/s, or 40 MB per hour of play).
 
 Everything is built and tested:
 - the server code is in `godot/server/` and `godot/scripts/net/`;

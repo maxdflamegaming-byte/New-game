@@ -389,4 +389,6 @@ const T := {
 	"Sign in with Google Play Games": "Masuk dengan Google Play Game",
 	"Leaderboards": "Papan peringkat",
 	"Welcome back! Your progress is restored from Google Play Games.": "Selamat datang kembali! Progresmu dipulihkan dari Google Play Game.",
+	"PRO": "PRO",
+	"ROOKIE": "PEMULA",
 }

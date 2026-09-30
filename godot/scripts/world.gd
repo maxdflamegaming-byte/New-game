@@ -50,6 +50,8 @@ const DIFFICULTY := {
 	"hard": {"name": "Hard", "speed": 1.08, "coins": 1.5},
 }
 const KING_HEARTS := 5
+## How many rookie, regular and pro bots each difficulty brings (chances)
+const SKILL_MIX := {"easy": [0.5, 0.4, 0.1], "normal": [0.25, 0.5, 0.25], "hard": [0.1, 0.4, 0.5]}
 
 const MAPS := {
 	"square": "Square", "round": "Round", "pillars": "Pillars", "maze": "Maze", "islands": "Islands",
@@ -115,6 +117,9 @@ var freezer: Player = null # whoever has Freeze running
 var coins_picked := 0 # by you, this game
 var looks := {} # your skin, trail and pet from the shop
 var difficulty := "normal"
+## Online rooms set their own mix of bot skills to match the people in them (empty: use
+## the difficulty's)
+var skill_mix: Array = []
 var boss_kind := "king" # which boss the Boss Battle brings
 var event := "" # this week's event (see Events), for everything but the tutorial and the menu
 var portals := [] # [[a, b], ...]: step into one end and pop out of the other
@@ -233,6 +238,7 @@ func _add_bot() -> Player:
 	var b := Player.new(id, names.pick_random() if not names.is_empty() else "Bot", _free_color(), true)
 	bots.give_personality(b, bots.PERSONA_MIX.pick_random())
 	_tune(b)
+	bots.give_skill(b, pick_skill())
 	Cosmetics.dress_bot(b)
 	b.team = b.id
 	_put(b)
@@ -393,6 +399,8 @@ func setup(my_color: int, my_name: String, demo := false, map := "square", mode_
 		var b := Player.new(players.size(), names[i] if not tutorial else "Coach", others[i], true)
 		bots.give_personality(b, mix[i])
 		_tune(b)
+		if not tutorial:
+			bots.give_skill(b, pick_skill())
 		Cosmetics.dress_bot(b)
 		players.append(b)
 	if tutorial:
@@ -963,7 +971,7 @@ func speed_of(p: Player) -> float:
 	if p.harmless:
 		v *= 0.6
 	elif p.is_bot and p != me:
-		v *= DIFFICULTY.get(difficulty, DIFFICULTY.normal).speed
+		v *= DIFFICULTY.get(difficulty, DIFFICULTY.normal).speed * p.skill_speed
 	if p.is_boss:
 		v *= 1.28 if p.rage else 1.12
 	if event == "speed":
@@ -1357,6 +1365,20 @@ func _blink(k: Player) -> void:
 # ---------- Boss Battle: the King ----------
 # A big, fast bot with hearts. Cutting his trail (or him crossing it) takes a heart instead of
 # knocking him out. At half health he calls two guards; on his last heart he gets faster.
+
+## A skill level for a new bot, from the room's mix or the difficulty's
+func pick_skill() -> String:
+	var mix: Array = skill_mix if skill_mix.size() == 3 else SKILL_MIX.get(difficulty, SKILL_MIX.normal)
+	var r: float = randf() * (mix[0] + mix[1] + mix[2])
+	return "rookie" if r < mix[0] else "regular" if r < mix[0] + mix[1] else "pro"
+
+
+## The mix for an online room from the average level of the people in it: new players meet
+## mostly rookies, experienced ones mostly pros
+static func skill_mix_for_level(avg_level: float) -> Array:
+	var t := clampf((avg_level - 3.0) / 22.0, 0.0, 1.0)
+	return [lerpf(0.5, 0.05, t), lerpf(0.4, 0.35, t), lerpf(0.1, 0.6, t)]
+
 
 ## Easy bots are timid and slow to hunt; Hard ones go for your trail
 func _tune(b: Player) -> void:

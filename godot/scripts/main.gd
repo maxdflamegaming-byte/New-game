@@ -688,7 +688,7 @@ func _start_online() -> void:
 	connect_box.visible = true
 	var online_name := player_name if player_name != "You" else pg.display_name if pg.display_name != "" else tr("Player")
 	online.start(url, {"name": online_name, "color": my_color,
-		"skin": equipped.skin, "trail": equipped.trail, "pet": equipped.pet})
+		"skin": equipped.skin, "trail": equipped.trail, "pet": equipped.pet, "level": prog.level})
 	CrashLog.note("online  connecting to %s" % url)
 
 

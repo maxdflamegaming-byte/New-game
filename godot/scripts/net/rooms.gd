@@ -70,6 +70,7 @@ func _on_peer_disconnected(peer: int) -> void:
 			room.world.remove_player(p)
 			room.left.append(p.id)
 		if not room.over:
+			_match_bots(room)
 			for b in _refill(room):
 				room.joined.append(NetCodec.info(b))
 	_log("peer %d left room %d" % [peer, room.id])
@@ -110,6 +111,7 @@ func _close_room(r: Room) -> void:
 func _start_round(r: Room) -> void:
 	r.round_no += 1
 	r.over = false
+	_match_bots(r)
 	r.world.setup_room(MAPS[r.map_index % MAPS.size()])
 	r.map_index += 1
 	r.prev_land = r.world.land.duplicate()
@@ -130,6 +132,16 @@ func _start_round(r: Room) -> void:
 
 
 ## A person starts out of the game until they tap Play (their starting patch goes)
+## The bots' skill follows the people in the room: newcomers meet mostly rookies, high levels
+## mostly pros. It applies to bots that join from now on (and to the next round's).
+func _match_bots(r: Room) -> void:
+	var total := 0
+	for peer in r.peers:
+		total += int(r.peers[peer].info.get("level", 1))
+	var avg := float(total) / r.peers.size() if r.peers.size() > 0 else 1.0
+	r.world.skill_mix = r.world.skill_mix_for_level(avg)
+
+
 func _clear_player_cells(r: Room, p: Player) -> void:
 	var w = r.world
 	for i in w.N * w.N:
@@ -200,6 +212,7 @@ func on_join(peer: int, info: Dictionary) -> void:
 		"name": NetCodec.clean_name(str(info.get("name", "Player"))),
 		"color": clampi(int(info.get("color", 0)), 0, 7),
 		"skin": str(info.get("skin", "plain")), "trail": str(info.get("trail", "none")), "pet": str(info.get("pet", "none")),
+		"level": clampi(int(info.get("level", 1)), 1, 999),
 	}
 	for k in [["skin", "skin"], ["trail", "trail"], ["pet", "pet"]]:
 		if not Cosmetics.items(k[1]).has(clean[k[0]]):
@@ -208,6 +221,7 @@ func on_join(peer: int, info: Dictionary) -> void:
 	r.peers[peer] = entry
 	_by_peer[peer] = r
 	r.empty_for = 0.0
+	_match_bots(r)
 	net.s_welcome.rpc_id(peer, {"v": net.PROTOCOL, "room": r.id})
 	if not r.over:
 		var removed := []

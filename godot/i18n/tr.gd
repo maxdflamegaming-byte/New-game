@@ -398,4 +398,6 @@ const T := {
 	"Sign in with Google Play Games": "Google Play Oyunlar ile giriş yap",
 	"Leaderboards": "Liderlik tabloları",
 	"Welcome back! Your progress is restored from Google Play Games.": "Tekrar hoş geldiniz! İlerlemeniz Google Play Oyunlar'dan geri yüklendi.",
+	"PRO": "PRO",
+	"ROOKIE": "ÇAYLAK",
 }

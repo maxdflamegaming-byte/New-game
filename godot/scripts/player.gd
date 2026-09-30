@@ -52,6 +52,13 @@ var loop_scale := 1.0
 var flee := 5.0
 var grab_chance := 0.5 # how keen it is on power-ups (collectors also go for coins)
 var mode := "idle"
+# Skill level (bots): "rookie", "regular" or "pro"; empty for people, bosses and the coach
+var skill := ""
+var think_every := 0.25 # seconds between decisions
+var look := 16 # how far ahead (in 0.05 s steps) it checks it won't hit its own trail
+var wobble := 0.0 # how far its aim drifts (radians)
+var drift := 0.0
+var skill_speed := 1.0
 var wp: Array[Vector2] = []
 var think := 0.0
 var route = null # PackedInt32Array of cells home, or null
