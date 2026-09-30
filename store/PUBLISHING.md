@@ -60,7 +60,7 @@ On GitHub: repo **Settings** → **Pages** → under **Build and deployment**, s
 | **App access** | **All functionality is available without special access** |
 | **Content rating** | Start the questionnaire. Category: **Game**. Answer honestly; the game has no blood, gore, fear, sexual content, bad language, drugs, gambling or real-money purchases, and no chat or user content. Knockouts are cartoon shapes bumping into each other. Expected result: **Everyone / PEGI 3** |
 | **Target audience** | Simplest: **13 and over** (13–15, 16–17, 18+). If you include under-13s, Google's stricter Families policy applies; the game already meets it (no ads, no data), but there are more forms |
-| **Data safety** | Does your app collect or share user data? **No**. (No data leaves the phone: no internet access, no analytics, no ads.) |
+| **Data safety** | Does your app collect or share user data? **Yes** (because of Online play). Is all data encrypted in transit? **Yes**. Can users ask for data to be deleted? **No data is stored**. Data types to tick: **Personal info → Name**, **App activity → App interactions** and **Device or other IDs** (the IP address the server sees). For each: *Collected* only (not shared), **processed ephemerally**, **required** only for Online play, purpose **App functionality**. See `privacy.html` for the wording |
 | **Government apps** | No |
 | **Financial features** | My app doesn't provide any financial features |
 | **Health apps** | No |

@@ -1,10 +1,10 @@
 # Color Claim – Privacy Policy
 
-*Effective 27 September 2026 · Applies to the Color Claim game for Android (package com.maxdflamegaming.colorclaimhd), made by maxdflamegaming.*
+*Effective 30 September 2026 · Applies to the Color Claim game for Android (package com.maxdflamegaming.colorclaimhd), made by maxdflamegaming.*
 
 ## The short version
 
-Color Claim does not collect, store on any server, or share any personal information. It has no accounts, no ads, no analytics and no in-app purchases, and it does not use the internet.
+Color Claim does not sell or share your personal information, and it has no accounts, no ads, no analytics and no in-app purchases. Playing offline, nothing leaves your phone. Playing **Online**, the game sends the server only what it needs to run the game you're in (below), and the server keeps none of it after you leave.
 
 ## What the game keeps on your phone
 
@@ -17,17 +17,26 @@ To remember your progress, the game saves a small file in its own private storag
 
 This file never leaves your device. It is not sent to us or to anyone else, and it is not included in Android backups. Uninstalling the game deletes it.
 
+## Online play
+
+When you choose **Online**, your phone connects to the Color Claim game server (hosted by Render, render.com) and sends:
+
+- the name you chose on the Profile screen (or "Player"), your colour, and the skin, trail and pet you're using, so other players in your room can see them;
+- your steering while you play.
+
+The server sends every player in the room the names, colours, looks and positions of everyone in it. As with any internet connection, the server sees your phone's IP address while you're connected; the game doesn't record it. Names are checked for rude words. When you leave the room, the server forgets you: nothing about you or your games is stored on it. Your coins, XP and progress stay on your phone as always.
+
 ## Permissions
 
-The game asks for one permission: **vibration**, to buzz your phone when you're knocked out or claim land. You can turn this off in Settings. It does not ask for internet access, location, contacts, camera, microphone or storage.
+The game asks for two permissions: **internet**, used only for Online play, and **vibration**, to buzz your phone when you're knocked out or claim land (you can turn this off in Settings). It does not ask for location, contacts, camera, microphone or storage.
 
 ## Children
 
-Because the game collects no personal information from anyone, it collects none from children either.
+The game doesn't ask for anyone's age, email or real name. Online, players see only the in-game names others chose; there is no chat. If you're a parent and want to keep your child offline, choose any mode other than Online.
 
 ## Changes
 
-If the game ever starts collecting data (for example, if online features or ads are added), this policy will be updated first, and the change will be described in the game's store listing.
+If the game ever starts collecting more (for example, if ads are added), this policy will be updated first, and the change will be described in the game's store listing.
 
 ## Contact
 

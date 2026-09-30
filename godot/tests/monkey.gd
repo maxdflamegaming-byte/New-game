@@ -28,6 +28,7 @@ func _run() -> void:
 	main.welcomed = true
 	main.welcome.visible = false
 	main.prog.tutorial_done = true
+	OnlineConfig.off = true # never the real server (tests/online_client.gd tests online)
 	var modes: Array = main.world.MODES.keys()
 	var maps: Array = main.world.MAPS.keys()
 	var t0 := Time.get_ticks_msec()

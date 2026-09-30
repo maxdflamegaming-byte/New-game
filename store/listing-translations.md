@@ -16,7 +16,7 @@ Color Claim: Pinta el mapa
 Sal, pinta el mapa y corta estelas rivales. ¡7 modos, jefes, aspectos, mascotas!
 ```
 
-**Full description** (2460/4000)
+**Full description** (2631/4000)
 
 ```
 Sal de tu territorio, dibuja una estela y vuelve a casa para conquistar todo lo que rodees. Cuanto más territorio, más puntos. Pero cuidado: si alguien toca tu estela mientras estás fuera, ¡quedas eliminado!
@@ -58,8 +58,8 @@ JUEGA A TU MANERA
 • Gráficos Baja, Media y Alta, a 30 o 60 FPS
 • En español, English, português, हिन्दी, Bahasa Indonesia, русский y Türkçe
 
-JUEGA DONDE QUIERAS
-Sin internet, sin anuncios, sin cuentas y sin compras. Tu progreso se queda en tu móvil.
+JUEGA EN LÍNEA O SIN CONEXIÓN
+Entra en En línea y juega contra gente de todo el mundo en salas de 8, sin esperas: los bots ocupan los huecos. O juega a todos los demás modos sin internet, donde quieras. Sin anuncios, sin cuentas y sin compras, y tu progreso se queda en tu móvil.
 
 ¿Eres nuevo? Un tutorial rápido de 5 pasos te enseña a jugar.
 ```
@@ -78,7 +78,7 @@ Color Claim: Pinte o mapa
 Saia, pinte o mapa e corte rastros rivais. 7 modos, chefões, visuais e mascotes!
 ```
 
-**Full description** (2439/4000)
+**Full description** (2596/4000)
 
 ```
 Saia do seu território, desenhe um rastro e volte para casa para conquistar tudo o que cercou. Quanto maior o seu território, maior a sua pontuação. Mas cuidado: se alguém tocar no seu rastro enquanto você está fora, você é eliminado!
@@ -120,8 +120,8 @@ JOGUE COMO QUISER
 • Gráficos Baixa, Média e Alta, a 30 ou 60 FPS
 • Em português, English, español, हिन्दी, Bahasa Indonesia, русский e Türkçe
 
-JOGUE ONDE QUISER
-Sem internet, sem anúncios, sem contas e sem compras. Seu progresso fica no seu celular.
+JOGUE ONLINE OU OFFLINE
+Entre no Online e jogue com pessoas do mundo todo em salas de 8, sem espera: bots ocupam as vagas. Ou jogue todos os outros modos sem internet, em qualquer lugar. Sem anúncios, sem contas e sem compras, e seu progresso fica no seu celular.
 
 Novo por aqui? Um tutorial rápido de 5 passos ensina a jogar.
 ```
@@ -140,7 +140,7 @@ Color Claim: नक्शा रंगो
 बाहर निकलो, नक्शा रंगो, दुश्मन की लकीर काटो। 7 मोड, बॉस, स्किन और पालतू!
 ```
 
-**Full description** (2159/4000)
+**Full description** (2293/4000)
 
 ```
 अपनी ज़मीन से बाहर निकलें, लकीर बनाएँ और घर लौटकर घेरे के अंदर का सब जीत लें। जितनी बड़ी ज़मीन, उतना बड़ा स्कोर। पर सावधान: बाहर रहते हुए अगर किसी ने आपकी लकीर छू ली, तो आप बाहर!
@@ -182,8 +182,8 @@ Color Claim एक तेज़ और रंगीन गेम है, जि�
 • लो, मीडियम और हाई ग्राफ़िक्स, 30 या 60 FPS पर
 • हिन्दी, English, Español, Português, Bahasa Indonesia, Русский और Türkçe में
 
-कहीं भी खेलें
-इंटरनेट की ज़रूरत नहीं, कोई विज्ञापन नहीं, कोई अकाउंट नहीं और कोई ख़रीदारी नहीं। आपकी प्रगति आपके फ़ोन पर ही रहती है।
+ऑनलाइन या ऑफ़लाइन खेलें
+ऑनलाइन में दुनिया भर के लोगों से 8 खिलाड़ियों के कमरों में खेलें, बिना इंतज़ार: खाली जगह बॉट भरते हैं। या बाकी सभी मोड बिना इंटरनेट कहीं भी खेलें। कोई विज्ञापन नहीं, कोई अकाउंट नहीं, कोई ख़रीदारी नहीं, और आपकी प्रगति आपके फ़ोन पर ही रहती है।
 
 नए हैं? 5 आसान कदमों का ट्यूटोरियल खेलना सिखाता है।
 ```
@@ -202,7 +202,7 @@ Color Claim: Warnai Peta
 Keluar, warnai peta, potong jejak lawan. 7 mode, bos, skin, dan peliharaan!
 ```
 
-**Full description** (2396/4000)
+**Full description** (2563/4000)
 
 ```
 Keluar dari wilayahmu, buat jejak, lalu kembali pulang untuk menguasai semua yang ada di dalamnya. Makin luas wilayahmu, makin tinggi skormu. Tapi hati-hati: kalau ada yang menyentuh jejakmu saat kamu di luar, kamu tersingkir!
@@ -244,8 +244,8 @@ MAIN SESUKAMU
 • Grafis Rendah, Sedang, dan Tinggi, pada 30 atau 60 FPS
 • Dalam Bahasa Indonesia, English, Español, Português, हिन्दी, Русский, dan Türkçe
 
-MAIN DI MANA SAJA
-Tanpa internet, tanpa iklan, tanpa akun, dan tanpa pembelian. Progresmu tersimpan di ponselmu.
+MAIN ONLINE ATAU OFFLINE
+Masuk ke Online dan lawan orang dari seluruh dunia di ruang berisi 8, tanpa menunggu: bot mengisi tempat kosong. Atau mainkan semua mode lain tanpa internet, di mana saja. Tanpa iklan, tanpa akun, dan tanpa pembelian, dan progresmu tersimpan di ponselmu.
 
 Baru main? Tutorial singkat 5 langkah akan mengajarimu.
 ```
@@ -264,7 +264,7 @@ Color Claim: Раскрась карту
 Выходи, раскрашивай карту и режь чужие следы. 7 режимов, боссы, скины, питомцы!
 ```
 
-**Full description** (2302/4000)
+**Full description** (2462/4000)
 
 ```
 Выйдите со своей территории, оставьте след и вернитесь домой, чтобы захватить всё внутри. Чем больше территория, тем больше очков. Но осторожно: если кто-то коснётся вашего следа, пока вы снаружи, — вы выбыли!
@@ -306,8 +306,8 @@ Color Claim — быстрая и яркая игра о захвате терр
 • Графика: низкая, средняя и высокая, 30 или 60 FPS
 • На русском, English, español, português, हिन्दी, Bahasa Indonesia и Türkçe
 
-ИГРАЙТЕ ГДЕ УГОДНО
-Без интернета, без рекламы, без аккаунтов и без покупок. Прогресс хранится на вашем телефоне.
+ИГРАЙТЕ ОНЛАЙН ИЛИ ОФЛАЙН
+Заходите в «Онлайн» и играйте с людьми со всего мира в комнатах на 8, без ожидания: пустые места занимают боты. Или играйте во все остальные режимы без интернета где угодно. Без рекламы, аккаунтов и покупок, а прогресс остаётся на вашем телефоне.
 
 Впервые здесь? Короткое обучение из 5 шагов научит играть.
 ```
@@ -326,7 +326,7 @@ Color Claim: Haritayı Boya
 Dışarı çık, haritayı boya, rakip izleri kes! 7 mod, boss, kostüm, evcil hayvan!
 ```
 
-**Full description** (2267/4000)
+**Full description** (2446/4000)
 
 ```
 Bölgenden çık, bir iz çiz ve içindeki her yeri almak için eve dön. Bölgen ne kadar büyükse puanın o kadar yüksek. Ama dikkat: dışarıdayken biri izine dokunursa elenirsin!
@@ -368,8 +368,8 @@ HER ZAMAN YAPACAK BİR ŞEY VAR
 • Düşük, Orta ve Yüksek grafik; 30 veya 60 FPS
 • Türkçe, English, Español, Português, हिन्दी, Bahasa Indonesia ve Русский dillerinde
 
-HER YERDE OYNA
-İnternet yok, reklam yok, hesap yok, satın alma yok. İlerlemen telefonunda kalır.
+ÇEVRİMİÇİ YA DA ÇEVRİMDIŞI OYNA
+Çevrimiçi'ne gir, dünyanın her yerinden insanlarla 8 kişilik odalarda bekleme olmadan oyna: boş yerleri botlar doldurur. Ya da diğer tüm modları internetsiz, her yerde oyna. Reklam yok, hesap yok, satın alma yok ve ilerlemen telefonunda kalır.
 
 Yeni misin? 5 adımlık kısa bir eğitim sana oynamayı öğretir.
 ```

@@ -693,7 +693,8 @@ func _run() -> void:
 	await _phase5()
 	# Online: hidden until there's a server; if picked anyway, it says so instead of breaking
 	var mode_names: Array = main.modes_row.get_children().map(func(b): return b.text)
-	ok("Online stays out of the menu until there's a server", not mode_names.has("Online"))
+	ok("Online is in the menu (there's a server)", mode_names.has("Online"))
+	OnlineConfig.off = true # the checks never touch the real server
 	main.mode_id = "online"
 	main.start_game()
 	await process_frame

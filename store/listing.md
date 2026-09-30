@@ -55,8 +55,8 @@ PLAY YOUR WAY
 • Low, Medium and High graphics, at 30 or 60 FPS
 • In English, Español, Português, हिन्दी, Bahasa Indonesia, Русский and Türkçe
 
-PLAY ANYWHERE
-No internet needed, no ads, no accounts and no in-app purchases. Your progress stays on your phone.
+PLAY ONLINE OR OFFLINE
+Jump into Online and play people from around the world in rooms of 8, with no waiting: bots fill any empty places. Or play every other mode offline, anywhere, with no internet at all. No ads, no accounts and no in-app purchases, and your progress stays on your phone.
 
 New to the game? A quick 5-step tutorial shows you how to play.
 ```

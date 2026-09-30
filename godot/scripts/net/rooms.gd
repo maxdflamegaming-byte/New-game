@@ -225,7 +225,7 @@ func on_join(peer: int, info: Dictionary) -> void:
 					r.left.append(id)
 			r.joined.append(NetCodec.info(p))
 		_send_round(r, peer)
-	_log("peer %d joined room %d as %s (%d people)" % [peer, r.id, clean.name, r.peers.size()])
+	_log("peer %d joined room %d (%d people)" % [peer, r.id, r.peers.size()]) # (no names in the log)
 
 
 func on_input(peer: int, angle: float) -> void:

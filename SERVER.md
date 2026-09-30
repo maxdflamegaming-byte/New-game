@@ -8,7 +8,7 @@ Everything is built and tested:
 - `Dockerfile` packages the server;
 - every change is checked automatically on GitHub: a local server with two test players, and the Docker image with a test player.
 
-What's missing is a place on the internet for the server to run. That needs an account only you can create. It takes about 10 minutes, then you send me one address.
+**It's live:** the server runs on Render's free plan at `wss://color-claim-server.onrender.com`, and the game connects there. To check it by hand, go to GitHub → **Actions** → **Online server (Docker)** → **Run workflow**: two test players join the live server and check everything matches.
 
 ---
 
