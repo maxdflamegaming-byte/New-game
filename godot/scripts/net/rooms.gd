@@ -189,8 +189,10 @@ func _roster(r: Room) -> Array:
 func _send_round(r: Room, peer: int) -> void:
 	var w = r.world
 	var me: Player = r.peers[peer].get("player")
+	# The board as of the last snapshot (not as it is now): the next snapshot lists the changes
+	# since then, so a cell that changed and changed back in between still comes out right
 	net.s_round.rpc_id(peer, {
-		"round": r.round_no, "map": w.map_id, "walls": w.wall, "land": w.land, "trail": w.trail,
+		"round": r.round_no, "map": w.map_id, "walls": w.wall, "land": r.prev_land, "trail": r.prev_trail,
 		"players": _roster(r), "you": me.id if me else 0, "states": NetCodec.states(w.players),
 		"storm": [w.storm_r, w.storm_next], "limit": ROUND_TIME, "time": w.time,
 	})
