@@ -1,5 +1,6 @@
 extends MenuScreen
-## Graphics, sound, music, vibration and joystick size, plus the tutorial.
+## Graphics, sound, music, vibration and joystick size, plus the tutorial, and the Google
+## Play Games sign-in in builds that have it.
 
 
 func build(main) -> void:
@@ -16,6 +17,8 @@ func refresh() -> void:
 		I18n.lang = codes[i]
 		I18n.apply()
 		m._refresh_menu())
+	if m.pg and m.pg.is_on():
+		_play_games()
 	heading("GRAPHICS")
 	box = card()
 	_choice(box, "Quality", Gfx.LEVELS, Gfx.level, func(i):
@@ -145,3 +148,29 @@ func _choice(box: BoxContainer, text: String, options: Array, picked: int, pick:
 			m._save()
 			refresh.call_deferred())
 		row.add_child(b)
+
+
+## Signing in keeps progress safe in the player's Google account
+func _play_games() -> void:
+	heading("GOOGLE PLAY GAMES")
+	var box := card()
+	var pg: PlayGames = m.pg
+	var text: String
+	if pg.signed_in:
+		text = (tr("Signed in as %s.") % pg.display_name + " " if pg.display_name != "" else tr("Signed in.") + " ") \
+			+ tr("Your progress is saved to your Google account after every game.")
+	else:
+		text = tr("Sign in to keep your progress safe. On a new phone, sign in and it comes back.")
+	var l: Label = m._label(text, 24, m.INK, 0, m.INK, m.font_med)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(l)
+	if not pg.signed_in:
+		var b: Button = m._button("Sign in with Google Play Games", Color("#2fbf71"), Color.WHITE, Color("#1d8a4e"), 30)
+		b.custom_minimum_size = Vector2(0, 90)
+		b.pressed.connect(pg.sign_in)
+		box.add_child(b)
+	elif Services.leaderboards_ready():
+		var b: Button = m._button("Leaderboards", Color("#3d7bea"), Color.WHITE, Color("#2a5bb8"), 30)
+		b.custom_minimum_size = Vector2(0, 90)
+		b.pressed.connect(Services.show_leaderboards)
+		box.add_child(b)

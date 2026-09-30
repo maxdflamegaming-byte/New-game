@@ -50,6 +50,8 @@ jobs:
           # A script error leaves Godot running without quitting, so each test has a time limit
           timeout 900 "$HOME/godot" --headless --path godot -s tests/sim.gd
           timeout 900 "$HOME/godot" --headless --path godot -s tests/flow.gd
+          # Google Play Games (sign-in, cloud save) with a stand-in for the Android plugin
+          timeout 300 "$HOME/godot" --headless --path godot -s tests/playgames.gd
           # A minute of random play, screens and settings: any script error fails the build
           timeout 300 "$HOME/godot" --headless --path godot -s tests/monkey.gd -- 60 1 2>&1 | tee monkey.log
           grep -q "MONKEY DONE" monkey.log
@@ -98,6 +100,17 @@ jobs:
               "$ANDROID_SDK_ROOT" "$JAVA_HOME" > "$HOME/.config/godot/$f"
           done
 
+      - name: Switch on Google Play Games (once its ID is in services.gd)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          id=$(grep -oP '"play_games_id":\s*"\K[0-9]*' godot/scripts/services.gd || true)
+          if [ -n "$id" ]; then
+            .github/playgames-on.sh "$id"
+            echo "PLAY_GAMES=1" >> "$GITHUB_ENV"
+          else
+            echo "No Play Games ID in godot/scripts/services.gd yet: building without sign-in and cloud save."
+          fi
+
       - name: Pick the signing key
         if: github.event_name == 'workflow_dispatch'
         env:
@@ -133,7 +146,7 @@ jobs:
           sed -i "s/^version\/code=.*/version\/code=${{ github.run_number }}/; s/^version\/name=.*/version\/name=\"$v\"/" godot/export_presets.cfg
           sed -i "s/^config\/version=.*/config\/version=\"$v\"/" godot/project.godot
           mkdir -p build
-          "$HOME/godot" --headless --path godot --export-release "Android" "$GITHUB_WORKSPACE/build/ColorClaimHD-$v.apk"
+          "$HOME/godot" --headless --path godot --install-android-build-template --export-release "Android" "$GITHUB_WORKSPACE/build/ColorClaimHD-$v.apk"
           test -s "build/ColorClaimHD-$v.apk"
           # The App Bundle is always built (so the Gradle build is checked), but only kept
           # when it's signed with your upload key
@@ -149,6 +162,10 @@ jobs:
           "$apksigner" verify --print-certs build/*.apk | head -5
           aapt2="$(ls -d "$ANDROID_SDK_ROOT"/build-tools/36.1.0)/aapt2"
           "$aapt2" dump badging build/*.apk | grep -E "^package|sdkVersion|targetSdkVersion"
+          if [ "$PLAY_GAMES" = "1" ]; then
+            "$aapt2" dump xmltree --file AndroidManifest.xml build/*.apk | grep -q "com.google.android.gms.games.APP_ID"
+            echo "Google Play Games is in the APK"
+          fi
           jarsigner -verify build/*.aab | tail -1
           unzip -p build/*.aab base/manifest/AndroidManifest.xml > /dev/null && echo "The bundle has a manifest"
           if [ "$PLAY_READY" != "1" ]; then

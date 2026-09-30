@@ -398,4 +398,11 @@ const T := {
 	"%d players": "игроков: %d",
 	"Player": "Игрок",
 	"Waking up the server... The first game after a quiet spell can take up to a minute.": "Сервер просыпается... Первая игра после перерыва может занять до минуты.",
+	"Signed in as %s.": "Вы вошли как %s.",
+	"Signed in.": "Вы вошли.",
+	"Your progress is saved to your Google account after every game.": "Ваш прогресс сохраняется в аккаунте Google после каждой игры.",
+	"Sign in to keep your progress safe. On a new phone, sign in and it comes back.": "Войдите, чтобы ваш прогресс был в безопасности. На новом телефоне войдите, и он вернётся.",
+	"Sign in with Google Play Games": "Войти через Google Play Игры",
+	"Leaderboards": "Таблицы рекордов",
+	"Welcome back! Your progress is restored from Google Play Games.": "С возвращением! Ваш прогресс восстановлен из Google Play Игр.",
 }

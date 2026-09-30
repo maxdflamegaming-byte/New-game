@@ -391,4 +391,11 @@ const T := {
 	"%d players": "%d oyuncu",
 	"Player": "Oyuncu",
 	"Waking up the server... The first game after a quiet spell can take up to a minute.": "Sunucu uyanıyor... Sessiz bir aradan sonraki ilk oyun bir dakika kadar sürebilir.",
+	"Signed in as %s.": "%s olarak giriş yapıldı.",
+	"Signed in.": "Giriş yapıldı.",
+	"Your progress is saved to your Google account after every game.": "İlerlemeniz her oyundan sonra Google hesabınıza kaydedilir.",
+	"Sign in to keep your progress safe. On a new phone, sign in and it comes back.": "İlerlemenizi güvende tutmak için giriş yapın. Yeni bir telefonda giriş yapın, geri gelsin.",
+	"Sign in with Google Play Games": "Google Play Oyunlar ile giriş yap",
+	"Leaderboards": "Liderlik tabloları",
+	"Welcome back! Your progress is restored from Google Play Games.": "Tekrar hoş geldiniz! İlerlemeniz Google Play Oyunlar'dan geri yüklendi.",
 }

@@ -387,4 +387,11 @@ const T := {
 	"%d players": "%d jogadores",
 	"Player": "Jogador",
 	"Waking up the server... The first game after a quiet spell can take up to a minute.": "Acordando o servidor... A primeira partida depois de um tempo parado pode levar até um minuto.",
+	"Signed in as %s.": "Conectado como %s.",
+	"Signed in.": "Conectado.",
+	"Your progress is saved to your Google account after every game.": "Seu progresso é salvo na sua conta do Google depois de cada partida.",
+	"Sign in to keep your progress safe. On a new phone, sign in and it comes back.": "Entre para manter seu progresso seguro. Em um celular novo, entre e ele volta.",
+	"Sign in with Google Play Games": "Entrar com o Google Play Games",
+	"Leaderboards": "Placares",
+	"Welcome back! Your progress is restored from Google Play Games.": "Bem-vindo de volta! Seu progresso foi restaurado do Google Play Games.",
 }

@@ -382,4 +382,11 @@ const T := {
 	"%d players": "%d pemain",
 	"Player": "Pemain",
 	"Waking up the server... The first game after a quiet spell can take up to a minute.": "Membangunkan server... Permainan pertama setelah sepi bisa butuh sampai satu menit.",
+	"Signed in as %s.": "Masuk sebagai %s.",
+	"Signed in.": "Sudah masuk.",
+	"Your progress is saved to your Google account after every game.": "Progresmu disimpan ke akun Google setelah setiap permainan.",
+	"Sign in to keep your progress safe. On a new phone, sign in and it comes back.": "Masuk agar progresmu aman. Di ponsel baru, masuk dan progresmu kembali.",
+	"Sign in with Google Play Games": "Masuk dengan Google Play Game",
+	"Leaderboards": "Papan peringkat",
+	"Welcome back! Your progress is restored from Google Play Games.": "Selamat datang kembali! Progresmu dipulihkan dari Google Play Game.",
 }

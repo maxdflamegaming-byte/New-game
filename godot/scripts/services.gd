@@ -18,6 +18,9 @@ const CONFIG := {
 	"product_remove_ads": "",
 	"product_coins_small": "",
 	"product_coins_big": "",
+	# Google Play Games: the project's ID (a long number) from Play Console -> Play Games
+	# Services. With it, the build adds the Play Games plugin: sign-in and the cloud save.
+	"play_games_id": "",
 	# Google Play Games: leaderboard ids from Play Console -> Play Games Services
 	"leaderboard_best_claim": "",
 	"leaderboard_wins": "",
@@ -65,17 +68,18 @@ static func buy(product: String, done: Callable) -> void:
 # ---------- Leaderboards ----------
 
 static func leaderboards_ready() -> bool:
-	return CONFIG.leaderboard_best_claim != "" and _plugin("GodotPlayGameServices") != null
+	return CONFIG.leaderboard_best_claim != "" and PlayGames.me != null and PlayGames.me.is_on()
 
 
-## Sends a finished game's scores (does nothing while leaderboards are off)
+## Sends a finished game's scores (does nothing while leaderboards are off or nobody is
+## signed in). Best claim is sent in tenths of a percent: set its format to one decimal place.
 static func submit_scores(best_claim_pct: float, total_wins: int) -> void:
 	if not leaderboards_ready():
 		return
-	# Wired up with the Play Games plugin when leaderboards are switched on
-	pass
+	PlayGames.me.submit(CONFIG.leaderboard_best_claim, roundi(best_claim_pct * 10.0))
+	PlayGames.me.submit(CONFIG.leaderboard_wins, total_wins)
 
 
 static func show_leaderboards() -> void:
-	if not leaderboards_ready():
-		return
+	if leaderboards_ready():
+		PlayGames.me.show_leaderboards()

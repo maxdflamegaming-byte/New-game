@@ -117,6 +117,7 @@ var connect_box: Control # "Connecting..." and online messages
 var connect_label: Label
 var connect_cancel: Button
 var online # the online client (scripts/net/client.gd)
+var pg: PlayGames # Google Play Games: sign-in and the cloud save (quiet without the plugin)
 var ad_btn: Button # results: double coins for watching an ad (off until ads are set up)
 var _earned_this_game := 0
 var _last_earned := 0
@@ -188,6 +189,13 @@ func _ready() -> void:
 	online.waking.connect(func():
 		if state == "connecting":
 			connect_label.text = tr("Waking up the server... The first game after a quiet spell can take up to a minute."))
+	pg = PlayGames.new()
+	pg.save_path = SAVE_PATH
+	add_child(pg)
+	pg.cloud_newer.connect(_apply_cloud)
+	pg.changed.connect(func():
+		if settings_screen and settings_screen.visible:
+			settings_screen.refresh())
 	view = preload("res://scripts/board_view.gd").new()
 	add_child(view)
 	view.setup(world, font, 128)
@@ -230,6 +238,22 @@ func _start_demo() -> void:
 	_snap_camera()
 	_show(menu)
 	_refresh_menu()
+	_apply_cloud()
+
+
+## A save with more progress came from the player's Google account (a new phone, or one
+## that was offline): it replaces this one once we're back at the menu
+func _apply_cloud() -> void:
+	if pg == null or pg.pending == null or state != "menu":
+		return
+	if not pg.apply_pending():
+		return
+	_load()
+	I18n.apply()
+	if welcome and welcome.visible:
+		welcome.visible = false # a returning player: no welcome and no tutorial
+	_start_demo()
+	_toast(tr("Welcome back! Your progress is restored from Google Play Games."))
 
 
 func start_game(mode := "") -> void:
@@ -662,7 +686,8 @@ func _start_online() -> void:
 	state = "connecting"
 	connect_label.text = tr("Connecting...")
 	connect_box.visible = true
-	online.start(url, {"name": player_name if player_name != "You" else tr("Player"), "color": my_color,
+	var online_name := player_name if player_name != "You" else pg.display_name if pg.display_name != "" else tr("Player")
+	online.start(url, {"name": online_name, "color": my_color,
 		"skin": equipped.skin, "trail": equipped.trail, "pet": equipped.pet})
 	CrashLog.note("online  connecting to %s" % url)
 
@@ -832,6 +857,8 @@ func _notification(what: int) -> void:
 		_back()
 	elif what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
 		_pause()
+		if what == NOTIFICATION_APPLICATION_PAUSED and pg:
+			pg.flush() # the latest save goes to the cloud before Android can close the game
 	# Going to the background or closing on purpose isn't a crash (Android may close the game
 	# while it's in the background)
 	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_PREDELETE:
@@ -2711,3 +2738,5 @@ func _save() -> void:
 	var tmp := SAVE_PATH + ".new"
 	if c.save(tmp) == OK:
 		DirAccess.rename_absolute(tmp, SAVE_PATH)
+		if pg:
+			pg.saved()

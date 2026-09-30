@@ -1,0 +1,87 @@
+# Checks that the game still builds with Google Play Games switched on, before the real
+# Play Games ID exists: it switches the plugin on with a made-up ID, builds a test APK with
+# the Gradle build and checks the plugin made it into the app. Nothing is kept or released.
+name: Check the Google Play Games build
+
+on:
+  push:
+    branches: [main, claude/game-ideas-brainstorm-g3f06o]
+    paths:
+      - 'godot/addons/**'
+      - 'godot/scripts/play_games.gd'
+      - '.github/playgames-on.sh'
+      - '.github/workflows/playgames-check.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: playgames-check
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: 4.7.2
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Get Godot and the Android export templates
+        run: |
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          wget -q "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q "Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" "$HOME/godot"
+          wget -q "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          dir="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          mkdir -p "$dir"
+          unzip -q -j "Godot_v${GODOT_VERSION}-stable_export_templates.tpz" 'templates/android_*' 'templates/version.txt' -d "$dir"
+          rm "Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+
+      - name: Get the Android SDK parts
+        run: |
+          sdkmanager="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdkmanager" --licenses > /dev/null || true
+          "$sdkmanager" --install "platforms;android-36" "build-tools;36.1.0" "platform-tools" "ndk;29.0.14206865" > /dev/null
+          mkdir -p "$HOME/.config/godot"
+          for f in editor_settings-4.tres "editor_settings-${GODOT_VERSION%.*}.tres"; do
+            printf '[gd_resource type="EditorSettings" format=3]\n\n[resource]\nexport/android/android_sdk_path = "%s"\nexport/android/java_sdk_path = "%s"\n' \
+              "$ANDROID_SDK_ROOT" "$JAVA_HOME" > "$HOME/.config/godot/$f"
+          done
+
+      - name: Switch on Play Games with a made-up ID
+        run: .github/playgames-on.sh 123456789012
+
+      - name: Build a test APK
+        env:
+          # The old public test key: this APK is only checked, never shared
+          GODOT_ANDROID_KEYSTORE_RELEASE_PATH: ${{ github.workspace }}/android/app/color-claim.keystore
+          GODOT_ANDROID_KEYSTORE_RELEASE_USER: colorclaim
+          GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD: colorclaim
+        run: |
+          "$HOME/godot" --headless --path godot --import || true
+          mkdir -p build
+          "$HOME/godot" --headless --path godot --install-android-build-template --export-release "Android" "$GITHUB_WORKSPACE/build/playgames-test.apk" 2>&1 | tee export.log
+          test -s build/playgames-test.apk
+
+      - name: Check Play Games is in the app
+        run: |
+          tools="$ANDROID_SDK_ROOT/build-tools/36.1.0"
+          "$tools/aapt2" dump xmltree --file AndroidManifest.xml build/playgames-test.apk > manifest.txt
+          grep -q "com.google.android.gms.games.APP_ID" manifest.txt
+          grep -q "INTERNET" manifest.txt
+          "$tools/aapt2" dump resources build/playgames-test.apk | grep -A1 "game_services_project_id" | tee ids.txt
+          grep -q "123456789012" ids.txt
+          # The plugin's Android code and Google's Play Games library are in the app
+          unzip -o -q build/playgames-test.apk 'classes*.dex' -d dex
+          grep -a -q "godotplaygameservices" dex/*.dex
+          grep -a -q "com/google/android/gms/games" dex/*.dex
+          # And the game's name is still right
+          "$tools/aapt2" dump badging build/playgames-test.apk | grep -E "^package|application-label:"
+          ls -la build
+          echo "The Play Games build works."

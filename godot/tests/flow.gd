@@ -50,6 +50,7 @@ func _run() -> void:
 	main.welcome.visible = false
 	main.menu.visible = true
 	ok("Starts on the menu with a live bots-only game", main.state == "menu" and w.me.is_bot)
+	ok("No Play Games (and no sign-in button) without the plugin", not main.pg.is_on() and not main.pg.signed_in)
 
 	# Power-ups
 	await _play()
