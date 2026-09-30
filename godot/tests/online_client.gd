@@ -32,7 +32,7 @@ func _run() -> void:
 	main.mode_id = "online"
 	main.start_game()
 	var waited := 0.0
-	while main.state != "play" and waited < 10.0:
+	while main.state != "play" and waited < 80.0:
 		await create_timer(0.1).timeout
 		waited += 0.1
 	if main.state != "play":

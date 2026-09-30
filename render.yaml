@@ -5,7 +5,10 @@ services:
     name: color-claim-server
     runtime: docker
     dockerfilePath: ./Dockerfile
-    plan: starter # always on (the free plan sleeps, which drops everyone's games)
+    # free: sleeps after ~15 minutes with nobody playing, and the first player then waits up to a
+    # minute while it wakes (the game waits and says so). Change to "starter" (US$7 a month)
+    # for a server that's always awake
+    plan: free
     region: singapore # pick the region closest to most of your players
     autoDeploy: true
     branch: claude/game-ideas-brainstorm-g3f06o

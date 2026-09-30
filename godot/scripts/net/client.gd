@@ -8,8 +8,12 @@ signal connected # welcome received
 signal round_started(first: bool) # a round's board arrived
 signal round_over(data: Dictionary)
 signal failed(reason: String) # couldn't connect, or the connection dropped
+signal waking # still connecting after a few seconds: the server is probably waking up
 
-const CONNECT_TIMEOUT := 8.0
+## A free server sleeps when nobody's playing and takes up to a minute to wake, so the first
+## connection keeps trying for this long (and says so after SLOW_CONNECT seconds)
+const CONNECT_TIMEOUT := 75.0
+const SLOW_CONNECT := 6.0
 const INTERP_DELAY := 0.12 # others are drawn this far behind the latest snapshot, to stay smooth
 const INPUT_EVERY := 0.05
 
@@ -26,6 +30,8 @@ var snaps := 0
 
 var _peer: WebSocketMultiplayerPeer
 var _connect_time := 0.0
+var _retry_in := -1.0 # seconds until the next connection attempt (-1: not waiting)
+var _told_waking := false
 var _samples := {} # player id -> [[server time, pos, angle], ...] (the last few)
 var _server_time := 0.0 # the latest snapshot's time
 var _clock := 0.0 # our estimate of the server's time now
@@ -39,6 +45,14 @@ func start(server_url: String, info: Dictionary) -> void:
 	stop()
 	url = server_url
 	_join_info = info
+	_connect_time = 0.0
+	_told_waking = false
+	_open()
+
+
+## One connection attempt
+func _open() -> void:
+	_retry_in = -1.0
 	_peer = WebSocketMultiplayerPeer.new()
 	_peer.inbound_buffer_size = 1 << 22
 	_peer.outbound_buffer_size = 1 << 16
@@ -49,7 +63,6 @@ func start(server_url: String, info: Dictionary) -> void:
 	get_tree().get_multiplayer().multiplayer_peer = _peer
 	net.handler = self
 	status = "connecting"
-	_connect_time = 0.0
 	var mp := get_tree().get_multiplayer()
 	if not mp.connected_to_server.is_connected(_on_connected):
 		mp.connected_to_server.connect(_on_connected)
@@ -79,6 +92,14 @@ func _on_connected() -> void:
 
 
 func _on_failed() -> void:
+	if status == "connecting" and _connect_time < CONNECT_TIMEOUT:
+		# Maybe the server is still waking up: try again in a moment
+		if _peer:
+			_peer.close()
+		get_tree().get_multiplayer().multiplayer_peer = null
+		_peer = null
+		_retry_in = 2.0
+		return
 	if status != "off":
 		stop()
 		failed.emit("connect")
@@ -338,9 +359,16 @@ func _apply_states(s: PackedFloat32Array, t: float) -> void:
 func _process(dt: float) -> void:
 	if status == "connecting":
 		_connect_time += dt
+		if _connect_time > SLOW_CONNECT and not _told_waking:
+			_told_waking = true
+			waking.emit()
 		if _connect_time > CONNECT_TIMEOUT:
 			stop()
 			failed.emit("timeout")
+		elif _retry_in >= 0:
+			_retry_in -= dt
+			if _retry_in < 0:
+				_open()
 		return
 	if status != "in" or world == null:
 		return

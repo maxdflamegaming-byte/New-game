@@ -185,6 +185,9 @@ func _ready() -> void:
 	online.round_started.connect(_on_online_round)
 	online.round_over.connect(_on_online_round_over)
 	online.failed.connect(_on_online_failed)
+	online.waking.connect(func():
+		if state == "connecting":
+			connect_label.text = tr("Waking up the server... The first game after a quiet spell can take up to a minute."))
 	view = preload("res://scripts/board_view.gd").new()
 	add_child(view)
 	view.setup(world, font, 128)

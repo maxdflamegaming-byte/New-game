@@ -12,11 +12,22 @@ What's missing is a place on the internet for the server to run. That needs an a
 
 ---
 
+## Free for now: Render's free plan
+
+This is set up already: `render.yaml` uses Render's **free** plan. It's all in the browser, and you usually don't need a payment card.
+
+What "free" means:
+- **It sleeps.** After about 15 minutes with nobody playing, the server goes to sleep. The next player waits up to a minute while it wakes. The game keeps trying and shows *"Waking up the server..."*, then everyone plays normally. Once someone is playing, it stays awake.
+- **Monthly limits.** 750 free hours a month (enough for one server all month) and 100 GB of data, which is roughly 2,000 hours of play in total. Plenty while you're starting out.
+- **Upgrading later.** When you have regular players, change `plan: free` to `plan: starter` in `render.yaml` (US$7 a month, always awake). Or tell me and I'll change it.
+
+Follow the Render steps just below. The only difference is that you can skip adding a payment card.
+
 ## Option A: Render (easiest, all in the browser)
 
-**Cost:** the **Starter** plan, US$7 a month. Don't use the free plan: it goes to sleep, which drops everyone's games.
+**Cost:** free to start (see above), or the **Starter** plan at US$7 a month for a server that never sleeps.
 
-1. Go to <https://render.com> and **sign up with your GitHub account**. Add a payment card under **Account settings → Billing**.
+1. Go to <https://render.com> and **sign up with your GitHub account**. (A payment card is only needed for paid plans: **Account settings → Billing**.)
 2. Click **New → Blueprint**. Pick your repository **maxdflamegaming-byte/New-game** (allow Render to see it if asked).
 3. Render reads the file `render.yaml` and shows a service called **color-claim-server**. Click **Apply**.
 4. Wait for the first build, about 5 minutes. The logs should end with:
