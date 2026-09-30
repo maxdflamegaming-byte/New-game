@@ -347,8 +347,9 @@ func _send_snap(r: Room) -> void:
 	r.events.clear()
 	r.joined.clear()
 	r.left.clear()
-	var size := var_to_bytes(snap).size()
+	# The size, for the log, measured on every 10th snapshot only (it costs a little)
+	if r.tick % (SNAP_EVERY * 10) == 0:
+		_bytes += var_to_bytes(snap).size() * r.peers.size()
+		_snap_count += r.peers.size()
 	for peer in r.peers:
 		net.s_snap.rpc_id(peer, snap)
-		_bytes += size
-		_snap_count += 1

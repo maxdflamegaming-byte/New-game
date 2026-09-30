@@ -66,9 +66,11 @@ jobs:
           timeout 100 "$HOME/godot" --headless --path godot -s tests/online_client.gd -- --server=ws://127.0.0.1:9080 --name=Bob --seconds=40 > bob.log 2>&1 || true
           wait $ALICE || true
           kill $SERVER || true
-          cat server.log alice.log bob.log | grep -a "RESULT\|\[server\]" || true
+          cat server.log alice.log bob.log | grep -a "RESULT\|SPEED\|\[server\]" || true
           grep -a "RESULT Alice" alice.log | grep -q "board_mismatches=0"
           grep -a "RESULT Bob" bob.log | grep -q "board_mismatches=0"
+          # Steering must reach the server: most turns show up in the server's reports
+          for f in alice.log bob.log; do grep -a -q "^SPEED" $f || exit 1; awk '/^SPEED/ {split($5,a,"="); split($6,b,"="); if (a[2]+0 == 0 || a[2]+0 < b[2]+0) exit 1}' $f || exit 1; done
           ! grep -a -q "SCRIPT ERROR" server.log alice.log bob.log
 
       # Everything below only runs when the workflow is started by hand

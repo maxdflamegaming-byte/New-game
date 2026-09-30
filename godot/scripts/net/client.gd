@@ -15,7 +15,12 @@ signal waking # still connecting after a few seconds: the server is probably wak
 const CONNECT_TIMEOUT := 75.0
 const SLOW_CONNECT := 6.0
 const INTERP_DELAY := 0.12 # others are drawn this far behind the latest snapshot, to stay smooth
-const INPUT_EVERY := 0.05
+const INPUT_EVERY := 0.05 # at most this often when steering changes
+const INPUT_REPEAT := 0.25 # and again this often anyway (a respawn resets it on the server)
+## Your own square is moved here straight away and pulled gently toward where the server
+## says it is (carried forward by about this much, the time a message takes)
+const LEAD := 0.1
+const SNAP_BACK := 3.0 # cells: further off than this, jump to the server's position
 
 var world
 var net # the Net node
@@ -27,6 +32,9 @@ var status := "off" # off, connecting, joining, in
 var round_limit := 300.0
 var desyncs := 0 # snapshots where our board didn't match the server's
 var snaps := 0
+var snapbacks := 0 # times your square had to jump to the server's position (tests)
+var drift_sum := 0.0 # summed distance from the server's position, per frame (tests)
+var drift_frames := 0
 
 var _peer: WebSocketMultiplayerPeer
 var _connect_time := 0.0
@@ -35,8 +43,10 @@ var _told_waking := false
 var _samples := {} # player id -> [[server time, pos, angle], ...] (the last few)
 var _server_time := 0.0 # the latest snapshot's time
 var _clock := 0.0 # our estimate of the server's time now
-var _sent_angle := INF
+var _sent_angle := 0.0
+var _has_sent := false
 var _input_timer := 0.0
+var _repeat_timer := 0.0
 var _join_info := {}
 
 
@@ -78,6 +88,7 @@ func stop() -> void:
 	status = "off"
 	my_id = 0
 	_samples.clear()
+	_has_sent = false
 
 
 func is_on() -> bool:
@@ -383,13 +394,7 @@ func _process(dt: float) -> void:
 			continue
 		var before: Vector2 = p.pos
 		if p == world.me:
-			# You: the newest position, carried on the way you're going (so steering feels
-			# instant rather than a snapshot late)
-			var last: Array = list.back()
-			var ahead := clampf(_clock - last[0], 0.0, 0.2)
-			var v: float = world.speed_of(p)
-			p.pos = last[1] + Vector2.from_angle(last[2]) * v * ahead
-			p.angle = last[2]
+			_predict_me(p, list, dt)
 		else:
 			p.pos = _sample_at(list, _clock - INTERP_DELAY, p)
 		p.pos = p.pos.clamp(Vector2(0.01, 0.01), Vector2(world.N - 0.01, world.N - 0.01))
@@ -411,13 +416,58 @@ func _process(dt: float) -> void:
 			p.blink = randf_range(2.0, 5.0)
 	for b in world.bumpers:
 		b.flash = maxf(0.0, b.flash - dt * 3.0)
-	# Send your steering (a few times a second, or when it changes)
+	# Send your steering: as soon as it changes (at most every INPUT_EVERY), and every
+	# INPUT_REPEAT anyway
 	_input_timer -= dt
+	_repeat_timer -= dt
 	var me: Player = world.me
-	if me and me.alive and _input_timer <= 0 and absf(wrapf(me.desired - _sent_angle, -PI, PI)) > 0.01:
-		_input_timer = INPUT_EVERY
-		_sent_angle = me.desired
-		net.c_input.rpc_id(1, me.desired)
+	if me and me.alive and is_finite(me.desired) and _input_timer <= 0:
+		var changed := not _has_sent or absf(wrapf(me.desired - _sent_angle, -PI, PI)) > 0.01
+		if changed or _repeat_timer <= 0:
+			_input_timer = INPUT_EVERY
+			_repeat_timer = INPUT_REPEAT
+			_sent_angle = me.desired
+			_has_sent = true
+			net.c_input.rpc_id(1, me.desired)
+
+
+## You: turn and move right away, the way the server will, so steering feels instant; then
+## ease toward the server's latest position (run on by the same rules), so you never drift
+## from where you really are
+func _predict_me(p: Player, list: Array, dt: float) -> void:
+	var last: Array = list.back()
+	var v: float = world.speed_of(p)
+	# Where the server's latest report puts us now, if we keep steering as we are
+	var ahead := clampf(_clock - last[0], 0.0, 0.25) + LEAD
+	var s_pos: Vector2 = last[1]
+	var s_angle: float = last[2]
+	var step := 0.05
+	var left := ahead
+	while left > 0.0:
+		var h := minf(step, left)
+		var rate: float = world.turn_rate(s_pos.x, s_pos.y)
+		s_angle += clampf(wrapf(p.desired - s_angle, -PI, PI), -rate * h, rate * h)
+		var nxt := s_pos + Vector2.from_angle(s_angle) * v * h
+		if not world.is_wall_at(nxt.x, nxt.y):
+			s_pos = nxt
+		left -= h
+	# Our own step this frame
+	var rate_me: float = world.turn_rate(p.pos.x, p.pos.y)
+	p.angle += clampf(wrapf(p.desired - p.angle, -PI, PI), -rate_me * dt, rate_me * dt)
+	var moved := p.pos + Vector2.from_angle(p.angle) * v * dt
+	if not world.is_wall_at(moved.x, moved.y):
+		p.pos = moved
+	# Ease toward the server (jump if far off: a teleport, a bump or a respawn)
+	var off := s_pos - p.pos
+	drift_sum += off.length()
+	drift_frames += 1
+	if off.length() > SNAP_BACK:
+		snapbacks += 1
+		p.pos = s_pos
+		p.angle = s_angle
+	else:
+		p.pos += off * minf(1.0, dt * 5.0)
+		p.angle += wrapf(s_angle - p.angle, -PI, PI) * minf(1.0, dt * 3.0)
 
 
 ## Where a player was at server time `t`, between the two snapshots around it

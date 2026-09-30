@@ -85,7 +85,9 @@ jobs:
           sleep 5
           timeout 200 "$HOME/godot" --headless --path godot -s tests/online_client.gd -- --server="$URL" --name=CheckB --seconds=35 > b.log 2>&1 || true
           wait $A || true
-          grep -a "RESULT\|online  \|SCRIPT ERROR" a.log b.log || true
+          grep -a "RESULT\|SPEED\|online  \|SCRIPT ERROR" a.log b.log || true
           grep -a "RESULT CheckA" a.log | grep -q "board_mismatches=0"
           grep -a "RESULT CheckB" b.log | grep -q "board_mismatches=0"
           grep -a "RESULT CheckB" b.log | grep -q "CheckA"
+          # Steering must reach the server: most turns show up in the server's reports
+          for f in a.log b.log; do grep -a -q "^SPEED" $f || exit 1; awk '/^SPEED/ {split($5,a,"="); split($6,b,"="); if (a[2]+0 == 0 || a[2]+0 < b[2]+0) exit 1}' $f || exit 1; done

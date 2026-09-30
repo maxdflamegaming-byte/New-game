@@ -142,6 +142,10 @@ var _power_timer := 3.0
 var _coin_timer := 3.0
 var _seen := PackedByteArray()
 var _stack := PackedInt32Array()
+## A box around each player's land (per id: x0, y0, x1, y1), so a capture only has to look
+## there instead of across the whole map. It only grows (a bigger box is still right) and
+## resets when the player has no land left.
+var _box := PackedInt32Array()
 
 
 func _init() -> void:
@@ -156,6 +160,8 @@ func _init() -> void:
 	_seen.resize(N * N)
 	_stack.resize(N * N)
 	counts.resize(16)
+	_box.resize(16 * 4)
+	_clear_boxes()
 
 
 # ---------- Online rooms ----------
@@ -179,6 +185,7 @@ func setup_room(map: String) -> void:
 	land.fill(0)
 	trail.fill(0)
 	counts.fill(0)
+	_clear_boxes()
 	_build_map()
 	_build_hill()
 	time = 0.0
@@ -315,6 +322,7 @@ func setup_mirror(map: String, walls: PackedByteArray) -> void:
 	land.fill(0)
 	trail.fill(0)
 	counts.fill(0)
+	_clear_boxes()
 	_build_map()
 	if walls.size() == N * N:
 		wall = walls
@@ -357,6 +365,7 @@ func setup(my_color: int, my_name: String, demo := false, map := "square", mode_
 	land.fill(0)
 	trail.fill(0)
 	counts.fill(0)
+	_clear_boxes()
 	_build_map()
 	_build_hill()
 	time = 0.0
@@ -466,9 +475,33 @@ func set_land(i: int, id: int) -> void:
 		return
 	if prev:
 		counts[prev] -= 1
+		if counts[prev] == 0:
+			_box[prev * 4] = N # empty box
+			_box[prev * 4 + 1] = N
+			_box[prev * 4 + 2] = -1
+			_box[prev * 4 + 3] = -1
 	land[i] = id
 	if id:
 		counts[id] += 1
+		var x := i % N
+		var y := i / N
+		var b := id * 4
+		if x < _box[b]:
+			_box[b] = x
+		if y < _box[b + 1]:
+			_box[b + 1] = y
+		if x > _box[b + 2]:
+			_box[b + 2] = x
+		if y > _box[b + 3]:
+			_box[b + 3] = y
+
+
+func _clear_boxes() -> void:
+	for id in 16:
+		_box[id * 4] = N
+		_box[id * 4 + 1] = N
+		_box[id * 4 + 2] = -1
+		_box[id * 4 + 3] = -1
 
 
 # ---------- Maps ----------
@@ -823,38 +856,62 @@ func capture(p: Player) -> void:
 	p.path.clear()
 	p.path_breaks.clear()
 
+	# Fill from the outside inwards; whatever the fill can't reach is enclosed. Only the box
+	# around this player's land (one cell bigger) needs looking at: everything outside it
+	# can't be enclosed.
+	var b := p.id * 4
+	var x0 := maxi(0, _box[b] - 1)
+	var y0 := maxi(0, _box[b + 1] - 1)
+	var x1 := mini(N - 1, _box[b + 2] + 1)
+	var y1 := mini(N - 1, _box[b + 3] + 1)
+	if x1 < x0 or y1 < y0:
+		land_version += 1
+		_swallow_check(p)
+		p.wp.clear()
+		p.mode = "idle"
+		captured.emit(p, gained, gained.size() * 100.0 / play_cells)
+		return
 	_seen.fill(0)
 	var top := 0
-	for k in N:
-		for i in [k, (N - 1) * N + k, k * N, k * N + N - 1]:
-			if _seen[i] == 0 and land[i] != p.id:
-				_seen[i] = 1
-				_stack[top] = i
-				top += 1
+	var seeds: Array[int] = []
+	for x in range(x0, x1 + 1):
+		seeds.append(y0 * N + x)
+		seeds.append(y1 * N + x)
+	for y in range(y0, y1 + 1):
+		seeds.append(y * N + x0)
+		seeds.append(y * N + x1)
+	for i in seeds:
+		if _seen[i] == 0 and land[i] != p.id:
+			_seen[i] = 1
+			_stack[top] = i
+			top += 1
 	while top > 0:
 		top -= 1
 		var i := _stack[top]
 		var x := i % N
-		if x > 0 and _seen[i - 1] == 0 and land[i - 1] != p.id:
+		var y := i / N
+		if x > x0 and _seen[i - 1] == 0 and land[i - 1] != p.id:
 			_seen[i - 1] = 1
 			_stack[top] = i - 1
 			top += 1
-		if x < N - 1 and _seen[i + 1] == 0 and land[i + 1] != p.id:
+		if x < x1 and _seen[i + 1] == 0 and land[i + 1] != p.id:
 			_seen[i + 1] = 1
 			_stack[top] = i + 1
 			top += 1
-		if i >= N and _seen[i - N] == 0 and land[i - N] != p.id:
+		if y > y0 and _seen[i - N] == 0 and land[i - N] != p.id:
 			_seen[i - N] = 1
 			_stack[top] = i - N
 			top += 1
-		if i < N * (N - 1) and _seen[i + N] == 0 and land[i + N] != p.id:
+		if y < y1 and _seen[i + N] == 0 and land[i + N] != p.id:
 			_seen[i + N] = 1
 			_stack[top] = i + N
 			top += 1
-	for i in N * N:
-		if _seen[i] == 0 and land[i] != p.id and wall[i] == 0 and not (land[i] and allies(players[land[i]], p)):
-			set_land(i, p.id)
-			gained.append(i)
+	for y in range(y0, y1 + 1):
+		for x in range(x0, x1 + 1):
+			var i := y * N + x
+			if _seen[i] == 0 and land[i] != p.id and wall[i] == 0 and not (land[i] and allies(players[land[i]], p)):
+				set_land(i, p.id)
+				gained.append(i)
 	land_version += 1
 
 	_swallow_check(p)

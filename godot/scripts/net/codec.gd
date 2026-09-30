@@ -47,11 +47,18 @@ static func states(players: Array) -> PackedFloat32Array:
 ## `before` is updated to match
 static func diff(now: PackedByteArray, before: PackedByteArray) -> PackedInt32Array:
 	var out := PackedInt32Array()
-	for i in now.size():
-		if now[i] != before[i]:
-			out.append(i)
-			out.append(now[i])
-			before[i] = now[i]
+	# Most of the board doesn't change between snapshots: compare it in blocks (fast, done by
+	# the engine) and only look cell by cell inside the blocks that differ
+	var block := 256
+	for start in range(0, now.size(), block):
+		var end := mini(start + block, now.size())
+		if now.slice(start, end) == before.slice(start, end):
+			continue
+		for i in range(start, end):
+			if now[i] != before[i]:
+				out.append(i)
+				out.append(now[i])
+				before[i] = now[i]
 	return out
 
 
