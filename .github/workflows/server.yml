@@ -13,6 +13,10 @@ on:
       - 'godot/server/**'
       - '.github/workflows/server.yml'
   workflow_dispatch:
+    inputs:
+      live_url:
+        description: "Also test the live server at this address (empty to skip)"
+        default: "wss://color-claim-server.onrender.com"
 
 permissions:
   contents: read
@@ -53,3 +57,35 @@ jobs:
           grep -a "RESULT Tester" player.log | grep -q "board_mismatches=0"
           ! grep -a -q "SCRIPT ERROR" player.log
           ! docker logs server 2>&1 | grep -a -q "SCRIPT ERROR"
+
+  # Two test players on the real, hosted server (only when started by hand)
+  live:
+    if: github.event_name == 'workflow_dispatch' && inputs.live_url != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GODOT_VERSION: "4.7.2"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get Godot for the test players
+        run: |
+          wget -q "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q "Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" "$HOME/godot"
+          "$HOME/godot" --headless --path godot --import || true
+
+      - name: Two players join the live server
+        env:
+          URL: ${{ inputs.live_url }}
+        run: |
+          # A free server may be asleep: the first player waits up to a minute for it to wake
+          timeout 200 "$HOME/godot" --headless --path godot -s tests/online_client.gd -- --server="$URL" --name=CheckA --seconds=40 > a.log 2>&1 &
+          A=$!
+          sleep 5
+          timeout 200 "$HOME/godot" --headless --path godot -s tests/online_client.gd -- --server="$URL" --name=CheckB --seconds=35 > b.log 2>&1 || true
+          wait $A || true
+          grep -a "RESULT\|online  \|SCRIPT ERROR" a.log b.log || true
+          grep -a "RESULT CheckA" a.log | grep -q "board_mismatches=0"
+          grep -a "RESULT CheckB" b.log | grep -q "board_mismatches=0"
+          grep -a "RESULT CheckB" b.log | grep -q "CheckA"
