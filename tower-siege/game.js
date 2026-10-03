@@ -63,11 +63,11 @@ function segCross(p1, p2, p3, p4) {
 // ---------- Armies and buildings ----------
 const NEUTRAL = 0, PLAYER = 1;
 const SIDES = [
-  { name: 'Neutral', color: '#a9afba', dark: '#6b7280', light: '#dde1e8' },
-  { name: 'Blue', color: '#3b8cff', dark: '#1d55c9', light: '#a9ccff' },
-  { name: 'Red', color: '#ff4848', dark: '#b8202b', light: '#ffa6a6' },
-  { name: 'Yellow', color: '#ffb526', dark: '#c47800', light: '#ffe08a' },
-  { name: 'Green', color: '#3ec44b', dark: '#1f7f2b', light: '#a3eba8' },
+  { name: 'Neutral', color: '#9eaabd', dark: '#66728a', light: '#dfe5ee' },
+  { name: 'Blue', color: '#3d9bff', dark: '#2366d6', light: '#b5dcff' },
+  { name: 'Red', color: '#ff5257', dark: '#cc2b3a', light: '#ffb3b5' },
+  { name: 'Yellow', color: '#ffc21f', dark: '#d98a00', light: '#ffe796' },
+  { name: 'Green', color: '#45d35a', dark: '#22963a', light: '#b3f2bb' },
 ];
 
 const TYPES = {
@@ -84,7 +84,7 @@ const TANK_POWER = 3;
 const WATCH_RANGE = 230;
 const WATCH_RELOAD = 0.55;
 const MAX_LEVEL = 60;
-const THEMES = ['grass', 'desert', 'snow', 'mine'];
+const THEMES = ['grass', 'desert', 'snow', 'beach'];
 
 const towerLevel = t => (t.units >= 60 ? 4 : t.units >= 30 ? 3 : t.units >= 10 ? 2 : 1);
 const maxRoads = t => Math.min(3, towerLevel(t));
@@ -788,7 +788,7 @@ function drawLabels() {
     const n = Math.floor(Math.max(0, t.units));
     const text = n >= CAP ? 'Max' : String(n);
     const y = s.topY - size * 0.55;
-    outlinedText(sendsTanks(t) ? '⇡' + text : text, s.topX, y, size, '#ffffff');
+    outlinedText(sendsTanks(t) ? '⇡' + text : text, s.topX, y, size, '#ffffff', SIDES[t.owner].dark);
     // Road dots: white = a free road, faded = a road in use
     const m = maxRoads(t);
     const dr = Math.max(2.5, size * 0.17);
@@ -799,7 +799,7 @@ function drawLabels() {
       ctx.fillStyle = i < m - t.roads.length ? '#ffffff' : 'rgba(255,255,255,0.35)';
       ctx.fill();
       ctx.lineWidth = 1.5;
-      ctx.strokeStyle = 'rgba(20,24,40,0.6)';
+      ctx.strokeStyle = SIDES[t.owner].dark;
       ctx.stroke();
     }
   }
@@ -1137,9 +1137,16 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) pause
 
 // ---------- Main loop ----------
 let last = performance.now();
+let slowFrames = 0, qualityLowered = false;
 function frame(now) {
-  const dt = Math.min(0.05, (now - last) / 1000);
+  const raw = (now - last) / 1000;
+  const dt = Math.min(0.05, raw);
   last = now;
+  // If the game keeps running below ~35 frames a second, switch to lighter graphics once
+  if (!qualityLowered && !document.hidden && raw < 0.5) {
+    slowFrames = raw > 1 / 35 ? slowFrames + 1 : Math.max(0, slowFrames - 2);
+    if (slowFrames > 150) { qualityLowered = true; R3D.lowerQuality(); }
+  }
   if (state === 'play') {
     for (let i = 0; i < speed; i++) update(dt);
     updateHud();

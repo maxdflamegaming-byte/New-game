@@ -28,23 +28,23 @@ const R3D = (() => {
 
   // Map looks. Each level picks one (see game.js).
   const THEMES = {
-    grass: { ground: '#8ed54f', field: '#97dc58', spot: '#7cc743', outer: '#f3dfa6', sky: '#9fdcff', props: 'pine', wall: 'hedge' },
-    desert: { ground: '#f4d48d', field: '#f8dd9e', spot: '#ecc77a', outer: '#e8a866', sky: '#ffe9c2', props: 'cactus', wall: 'crate' },
-    snow: { ground: '#cfeaf8', field: '#b9e2f6', spot: '#a9d7ef', outer: '#f6fbff', sky: '#dff3ff', props: 'snowpine', wall: 'ice' },
-    mine: { ground: '#80405a', field: '#8a4862', spot: '#733650', outer: '#5c2c46', sky: '#4a2338', props: 'crystal', wall: 'rock' },
+    grass: { ground: '#78cf45', field: '#86db50', spot: '#6cc23c', sky: '#bfe9ff', props: 'pine', wall: 'hedge', flowers: true },
+    desert: { ground: '#fbcf78', field: '#ffde97', spot: '#f0c06a', sky: '#ffeccc', props: 'cactus', wall: 'crate' },
+    snow: { ground: '#cfeafc', field: '#b6e1fb', spot: '#a2d4f5', sky: '#e8f7ff', props: 'snowpine', wall: 'ice' },
+    beach: { ground: '#3fcbec', field: '#ffe9b0', spot: '#f5d48c', sky: '#c9f1ff', props: 'palm', wall: 'toy', water: true },
   };
 
   // ---------- Materials ----------
-  const lam = (color, extra = {}) => new T.MeshLambertMaterial({ color, ...extra });
+  const lam = (color, extra = {}) => new T.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0, ...extra });
   const M = {};
   let TEAM = [];
   function makeMaterials() {
     Object.assign(M, {
-      wall: lam('#f1f3f7'), wallShade: lam('#cfd5df'), dark: lam('#2d3340'), metal: lam('#6d7684'), steel: lam('#9aa3b1'),
-      skin: lam('#ffcfa1'), boot: lam('#3b3f4a'), wood: lam('#a8693a'), woodDark: lam('#7d4b26'), trunk: lam('#8a5a32'),
-      leaf: lam('#ffffff'), rock: lam('#9a93a6'), ice: lam('#8fd3f5'), iceTop: lam('#e9f8ff'), snow: lam('#ffffff'),
-      crystal: lam('#c06cf0', { emissive: '#4a1670' }), cactus: lam('#5fb346'), barrel: lam('#5d6673'), tire: lam('#30333a'),
-      gold: lam('#ffd23f', { emissive: '#6b4a00' }), white: lam('#ffffff'),
+      wall: lam('#ffffff'), wallShade: lam('#cfdaea'), dark: lam('#46506b'), metal: lam('#8792a6', { roughness: 0.35, metalness: 0.3 }), steel: lam('#b4bdcc', { roughness: 0.3, metalness: 0.4 }),
+      skin: lam('#ffd3a8'), boot: lam('#5a6278'), wood: lam('#d38b4a'), woodDark: lam('#a8693a'), trunk: lam('#b07a48', { roughness: 0.8 }),
+      leaf: lam('#ffffff', { roughness: 0.7 }), rock: lam('#ffffff', { roughness: 0.8 }), ice: lam('#ffffff', { roughness: 0.15 }), iceTop: lam('#ffffff', { roughness: 0.2 }), snow: lam('#ffffff', { roughness: 0.9 }),
+      cactus: lam('#62c94a'), barrel: lam('#ffffff'), tire: lam('#4a5066'), white: lam('#ffffff'), eye: lam('#27304a', { roughness: 0.2 }),
+      palm: lam('#c99a5b', { roughness: 0.8 }), gold: lam('#ffd23f', { roughness: 0.3, metalness: 0.5 }), coconut: lam('#8a5a32'),
     });
     TEAM = sides.map(s => ({ team: lam(s.color), teamDark: lam(s.dark), teamLight: lam(s.light) }));
   }
@@ -115,14 +115,14 @@ const R3D = (() => {
     roadTex = sides.map(s => canvasTex(64, 64, (g, w, h) => {
       g.clearRect(0, 0, w, h);
       g.fillStyle = s.color;
-      g.globalAlpha = 0.5;
+      g.globalAlpha = 0.62;
       g.fillRect(2, 0, w - 4, h);
-      g.globalAlpha = 0.9;
+      g.globalAlpha = 1;
       g.fillRect(2, 0, 5, h);
       g.fillRect(w - 7, 0, 5, h);
       g.globalAlpha = 0.95;
-      g.fillStyle = s.light;
-      g.beginPath(); g.arc(w / 2, h / 2, 5, 0, TAU); g.fill();
+      g.fillStyle = '#ffffff';
+      g.beginPath(); g.arc(w / 2, h / 2, 5.5, 0, TAU); g.fill();
     }, true));
   }
 
@@ -134,14 +134,28 @@ const R3D = (() => {
       g.fillRect(0, 0, w, h);
       // The battlefield, a little brighter, with soft edges
       const m = margin * k;
+      const field = (grow, rr) => {
+        g.beginPath();
+        g.moveTo(m - grow + rr, m - grow); g.arcTo(w - m + grow, m - grow, w - m + grow, h - m + grow, rr); g.arcTo(w - m + grow, h - m + grow, m - grow, h - m + grow, rr);
+        g.arcTo(m - grow, h - m + grow, m - grow, m - grow, rr); g.arcTo(m - grow, m - grow, w - m + grow, m - grow, rr); g.closePath();
+      };
+      if (theme.water) {
+        // Sparkly sea, white foam, then the sandy island
+        for (let i = 0; i < 260; i++) {
+          g.strokeStyle = `rgba(255,255,255,${0.25 + r() * 0.35})`;
+          g.lineWidth = 2;
+          const x = r() * w, y = r() * h, l = 8 + r() * 18;
+          g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + l / 2, y - 3, x + l, y); g.stroke();
+        }
+        g.fillStyle = '#a8ecf8'; field(70 * k, 110 * k); g.fill();
+        g.fillStyle = '#ffffff'; field(48 * k, 100 * k); g.fill();
+        g.fillStyle = '#ffe7a8'; field(40 * k, 95 * k); g.fill();
+      }
       g.save();
       g.shadowColor = theme.spot;
       g.shadowBlur = 40 * k * 2;
       g.fillStyle = theme.field;
-      const rr = 60 * k;
-      g.beginPath();
-      g.moveTo(m + rr, m); g.arcTo(w - m, m, w - m, h - m, rr); g.arcTo(w - m, h - m, m, h - m, rr);
-      g.arcTo(m, h - m, m, m, rr); g.arcTo(m, m, w - m, m, rr); g.closePath();
+      field(0, 60 * k);
       g.fill();
       g.restore();
       // Soft patches and speckles so the ground isn't flat
@@ -158,7 +172,7 @@ const R3D = (() => {
         const x = r() * w, y = r() * h;
         g.fillRect(x, y, 2, 2);
       }
-      if (theme === THEMES.mine || theme === THEMES.desert) {
+      if (theme === THEMES.desert) {
         // Cracks in the dry ground
         g.strokeStyle = hexA(theme.spot, 0.8);
         g.lineWidth = 2;
@@ -190,20 +204,28 @@ const R3D = (() => {
     }
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = T.PCFSoftShadowMap;
+    renderer.toneMapping = T.NeutralToneMapping;
+    renderer.toneMappingExposure = 1.0;
     scene = new T.Scene();
+    // Soft light from every side, like a bright cloudy-sunny day
+    const pmrem = new T.PMREMGenerator(renderer);
+    scene.environment = pmrem.fromScene(new T.RoomEnvironment(), 0.04).texture;
+    scene.environmentIntensity = 0.42;
     camera = new T.PerspectiveCamera(30, 1, 20, 9000);
-    hemi = new T.HemisphereLight('#ffffff', '#8a9a7a', 2.2);
-    sun = new T.DirectionalLight('#fff6e8', 2.3);
+    hemi = new T.HemisphereLight('#dff2ff', '#ffeccc', 0.9);
+    sun = new T.DirectionalLight('#fff4e0', 2.6);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     sun.shadow.bias = -0.0005;
     sun.shadow.normalBias = 0.5;
-    sun.shadow.radius = 3;
+    sun.shadow.radius = 4;
+    sun.shadow.intensity = 0.6;
     scene.add(hemi, sun, sun.target);
     makeMaterials();
     makeTextures();
     makeUnitMeshes();
     makeFxPools();
+    makeClouds();
     api.ok = true;
     return true;
   };
@@ -265,8 +287,8 @@ const R3D = (() => {
     levelGroup = new T.Group();
     scene.add(levelGroup);
     theme = THEMES[themeName] || THEMES.grass;
-    scene.background = new T.Color(theme.outer);
-    scene.fog = new T.Fog(theme.outer, 3200, 6500);
+    scene.background = new T.Color(theme.sky);
+    scene.fog = new T.Fog(theme.sky, 5200, 9000);
     const r = rng(seed);
 
     // Ground: one big textured plane, the field drawn into it
@@ -279,7 +301,7 @@ const R3D = (() => {
     levelGroup.add(ground);
 
     // Props around the field (trees, barrels, crates...) and the walls that block roads
-    const props = { pine: [], snowpine: [], cactus: [], crystal: [], rock: [], barrel: [], crate: [], tire: [], w_crate: [], w_ice: [], w_hedge: [], w_rock: [] };
+    const props = { pine: [], snowpine: [], cactus: [], palm: [], flower: [], rock: [], barrel: [], crate: [], tire: [], w_crate: [], w_ice: [], w_hedge: [], w_toy: [] };
     const avoid = (x, z, d) => towers.some(t => Math.hypot(t.x - x, t.y - z) < d);
     for (let i = 0; i < 260; i++) {
       // Outside the field, in a band the camera can see
@@ -291,7 +313,7 @@ const R3D = (() => {
       else if (side === 2) { x = -out; z = -200 + r() * (fh + 400); }
       else { x = fw + out; z = -200 + r() * (fh + 400); }
       const k = r();
-      const kind = k < 0.62 ? theme.props : k < 0.74 ? 'rock' : k < 0.84 ? 'barrel' : k < 0.93 ? 'crate' : 'tire';
+      const kind = k < 0.6 ? theme.props : k < 0.7 ? 'rock' : k < 0.8 ? 'barrel' : k < 0.9 ? 'crate' : theme.flowers ? 'flower' : 'tire';
       props[kind].push({ x, z, s: 0.8 + r() * 0.7, a: r() * TAU, c: r() });
     }
     // A few trees inside the field near the edges
@@ -302,6 +324,14 @@ const R3D = (() => {
       if (edge === 0) z = inset; else if (edge === 1) z = fh - inset; else if (edge === 2) x = inset; else x = fw - inset;
       if (avoid(x, z, 160)) continue;
       props[theme.props].push({ x, z, s: 0.7 + r() * 0.4, a: r() * TAU, c: r() });
+    }
+    // Little flower patches in the grass
+    if (theme.flowers) {
+      for (let i = 0; i < 26; i++) {
+        const cx = r() * fw, cz = r() * fh;
+        if (avoid(cx, cz, 110) || rocks.some(k => Math.hypot(k.x - cx, k.y - cz) < k.r + 30)) continue;
+        for (let j = 0; j < 4; j++) props.flower.push({ x: cx + (r() - 0.5) * 36, z: cz + (r() - 0.5) * 36, s: 1 + r() * 0.4, a: r() * TAU, c: r() });
+      }
     }
     // Walls: each blocking circle gets a few props of the map's wall type
     for (const k of rocks) {
@@ -333,36 +363,48 @@ const R3D = (() => {
     im.receiveShadow = true;
     levelGroup.add(im);
   }
+  const BRIGHT = ['#ff5a5a', '#ffb92e', '#4fc3ff', '#7bdc4a', '#ff7ad1', '#9b7bff'];
   function addProps(P) {
     const merge = list => T.mergeGeometries(list.map(g => (g.index ? g.toNonIndexed() : g)));
     // Pine trees (green, or with snow on top)
-    const pineGeo = merge([new T.ConeGeometry(17, 22, 7).translate(0, 18, 0), new T.ConeGeometry(14, 19, 7).translate(0, 30, 0), new T.ConeGeometry(10, 16, 7).translate(0, 41, 0)]);
+    const pineGeo = merge([new T.ConeGeometry(17, 22, 8).translate(0, 18, 0), new T.ConeGeometry(14, 19, 8).translate(0, 30, 0), new T.ConeGeometry(10, 16, 8).translate(0, 41, 0)]);
     const trunkGeo = cyl(3, 4, 10, 6, 0, 5, 0);
     for (const kind of ['pine', 'snowpine']) {
       const list = P[kind];
       instanced(trunkGeo, M.trunk, list);
-      instanced(pineGeo, M.leaf, list, (p, c) => c.setHSL(0.33 + p.c * 0.04, 0.62, 0.36 + p.c * 0.08));
+      instanced(pineGeo, M.leaf, list, (p, c) => c.setHSL(0.3 + p.c * 0.06, 0.68, 0.44 + p.c * 0.1));
     }
-    if (P.snowpine.length) instanced(merge([new T.ConeGeometry(9, 9, 7).translate(0, 46, 0), new T.ConeGeometry(14, 5, 7).translate(0, 32, 0)]), M.snow, P.snowpine);
+    if (P.snowpine.length) instanced(merge([new T.ConeGeometry(9, 9, 8).translate(0, 46, 0), new T.ConeGeometry(14, 5, 8).translate(0, 32, 0)]), M.snow, P.snowpine);
     // Cacti
     instanced(merge([cyl(5, 5.5, 34, 8, 0, 17, 0), new T.SphereGeometry(5, 8, 4, 0, TAU, 0, Math.PI / 2).translate(0, 34, 0),
-      cyl(3.5, 3.5, 12, 6, 9, 20, 0), cyl(3.5, 3.5, 6, 6, 6, 15, 0).rotateZ(Math.PI / 2).translate(0, 0, 0)]), M.cactus, P.cactus);
-    // Crystals
-    instanced(merge([new T.OctahedronGeometry(9).scale(0.6, 1.8, 0.6).translate(0, 14, 0), new T.OctahedronGeometry(6).scale(0.6, 1.6, 0.6).rotateZ(0.5).translate(8, 9, 2),
-      new T.OctahedronGeometry(5).scale(0.6, 1.5, 0.6).rotateZ(-0.6).translate(-7, 8, -3)]), M.crystal, P.crystal);
+      cyl(3.5, 3.5, 12, 6, 9, 20, 0), cyl(3.5, 3.5, 6, 6, 6, 15, 0).rotateZ(Math.PI / 2)]), M.cactus, P.cactus);
+    // Palm trees: a leaning trunk, a crown of leaves and coconuts
+    const trunk = [];
+    for (let i = 0; i < 5; i++) trunk.push(cyl(3.6 - i * 0.3, 4 - i * 0.3, 10, 7, i * i * 0.5, 5 + i * 9.5, 0));
+    instanced(merge(trunk), M.palm, P.palm);
+    const leaves = [];
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * TAU;
+      leaves.push(new T.BoxGeometry(6, 1.4, 26).translate(0, 0, 13).rotateX(0.35).rotateY(a).translate(8, 50, 0));
+    }
+    instanced(merge(leaves), M.leaf, P.palm, (p, c) => c.setHSL(0.3, 0.7, 0.45 + p.c * 0.08));
+    instanced(merge([new T.SphereGeometry(2.6, 6, 5).translate(6, 47, 2), new T.SphereGeometry(2.6, 6, 5).translate(10, 47, -2), new T.SphereGeometry(2.6, 6, 5).translate(8, 46, 3)]), M.coconut, P.palm);
+    // Flowers: a stem and a bright head
+    instanced(cyl(0.7, 0.7, 8, 4, 0, 4, 0), M.cactus, P.flower, null, false);
+    instanced(merge([new T.SphereGeometry(3.2, 8, 6).scale(1, 0.6, 1).translate(0, 9, 0)]), M.leaf, P.flower, (p, c) => c.set(BRIGHT[Math.floor(p.c * BRIGHT.length)]), false);
     // Rocks
     const rockGeo = new T.DodecahedronGeometry(14, 0).scale(1, 0.7, 1).translate(0, 7, 0);
-    instanced(rockGeo, M.rock, P.rock, (p, c) => c.setHSL(0.7, 0.05, 0.55 + p.c * 0.15));
-    // Barrels, crates and old tires
-    instanced(merge([cyl(7, 7, 16, 10, 0, 8, 0), cyl(7.4, 7.4, 1.6, 10, 0, 4, 0), cyl(7.4, 7.4, 1.6, 10, 0, 12, 0)]), M.barrel, P.barrel);
-    instanced(box(18, 18, 18, 0, 9, 0), M.wood, P.crate, (p, c) => c.setHSL(0.07, 0.5, 0.42 + p.c * 0.1));
-    instanced(new T.TorusGeometry(8, 3.5, 6, 12).rotateX(Math.PI / 2).translate(0, 3.5, 0), M.tire, P.tire);
-    // Wall pieces: crates, ice blocks, hedges or boulders, depending on the map
-    instanced(merge([box(24, 22, 24, 0, 11, 0), box(25, 2.5, 4, 0, 11, 12.2), box(25, 2.5, 4, 0, 11, -12.2), box(4, 2.5, 25, 12.2, 11, 0), box(4, 2.5, 25, -12.2, 11, 0)]), M.wood, P.w_crate, (p, c) => c.setHSL(0.07, 0.55, 0.4 + p.c * 0.08));
-    instanced(box(25, 20, 25, 0, 10, 0), M.ice, P.w_ice, (p, c) => c.setHSL(0.56, 0.8, 0.62 + p.c * 0.1));
+    instanced(rockGeo, M.rock, P.rock, (p, c) => c.setHSL(0.6, 0.08, 0.72 + p.c * 0.12));
+    // Barrels in bright colors, crates and old tires
+    instanced(merge([cyl(7, 7, 16, 12, 0, 8, 0), cyl(7.5, 7.5, 1.8, 12, 0, 4, 0), cyl(7.5, 7.5, 1.8, 12, 0, 12, 0)]), M.barrel, P.barrel, (p, c) => c.set(BRIGHT[Math.floor(p.c * BRIGHT.length)]));
+    instanced(box(18, 18, 18, 0, 9, 0), M.wood, P.crate, (p, c) => c.setHSL(0.08, 0.6, 0.55 + p.c * 0.1));
+    instanced(new T.TorusGeometry(8, 3.5, 8, 14).rotateX(Math.PI / 2).translate(0, 3.5, 0), M.tire, P.tire);
+    // Wall pieces: crates, ice blocks, hedges or toy blocks, depending on the map
+    instanced(merge([box(24, 22, 24, 0, 11, 0), box(25, 2.5, 4, 0, 11, 12.2), box(25, 2.5, 4, 0, 11, -12.2), box(4, 2.5, 25, 12.2, 11, 0), box(4, 2.5, 25, -12.2, 11, 0)]), M.wood, P.w_crate, (p, c) => c.setHSL(0.08, 0.62, 0.52 + p.c * 0.08));
+    instanced(box(25, 20, 25, 0, 10, 0), M.ice, P.w_ice, (p, c) => c.setHSL(0.55, 0.85, 0.72 + p.c * 0.08));
     instanced(box(26, 3, 26, 0, 21.5, 0), M.iceTop, P.w_ice);
-    instanced(new T.IcosahedronGeometry(15, 0).scale(1.1, 0.95, 1.1).translate(0, 12, 0), M.leaf, P.w_hedge, (p, c) => c.setHSL(0.31, 0.6, 0.32 + p.c * 0.08));
-    instanced(new T.DodecahedronGeometry(16, 0).scale(1, 0.85, 1).translate(0, 11, 0), M.rock, P.w_rock, (p, c) => c.setHSL(0.78, 0.12, 0.42 + p.c * 0.12));
+    instanced(new T.IcosahedronGeometry(15, 1).scale(1.1, 0.95, 1.1).translate(0, 12, 0), M.leaf, P.w_hedge, (p, c) => c.setHSL(0.3, 0.65, 0.42 + p.c * 0.08));
+    instanced(merge([box(24, 22, 24, 0, 11, 0), cyl(4, 4, 4, 10, -6, 24, -6), cyl(4, 4, 4, 10, 6, 24, -6), cyl(4, 4, 4, 10, -6, 24, 6), cyl(4, 4, 4, 10, 6, 24, 6)]), M.leaf, P.w_toy, (p, c) => c.set(BRIGHT[Math.floor(p.c * BRIGHT.length)]));
   }
 
   // ---------- Buildings ----------
@@ -406,6 +448,7 @@ const R3D = (() => {
       P.add('team', hex(r - 0.5, r + 3, 5, 0, y + 8.5, 0));
       P.add('dark', box(12, 14, 2, 0, 15, (R + 0.5) * Math.cos(Math.PI / 6) + 1));
       P.add('wallShade', box(15, 2.5, 3, 0, 23, (R + 0.5) * Math.cos(Math.PI / 6) + 1.2));
+      info.flag = addFlag(g, side, 0, y + 11, 0);
       info.top = y + 11;
       info.capR = r;
     } else if (t.type === 'factory') {
@@ -432,6 +475,7 @@ const R3D = (() => {
         P.add('dark', cyl(5.5, 5.5, 3, 10, x, 6 + ch, -16));
         info.smoke.push(new T.Vector3(x, 6 + ch + 3, -16));
       }
+      info.flag = addFlag(g, side, -26, 6 + h + 7, 18);
       info.top = 6 + h + 12;
     } else {
       // Watchtower: a lookout on four legs with a pointed roof; it shoots at enemies in its circle
@@ -451,6 +495,7 @@ const R3D = (() => {
       for (const [x, z] of [[-17, -17], [17, -17], [-17, 17], [17, 17]]) P.add('wall', box(3, 14, 3, x, legH + 11, z));
       P.add('team', new T.ConeGeometry(33, 22, 4).rotateY(Math.PI / 4).translate(0, legH + 29, 0));
       P.add('teamDark', box(46, 2, 46, 0, legH + 18, 0));
+      info.flag = addFlag(g, side, 0, legH + 38, 0);
       info.top = legH + 42;
       info.muzzle = new T.Vector3(0, legH + 10, 0);
       // The range circle on the ground
@@ -460,14 +505,33 @@ const R3D = (() => {
       fill.position.y = 0.6;
       g.add(ring, fill);
       info.range = ring;
+      info.rangeFill = fill;
     }
     P.build(g, side);
     g.position.set(t.x, 0, t.y);
     info.top *= S;
     if (info.muzzle) info.muzzle.multiplyScalar(S);
     if (info.smoke) info.smoke.forEach(v => v.multiplyScalar(S));
-    if (info.range) { info.range.scale.setScalar(1 / S); info.range.parent.children.forEach(c => c !== info.range && c.geometry.type === 'CircleGeometry' && c.scale.setScalar(1 / S)); }
+    // The range circle is in field units, so it doesn't grow with the model
+    if (info.range) { info.range.scale.setScalar(1 / S); info.rangeFill.scale.setScalar(1 / S); }
     return info;
+  }
+
+  // A little flag in the army's color on top of a building
+  function addFlag(g, side, x, y, z) {
+    const pole = new T.Mesh(cyl(0.9, 0.9, 22, 6, 0, 11, 0), M.steel);
+    pole.position.set(x, y, z);
+    pole.castShadow = true;
+    const pivot = new T.Group();
+    pivot.position.set(x, y + 18, z);
+    const flag = new T.Mesh(new T.BoxGeometry(14, 9, 0.8).translate(7.4, 0, 0), TEAM[side].team);
+    flag.userData.kind = 'team';
+    flag.castShadow = true;
+    pivot.add(flag);
+    const knob = new T.Mesh(new T.SphereGeometry(1.8, 8, 6), M.gold);
+    knob.position.set(x, y + 23, z);
+    g.add(pole, pivot, knob);
+    return pivot;
   }
 
   function setTeam(info, side) {
@@ -488,6 +552,8 @@ const R3D = (() => {
       info.ring.position.set(t.x, 1.5, t.y);
       info.ring.visible = false;
       levelGroup.add(info.group, info.ring);
+      // Grew a level: bounce
+      if (models.has(t.id)) { info.bounce = 1; api.sparkle(t.x, t.y, sides[t.owner].light); }
       models.set(t.id, info);
     }
     if (info.side !== t.owner) { setTeam(info, t.owner); info.side = t.owner; }
@@ -512,10 +578,12 @@ const R3D = (() => {
     const white = () => lam('#ffffff');
     // Chibi soldier: big head, big helmet in the army's color, small body
     U.body = mk(box(9, 9, 6.5, 0, 11.5, 0), white(), MAX_SOLDIERS, true);
+    U.eyes = mk(T.mergeGeometries([new T.SphereGeometry(0.95, 6, 5).translate(-2, 20.6, 5.5), new T.SphereGeometry(0.95, 6, 5).translate(2, 20.6, 5.5)]), M.eye, MAX_SOLDIERS);
     U.head = mk(new T.SphereGeometry(5.6, 10, 8).translate(0, 21, 0.4), M.skin, MAX_SOLDIERS, true);
     U.helmet = mk(new T.SphereGeometry(6.4, 10, 5, 0, TAU, 0, Math.PI / 2).scale(1, 0.85, 1).translate(0, 22.2, 0), white(), MAX_SOLDIERS);
     U.brim = mk(cyl(7.2, 7.2, 1.4, 12, 0, 22.4, 0), white(), MAX_SOLDIERS);
     U.gun = mk(box(2, 2.4, 15, 5.8, 12, 3), M.dark, MAX_SOLDIERS);
+    U.belt = mk(box(9.4, 1.8, 6.9, 0, 9, 0), M.wall, MAX_SOLDIERS);
     U.leg = mk(box(3.4, 7, 3.4, 0, -3.5, 0), M.boot, MAX_SOLDIERS * 2);
     // Tank
     U.hull = mk(T.mergeGeometries([box(20, 8, 28, 0, 8, 0), box(16, 3, 8, 0, 9, 15)].map(g => g.toNonIndexed())), white(), MAX_TANKS, true);
@@ -524,7 +592,8 @@ const R3D = (() => {
     U.barrel = mk(new T.CylinderGeometry(1.8, 2, 20, 8).rotateX(Math.PI / 2).translate(0, 15.5, 14), M.steel, MAX_TANKS);
   }
 
-  const col = new T.Color();
+  const col = new T.Color(), col2 = new T.Color();
+  const SOLDIER_PARTS = ['body', 'head', 'helmet', 'brim', 'gun', 'eyes', 'belt'];
   function drawUnits(units, time) {
     let s = 0, k = 0;
     for (const u of units) {
@@ -548,10 +617,10 @@ const R3D = (() => {
         dummy.rotation.set(0, ang, Math.sin(ph) * 0.08);
         dummy.scale.setScalar(1.2 * S);
         dummy.updateMatrix();
-        for (const p of ['body', 'head', 'helmet', 'brim', 'gun']) U[p].setMatrixAt(s, dummy.matrix);
-        U.body.setColorAt(s, col.set(team.dark));
-        U.helmet.setColorAt(s, col.set(team.color));
-        U.brim.setColorAt(s, col.set(team.color));
+        for (const p of SOLDIER_PARTS) U[p].setMatrixAt(s, dummy.matrix);
+        U.body.setColorAt(s, col.set(team.color));
+        U.helmet.setColorAt(s, col.set(team.light).lerp(col2.set(team.color), 0.55));
+        U.brim.setColorAt(s, col.set(team.dark));
         const sw = Math.sin(ph) * 0.8;
         for (let l = 0; l < 2; l++) {
           leg.makeRotationX(l ? sw : -sw);
@@ -562,7 +631,7 @@ const R3D = (() => {
         s++;
       }
     }
-    for (const p of ['body', 'head', 'helmet', 'brim', 'gun']) U[p].count = s;
+    for (const p of SOLDIER_PARTS) U[p].count = s;
     U.leg.count = s * 2;
     for (const p of ['hull', 'track', 'turret', 'barrel']) U[p].count = k;
     for (const im of Object.values(U)) {
@@ -617,7 +686,7 @@ const R3D = (() => {
   }
 
   // ---------- Effects ----------
-  const puffs = [], fires = [], rings = [], shellMeshes = [], bits = [];
+  const puffs = [], fires = [], rings = [], shellMeshes = [], bits = [], stars = [];
   let plane = null;
   function makeFxPools() {
     for (let i = 0; i < 180; i++) {
@@ -626,6 +695,24 @@ const R3D = (() => {
       sp.userData = { life: 0 };
       scene.add(sp);
       puffs.push(sp);
+    }
+    const starTex = canvasTex(64, 64, (g, w) => {
+      g.translate(w / 2, w / 2);
+      g.fillStyle = '#ffffff';
+      g.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const r = i % 2 ? 11 : 30, a = (i / 10) * TAU - Math.PI / 2;
+        g.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+      }
+      g.closePath();
+      g.fill();
+    });
+    for (let i = 0; i < 60; i++) {
+      const sp = new T.Sprite(new T.SpriteMaterial({ map: starTex, transparent: true, depthWrite: false, fog: false }));
+      sp.visible = false;
+      sp.userData = { life: 0 };
+      scene.add(sp);
+      stars.push(sp);
     }
     const fireGeo = new T.IcosahedronGeometry(1, 1);
     for (let i = 0; i < 30; i++) {
@@ -636,7 +723,7 @@ const R3D = (() => {
       fires.push(m);
     }
     // Little colored chunks that fly off when soldiers clash (like confetti)
-    const bitGeo = new T.TetrahedronGeometry(4);
+    const bitGeo = new T.BoxGeometry(6, 1, 4);
     for (let i = 0; i < 220; i++) {
       const m = new T.Mesh(bitGeo, lam('#ffffff'));
       m.visible = false;
@@ -727,10 +814,24 @@ const R3D = (() => {
   api.capture = (x, y, side) => {
     ring(x, y, sides[side].color, 120);
     ring(x, y, '#ffffff', 90);
-    chunks(x, y, sides[side].color, 18, 140);
+    chunks(x, y, sides[side].color, 14, 150);
+    for (const c of ['#ffd23f', '#ff7ad1', '#ffffff', '#4fc3ff']) chunks(x, y, c, 5, 150);
+    api.sparkle(x, y, '#fff3a0');
     for (let i = 0; i < 8; i++) {
       const a = (i / 8) * TAU;
       puff(x + Math.cos(a) * 46, 4, y + Math.sin(a) * 46, '#ffffff', 30, 0.8, 14);
+    }
+  };
+  // Twinkling stars that float up from a building
+  api.sparkle = (x, y, color) => {
+    for (let i = 0; i < 7; i++) {
+      const p = take(stars);
+      if (!p) return;
+      const a = Math.random() * TAU, d = 20 + Math.random() * 40;
+      p.visible = true;
+      p.position.set(x + Math.cos(a) * d, 40 + Math.random() * 60, y + Math.sin(a) * d);
+      p.material.color.set(color);
+      p.userData = { life: 0.9 + Math.random() * 0.4, max: 1.3, size: 16 + Math.random() * 12 };
     }
   };
   api.muzzle = (t, tx, ty) => {
@@ -771,6 +872,16 @@ const R3D = (() => {
       b.rotation.x += u.spin * dt; b.rotation.y += u.spin * dt;
       b.scale.setScalar(Math.min(1, u.life * 3));
     }
+    for (const p of stars) {
+      if (!p.visible) continue;
+      const u = p.userData;
+      u.life -= dt;
+      if (u.life <= 0) { p.visible = false; continue; }
+      const k = 1 - u.life / u.max;
+      p.position.y += 40 * dt;
+      p.material.rotation += dt * 3;
+      p.scale.setScalar(u.size * Math.sin(Math.min(1, k * 1.4) * Math.PI));
+    }
     for (const r of rings) {
       if (!r.visible) continue;
       const u = r.userData;
@@ -792,6 +903,30 @@ const R3D = (() => {
     }
   }
 
+  // ---------- Cloud shadows ----------
+  const clouds = [];
+  function makeClouds() {
+    const mat = new T.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
+    for (let i = 0; i < 4; i++) {
+      const parts = [];
+      for (let j = 0; j < 5; j++) parts.push(new T.SphereGeometry(70 + Math.random() * 50, 10, 8).scale(1, 0.4, 1).translate((j - 2) * 80, 0, (Math.random() - 0.5) * 80).toNonIndexed());
+      const m = new T.Mesh(T.mergeGeometries(parts), mat);
+      m.castShadow = true;
+      m.userData.speed = 18 + Math.random() * 14;
+      m.userData.z = Math.random();
+      m.userData.x = Math.random();
+      scene.add(m);
+      clouds.push(m);
+    }
+  }
+  function moveClouds(time) {
+    for (const c of clouds) {
+      const span = fw + 1400;
+      const x = ((c.userData.x * span + time * c.userData.speed) % span) - 700;
+      c.position.set(x, 520, c.userData.z * (fh + 400) - 200);
+    }
+  }
+
   // ---------- Each frame ----------
   let lastTime = performance.now() / 1000;
   api.render = world => {
@@ -804,7 +939,15 @@ const R3D = (() => {
       const info = syncTower(t);
       // Bounce when it gains soldiers, squash when hit
       const pop = 1 + t.pop * 0.06;
-      info.group.scale.set(S * pop * (1 + t.flash * 0.03), S * pop * (1 - t.flash * 0.06), S * pop * (1 + t.flash * 0.03));
+      // Squash and stretch: a springy bounce after growing, a squash when hit
+      let sy = 1 - t.flash * 0.06, sx = 1 + t.flash * 0.03;
+      if (info.bounce > 0) {
+        info.bounce = Math.max(0, info.bounce - dt * 1.8);
+        const b = Math.sin((1 - info.bounce) * Math.PI * 3) * info.bounce * 0.18;
+        sy += b; sx -= b * 0.5;
+      }
+      info.group.scale.set(S * pop * sx, S * pop * sy, S * pop * sx);
+      if (info.flag) info.flag.rotation.y = Math.sin(time * 4 + t.id) * 0.4;
       if (info.range) {
         info.range.material.color.set(t.owner === 0 ? '#ffffff' : sides[t.owner].light);
         info.range.material.opacity = 0.75;
@@ -846,7 +989,16 @@ const R3D = (() => {
     }
 
     updateFx(dt, towers);
+    moveClouds(time);
     renderer.render(scene, camera);
+  };
+
+  // Fewer pixels and a smaller shadow map, for slow phones
+  api.lowerQuality = () => {
+    renderer.setPixelRatio(1);
+    sun.shadow.mapSize.set(1024, 1024);
+    sun.shadow.map?.dispose();
+    sun.shadow.map = null;
   };
 
   // ---------- Screen <-> field ----------
