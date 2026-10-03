@@ -48,6 +48,12 @@ func _process(_dt: float) -> void:
 		if box.is_empty():
 			continue
 		var data: PackedByteArray = box[0]
+		var frames := data.size() / 2
+		# Godot plays the sample AT loop_end before wrapping, so loop_end must be a real sample
+		# (setting it to the length read 2 bytes past the end and crashed on some phones). One
+		# extra sample, a copy of the first, keeps the loop seamless.
+		data.append(data[0])
+		data.append(data[1])
 		var s := AudioStreamWAV.new()
 		s.format = AudioStreamWAV.FORMAT_16_BITS
 		s.mix_rate = RATE
@@ -55,7 +61,7 @@ func _process(_dt: float) -> void:
 		s.data = data
 		s.loop_mode = AudioStreamWAV.LOOP_FORWARD
 		s.loop_begin = 0
-		s.loop_end = data.size() / 2
+		s.loop_end = frames
 		_streams[name] = s
 	if enabled and _playing_track != track and _streams.has(track):
 		_switch()

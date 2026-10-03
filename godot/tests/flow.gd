@@ -690,6 +690,15 @@ func _run() -> void:
 			break
 		await _wait(0.25)
 	ok("Music switches tracks (menu, game, boss)", main.music._playing_track == "boss" and main.music._streams.size() == 3)
+	# The loop end must be a real sample: Godot reads the sample AT loop_end, and one past the
+	# end of the data crashed the game on some phones
+	var loops_ok := true
+	for t in main.music._streams:
+		var st: AudioStreamWAV = main.music._streams[t]
+		var frames: int = st.data.size() / 2
+		if st.loop_end > frames - 1 or st.data.decode_s16((frames - 1) * 2) != st.data.decode_s16(0):
+			loops_ok = false
+	ok("Music loops stay inside their data (and wrap seamlessly)", loops_ok)
 	main.music.play_track("menu")
 
 	await _phase5()
