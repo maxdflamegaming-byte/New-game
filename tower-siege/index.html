@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#1d2b18">
+  <title>Tower Siege</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <div id="hud" class="hidden">
+    <div class="hud-left">
+      <button id="menu-btn" class="icon-btn" title="Pause (P)" aria-label="Pause"></button>
+      <span id="level-label">Level 1</span>
+    </div>
+    <div id="power" aria-label="Army strength"></div>
+    <div class="hud-right">
+      <span id="time-label">0:00</span>
+      <button id="speed-btn" class="icon-btn text" title="Game speed (F)" aria-label="Game speed">1×</button>
+    </div>
+  </div>
+
+  <div id="abilities" class="hidden"></div>
+  <div id="toast"></div>
+  <div id="hint" class="hidden"></div>
+
+  <div id="menu" class="screen show">
+    <div class="logo">
+      <div class="logo-icon">🏰</div>
+      <h1>Tower Siege</h1>
+      <p>Drag roads between towers, march your army, and take every tower on the map.</p>
+    </div>
+    <div class="coins-line"><span class="coin">●</span> <b id="menu-coins">0</b></div>
+    <button id="play-btn" class="big">Play · Level 1</button>
+    <div class="row">
+      <button id="levels-btn">Levels</button>
+      <button id="shop-btn">Upgrades</button>
+    </div>
+    <div class="row toggles">
+      <button id="sound-btn" class="icon-btn" title="Sound (M)" aria-label="Sound on/off"></button>
+      <button id="music-btn" class="icon-btn" title="Music (N)" aria-label="Music on/off"></button>
+      <button id="help-btn" class="icon-btn text" title="How to play" aria-label="How to play">?</button>
+    </div>
+  </div>
+
+  <div id="levels" class="screen">
+    <h2>Levels</h2>
+    <p class="small"><span id="levels-stars">0</span> ★ collected</p>
+    <div id="level-grid"></div>
+    <button class="back-btn">Back</button>
+  </div>
+
+  <div id="shop" class="screen">
+    <h2>Upgrades</h2>
+    <div class="coins-line"><span class="coin">●</span> <b id="shop-coins">0</b></div>
+    <div id="shop-list"></div>
+    <button class="back-btn">Back</button>
+  </div>
+
+  <div id="help" class="screen">
+    <h2>How to play</h2>
+    <ul class="help-list">
+      <li><b>Drag</b> from your blue tower to another tower to build a road. Soldiers march along it.</li>
+      <li>Soldiers <b>attack</b> enemy and gray towers, and <b>reinforce</b> your own. Bring a tower to zero to take it.</li>
+      <li><b>Swipe</b> across one of your roads to cut it.</li>
+      <li>Bigger towers hold <b>more roads</b>: 1 road below 10 soldiers, 2 from 10, 3 from 30.</li>
+      <li>Soldiers from different armies fight when they meet on the field.</li>
+      <li>🛡️ Forts take half damage · ⚙️ Workshops train twice as fast · 🎯 Cannons shoot passing enemies · Rocks block roads.</li>
+      <li>Take every enemy tower to win. Win fast for 3 stars.</li>
+    </ul>
+    <button class="back-btn">Got it</button>
+  </div>
+
+  <div id="paused" class="screen">
+    <h2>Paused</h2>
+    <button id="resume-btn" class="big">Resume</button>
+    <div class="row">
+      <button id="restart-btn">Restart</button>
+      <button id="quit-btn">Menu</button>
+    </div>
+    <div class="row toggles">
+      <button id="sound-btn2" class="icon-btn" title="Sound (M)" aria-label="Sound on/off"></button>
+      <button id="music-btn2" class="icon-btn" title="Music (N)" aria-label="Music on/off"></button>
+    </div>
+  </div>
+
+  <div id="win" class="screen">
+    <h2>Victory!</h2>
+    <div id="win-stars" class="stars"></div>
+    <p id="win-stats"></p>
+    <p id="win-coins" class="coins-line"></p>
+    <p id="win-unlock" class="unlock hidden"></p>
+    <button id="next-btn" class="big">Next level</button>
+    <div class="row">
+      <button id="replay-btn">Replay</button>
+      <button class="menu-btn2">Menu</button>
+    </div>
+  </div>
+
+  <div id="lose" class="screen">
+    <h2>Defeat</h2>
+    <p id="lose-text">Your last tower has fallen.</p>
+    <p id="lose-tip" class="small"></p>
+    <button id="retry-btn" class="big">Try again</button>
+    <div class="row">
+      <button id="lose-shop-btn">Upgrades</button>
+      <button class="menu-btn2">Menu</button>
+    </div>
+  </div>
+
+  <script src="../shared/sfx.js"></script>
+  <script src="../shared/music.js"></script>
+  <script src="../shared/icons.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>

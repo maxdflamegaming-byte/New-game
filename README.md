@@ -97,6 +97,21 @@ A small "survivors-like" game.
 - Effects: parallax starfield, glowing bullets with trails, wobbling enemies, damage numbers that pop (crits in gold), a level-up shockwave, screen shake and a low-health warning.
 - **Controls:** WASD / arrow keys, or drag on a touch screen. **P** or the pause button pauses, **M** mutes.
 
+### 🏰 Tower Siege (`tower-siege/`)
+A tower-conquest strategy game, inspired by games like Tower War.
+- **Drag** from one of your blue towers to any other tower to build a road. Soldiers march along it on their own: they attack enemy and gray towers and reinforce your own. Bring a tower below zero to take it.
+- **Swipe** across one of your roads to cut it (soldiers already on it keep marching).
+- Towers train soldiers and grow: below 10 soldiers a tower holds 1 road, from 10 it holds 2, from 30 it holds 3. Bigger towers also train and send faster. The dots under your towers show free road slots.
+- Soldiers from different armies fight when they meet on the field, so roads that cross or face each other turn into battles.
+- **Tower types:** 🏳️ Barracks, 🛡️ Fort (attackers do half damage), ⚙️ Workshop (trains twice as fast) and 🎯 Cannon (shoots enemy soldiers that march past). **Rocks** block roads.
+- **60 levels:** 3 tutorial levels, then generated mirrored maps that add forts, workshops, cannons, rocks, enemy outposts and, every third level from 12, a second (gold) enemy that also fights the red one.
+- **Enemy AI:** picks the cheapest nearby tower it can take, attacks from up to 3 towers at once, reinforces towers under attack and pulls back hopeless attacks. It thinks faster and gets bolder on later levels.
+- **Abilities:** 💣 Airstrike (from level 3: bomb a tower to destroy half its soldiers, at least 8) and 📯 Rally (from level 6: your roads send twice as fast and soldiers march faster for 8 seconds).
+- **Stars and coins:** win fast for up to 3 stars; every win pays coins (half for replays). Spend them on upgrades: Drill Sergeant (train faster), Swift Boots (march faster), Garrison (bigger starting towers) and Armory (extra ability charges).
+- A strength bar shows each army's share of all soldiers. There's a 2× speed button, a level select with your stars, a live AI battle behind the menu, and a tutorial hand on level 1.
+- On wide screens the field turns on its side, so your base starts on the left.
+- **Controls:** mouse or touch. **P** pauses, **F** toggles 2× speed, **1** / **2** use the abilities, **M** mutes sound, **N** toggles music.
+
 ## Play
 
 Open `index.html` in a browser, or serve the folder locally:
