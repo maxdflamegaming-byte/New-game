@@ -109,9 +109,13 @@ A bright cartoon tower-conquest strategy game in 3D, inspired by mobile games li
 - **Abilities:** ✈️ Airstrike (from level 3: a plane flies over and bombs a building, destroying half its soldiers, at least 8) and 📯 Rally (from level 6: your roads send twice as fast and your army moves faster for 8 seconds).
 - **Stars and coins:** win fast for up to 3 stars; every win pays coins (half for replays). Spend them on upgrades: Drill Sergeant (train faster), Swift Boots (move faster), Garrison (bigger starting buildings) and Armory (extra ability charges).
 - **Graphics:** real 3D with [three.js](https://threejs.org) (bundled in `tower-siege/vendor/`, MIT licence). Every model (stacked towers with waving flags, factories, bunkers, watchtowers, chibi soldiers with colored helmets and little faces, tanks, the plane, pine and palm trees, cacti, flowers, crates, toy blocks) is built in code from simple shapes, lit by soft image-based light with light shadows and drifting cloud shadows, chimney smoke, explosions, confetti and star sparkles on captures, and a springy bounce when a building grows. If a phone runs slowly, the game switches to lighter graphics on its own. A live AI battle plays behind the menu.
+- **PvP:**
+  - **Online 1-vs-1:** *Find opponent* matches you with someone near your trophy count, or *Create room* gives a 4-letter code for a friend to join. Each player sees their own army in blue at the bottom. Matches last up to 3 minutes (then the bigger army wins), with no upgrades or abilities so everyone starts equal. Win +30 🏆 (and 20 coins), lose −15 🏆; leagues go Bronze, Silver, Gold, Platinum and Diamond. If your opponent leaves, you win. It needs the small PvP server in `tower-siege/server/` (see [SERVER.md](SERVER.md)).
+  - **2 players, 1 phone:** blue plays from the bottom of the screen and red from the top, both at once.
+  - **Practice vs bot:** the same PvP rules against a computer player, clearly labeled, no trophies. Also offered if nobody is online after 20 seconds of searching.
 - A strength bar shows each army's share of all soldiers, plus a 2× speed button and a level select with your stars. On wide screens the field turns on its side, so your base starts on the left.
 - **Controls:** mouse or touch. **P** pauses, **F** toggles 2× speed, **1** / **2** use the abilities, **M** mutes sound, **N** toggles music.
-- Code: `game.js` (rules, levels, enemy AI, screens), `render3d.js` (the 3D scene, models and effects).
+- Code: `game.js` (rules, levels, enemy AI, screens), `render3d.js` (the 3D scene, models and effects), `pvp.js` (PvP modes, the connection and syncing the two phones), `server/server.js` (the PvP server).
 
 ## Play
 

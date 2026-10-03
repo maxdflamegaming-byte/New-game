@@ -397,3 +397,109 @@ button.big small { font-size: 15px; -webkit-text-stroke: 0; text-shadow: 0 1px 0
 
 .help-list { list-style: none; max-width: 460px; text-align: left; display: flex; flex-direction: column; gap: 8px; line-height: 1.4; }
 .help-list li { padding: 10px 14px; border-radius: 14px; background: rgba(255, 255, 255, 0.92); color: var(--ink); border: 3px solid var(--ink); }
+
+/* ---------- PvP ---------- */
+button.big.pvp {
+  background: linear-gradient(#ff8a7a, var(--red));
+  text-shadow: 0 3px 0 #b8202b, 0 0 2px #b8202b;
+  -webkit-text-stroke: 1.5px #9c1b25;
+  box-shadow: inset 0 -7px 0 rgba(150, 20, 30, 0.35), 0 5px 0 var(--ink);
+  font-size: 26px;
+  padding: 10px 30px 12px;
+}
+#menu .big + .big { margin-top: -4px; }
+.pvp-card { padding-top: 22px; width: min(420px, 100%); }
+.pvp-me { display: flex; align-items: center; gap: 12px; width: 100%; }
+.pvp-who { flex: 1; text-align: left; min-width: 0; }
+.pvp-who input, .room-row input {
+  width: 100%;
+  font: 400 20px var(--title);
+  color: var(--ink);
+  background: #fff;
+  border: 3px solid var(--ink);
+  border-radius: 12px;
+  padding: 4px 10px;
+  outline: none;
+}
+.league { display: inline-block; font-size: 12px; margin-top: 5px; padding: 2px 10px; border-radius: 10px; color: var(--ink); border: 2px solid var(--ink); }
+.avatar {
+  flex: none;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  border: 3px solid var(--ink);
+  display: grid;
+  place-items: center;
+  font: 400 30px var(--title);
+  color: #fff;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.3);
+  box-shadow: inset 0 -5px 0 rgba(0, 0, 0, 0.18), 0 3px 0 var(--ink);
+}
+.trophy-pill {
+  flex: none;
+  padding: 6px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--ink);
+  border: 3px solid var(--ink);
+  font: 400 20px var(--title);
+}
+.room-row { display: flex; gap: 8px; width: 100%; }
+.room-row input { width: 92px; flex: none; text-align: center; text-transform: uppercase; letter-spacing: 3px; }
+.room-row button { flex: 1; padding: 8px 10px; font-size: 16px; }
+.pvp-card .row button { font-size: 15px; padding: 9px 12px; }
+.status { min-height: 1.4em; color: #fff3a0; font-size: 14px; }
+.room-code {
+  font: 400 54px var(--title);
+  letter-spacing: 10px;
+  padding: 6px 22px 6px 32px;
+  border-radius: 18px;
+  background: #fff;
+  color: var(--ink);
+  border: 4px solid var(--ink);
+  box-shadow: 0 5px 0 var(--ink);
+  user-select: all;
+  -webkit-user-select: all;
+}
+.spinner {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 8px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.vs-row { display: flex; align-items: center; gap: 12px; width: min(460px, 100%); }
+.vs-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 18px 8px;
+  border-radius: 22px;
+  background: linear-gradient(color-mix(in srgb, var(--c) 70%, white), var(--c));
+  border: 4px solid var(--d);
+  box-shadow: 0 6px 0 var(--d);
+  animation: slide-l 0.5s cubic-bezier(0.3, 1.5, 0.5, 1);
+}
+.vs-card:last-child { animation-name: slide-r; }
+.vs-card .avatar { width: 72px; height: 72px; font-size: 40px; }
+.vs-card b { font: 400 20px var(--title); max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.vs-card span { font-size: 13px; }
+.vs {
+  font: 400 52px var(--title);
+  color: #ffd84a;
+  -webkit-text-stroke: 3px var(--ink);
+  text-shadow: 0 5px 0 var(--ink);
+  animation: pulse 0.5s infinite alternate;
+}
+@keyframes slide-l { from { transform: translateX(-120%); } }
+@keyframes slide-r { from { transform: translateX(120%); } }
+.trophy-change { font: 400 34px var(--title); display: flex; align-items: center; gap: 10px; }
+.trophy-change small { font-size: 15px; opacity: 0.85; }
+.trophy-change.up { color: #fff3a0; }
+.trophy-change.down { color: #ffd0d0; }
+.ribbon.red { background: linear-gradient(#ff8a7a, var(--red)); }
+#time-label.urgent { background: var(--red); animation: pulse 0.5s infinite alternate; }

@@ -604,7 +604,7 @@ const R3D = (() => {
         if (k >= MAX_TANKS) continue;
         dummy.position.set(u.x, Math.abs(Math.sin(time * 20 + u.id)) * 0.6, u.y);
         dummy.rotation.set(0, ang, 0);
-        dummy.scale.setScalar(1.15 * S);
+        dummy.scale.setScalar(1.55 * S);
         dummy.updateMatrix();
         for (const p of ['hull', 'track', 'turret', 'barrel']) U[p].setMatrixAt(k, dummy.matrix);
         U.hull.setColorAt(k, col.set(team.color));
@@ -613,9 +613,9 @@ const R3D = (() => {
       } else {
         if (s >= MAX_SOLDIERS) continue;
         const ph = time * 14 + u.id * 1.7;
-        dummy.position.set(u.x, Math.abs(Math.sin(ph)) * 2.6, u.y);
+        dummy.position.set(u.x, Math.abs(Math.sin(ph)) * 3.6, u.y);
         dummy.rotation.set(0, ang, Math.sin(ph) * 0.08);
-        dummy.scale.setScalar(1.2 * S);
+        dummy.scale.setScalar(1.75 * S);
         dummy.updateMatrix();
         for (const p of SOLDIER_PARTS) U[p].setMatrixAt(s, dummy.matrix);
         U.body.setColorAt(s, col.set(team.color));
@@ -645,7 +645,7 @@ const R3D = (() => {
     const dx = b.x - a.x, dz = b.y - a.y, L = Math.hypot(dx, dz) || 1;
     const ux = dx / L, uz = dz / L, nx = -uz, nz = ux;
     const start = 0, end = Math.max(1, L * grow);
-    const w = 20;
+    const w = 25;
     const x0 = a.x + ux * start, z0 = a.y + uz * start, x1 = a.x + ux * end, z1 = a.y + uz * end;
     const v1 = (end - start) / 30;
     const geo = new T.BufferGeometry();

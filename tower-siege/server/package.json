@@ -1,0 +1,15 @@
+{
+  "name": "tower-siege-server",
+  "private": true,
+  "description": "Tower Siege PvP server: pairs players into 1-vs-1 matches and passes their messages",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

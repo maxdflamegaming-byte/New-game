@@ -37,6 +37,7 @@
     </div>
     <div class="spacer"></div>
     <button id="play-btn" class="big">PLAY</button>
+    <button id="pvp-btn" class="big pvp">⚔️ PvP</button>
     <div class="row">
       <button id="levels-btn">Levels</button>
       <button id="shop-btn">Upgrades</button>
@@ -89,6 +90,61 @@
     </div>
   </div>
 
+  <div id="pvp" class="screen">
+    <h2 class="ribbon">PvP</h2>
+    <div class="panel pvp-card">
+      <div class="pvp-me">
+        <div class="avatar" id="pvp-avatar"></div>
+        <div class="pvp-who">
+          <input id="pvp-name" maxlength="16" aria-label="Your name" autocomplete="off" spellcheck="false">
+          <div id="pvp-league" class="league"></div>
+        </div>
+        <div class="trophy-pill">🏆 <b id="pvp-trophies">0</b></div>
+      </div>
+      <button id="find-btn" class="big">FIND OPPONENT</button>
+      <div class="room-row">
+        <button id="room-btn">Create room</button>
+        <input id="code-input" maxlength="4" placeholder="CODE" aria-label="Room code" autocomplete="off" spellcheck="false">
+        <button id="join-btn">Join</button>
+      </div>
+      <div class="row">
+        <button id="duo-btn">👥 2 players, 1 phone</button>
+        <button id="practice-btn">🤖 Practice vs bot</button>
+      </div>
+      <p id="pvp-status" class="status"></p>
+      <p class="small">Online: win +30 🏆, lose −15 🏆. No upgrades or abilities in PvP, everyone starts equal. Matches last up to 3 minutes.</p>
+    </div>
+    <button class="back-btn">Back</button>
+  </div>
+
+  <div id="pvp-wait" class="screen">
+    <h2 class="ribbon">Searching</h2>
+    <div class="spinner"></div>
+    <p id="wait-text">Connecting…</p>
+    <div id="wait-code" class="room-code hidden"></div>
+    <p id="wait-time" class="small">0:00</p>
+    <button id="wait-practice" class="hidden">🤖 Practice vs a bot while you wait</button>
+    <button id="wait-cancel">Cancel</button>
+  </div>
+
+  <div id="pvp-vs" class="screen">
+    <div id="vs-row" class="vs-row"></div>
+  </div>
+
+  <div id="pvp-end" class="screen">
+    <div class="panel">
+      <h2 id="end-title" class="ribbon win">Victory!</h2>
+      <p id="end-why"></p>
+      <div id="end-trophies" class="trophy-change"></div>
+      <p id="end-league" class="small"></p>
+      <button id="again-btn" class="big">Play again</button>
+      <div class="row">
+        <button id="end-pvp-btn">PvP</button>
+        <button class="menu-btn2">Menu</button>
+      </div>
+    </div>
+  </div>
+
   <div id="win" class="screen">
     <div class="panel">
     <h2 class="ribbon win">Victory!</h2>
@@ -123,5 +179,6 @@
   <script src="vendor/three.min.js"></script>
   <script src="render3d.js"></script>
   <script src="game.js"></script>
+  <script src="pvp.js"></script>
 </body>
 </html>

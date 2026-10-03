@@ -12,3 +12,16 @@ services:
     region: singapore # pick the region closest to most of your players
     autoDeploy: true
     branch: claude/game-ideas-brainstorm-g3f06o
+
+  # The Tower Siege PvP server (tower-siege/server, see SERVER.md). A small Node.js app that
+  # pairs players and passes their messages; the free plan sleeps the same way as above.
+  - type: web
+    name: tower-siege-server
+    runtime: node
+    rootDir: tower-siege/server
+    buildCommand: npm install --omit=dev
+    startCommand: node server.js
+    plan: free
+    region: singapore
+    autoDeploy: true
+    branch: claude/military-overturn-game-sewao2

@@ -89,10 +89,12 @@ const THEMES = ['grass', 'desert', 'snow', 'beach'];
 const towerLevel = t => (t.units >= 60 ? 4 : t.units >= 30 ? 3 : t.units >= 10 ? 2 : 1);
 const maxRoads = t => Math.min(3, towerLevel(t));
 const towerRadius = t => (t.type === 'factory' ? 70 : t.type === 'fort' ? 72 : 60) + towerLevel(t) * 3;
-const prodRate = t => (0.55 + 0.2 * towerLevel(t)) * TYPES[t.type].prod * (t.owner === PLAYER ? 1 + 0.08 * save.up.drill : 1);
+// Upgrades and abilities only count in the campaign; PvP is a fair fight
+const boosted = side => side === PLAYER && mode === 'campaign';
+const prodRate = t => (0.55 + 0.2 * towerLevel(t)) * TYPES[t.type].prod * (boosted(t.owner) ? 1 + 0.08 * save.up.drill : 1);
 const sendsTanks = t => t.type === 'factory';
-const sendInterval = t => (sendsTanks(t) ? 2.4 : 1) / (1.6 + 0.4 * towerLevel(t)) / (t.owner === PLAYER && rally > 0 ? 2 : 1);
-const unitSpeed = u => UNIT_SPEED * (u.power > 1 ? 0.8 : 1) * (u.owner === PLAYER ? (1 + 0.07 * save.up.boots) * (rally > 0 ? 1.4 : 1) : 1);
+const sendInterval = t => (sendsTanks(t) ? 2.4 : 1) / (1.6 + 0.4 * towerLevel(t)) / (boosted(t.owner) && rally > 0 ? 2 : 1);
+const unitSpeed = u => UNIT_SPEED * (u.power > 1 ? 0.8 : 1) * (boosted(u.owner) ? (1 + 0.07 * save.up.boots) * (rally > 0 ? 1.4 : 1) : 1);
 const themeFor = n => THEMES[Math.floor((n - 1) / 5) % THEMES.length];
 
 // ---------- Saved progress ----------
@@ -104,7 +106,7 @@ const UPGRADES = [
   { id: 'armory', icon: '💣', name: 'Armory', desc: '+1 Airstrike and +1 Rally every battle', max: 2, cost: [250, 600] },
 ];
 function defaultSave() {
-  return { level: 1, stars: {}, coins: 0, up: { drill: 0, boots: 0, garrison: 0, armory: 0 }, seen: {}, help: false };
+  return { level: 1, stars: {}, coins: 0, up: { drill: 0, boots: 0, garrison: 0, armory: 0 }, seen: {}, help: false, name: '', trophies: 0, pvpWins: 0, pvpLosses: 0 };
 }
 function loadSave() {
   try {
@@ -144,8 +146,10 @@ const TUTORIAL = [
   },
 ];
 
-function genLevel(n) {
-  const rng = mulberry32(n * 7919 + 13);
+// opts.pvp: a fair 1-vs-1 map from opts.seed (same start for both, no extra armies)
+function genLevel(n, opts = {}) {
+  const pvp = !!opts.pvp;
+  const rng = mulberry32(pvp ? opts.seed : n * 7919 + 13);
   const pick = (a, b) => a + rng() * (b - a);
   const mirror = p => ({ x: FW - p.x, y: FH - p.y });
   const per = Math.min(7, 3 + Math.floor(n / 7));
@@ -164,11 +168,11 @@ function genLevel(n) {
     if (n >= 7 && r < 0.45) return 'watch';
     return 'barracks';
   };
-  const baseUnits = 12 + Math.floor(n / 6);
+  const baseUnits = pvp ? 15 : 12 + Math.floor(n / 6);
   pts.forEach((p, i) => {
     const m = mirror(p);
     if (i === 0) {
-      towers.push([p.x, p.y, 1, 12], [m.x, m.y, 2, baseUnits]);
+      towers.push([p.x, p.y, 1, pvp ? baseUnits : 12], [m.x, m.y, 2, baseUnits]);
     } else {
       const u = neutralUnits(), type = rollType();
       towers.push([p.x, p.y, 0, u, type], [m.x, m.y, 0, u, type]);
@@ -180,12 +184,12 @@ function genLevel(n) {
   // Enemy outposts on later levels: the gray buildings nearest the red base turn red
   const enemyBase = { x: towers[1][0], y: towers[1][1] };
   const byEnemy = towers.filter(t => t[2] === 0 && t[1] < FH / 2).sort((a, b) => Math.hypot(a[0] - enemyBase.x, a[1] - enemyBase.y) - Math.hypot(b[0] - enemyBase.x, b[1] - enemyBase.y));
-  const outposts = Math.min(2, Math.floor((n - 10) / 15));
+  const outposts = pvp ? 0 : Math.min(2, Math.floor((n - 10) / 15));
   for (let k = 0; k < outposts && k < byEnemy.length - 1; k++) { byEnemy[k][2] = 2; byEnemy[k][3] = 8 + Math.floor(n / 6); }
   // Every third level from 12: a yellow army far from the red base. From 25, every fifth: green too.
   const extra = [];
-  if (n >= 12 && n % 3 === 0) extra.push(3);
-  if (n >= 25 && n % 5 === 0) extra.push(4);
+  if (!pvp && n >= 12 && n % 3 === 0) extra.push(3);
+  if (!pvp && n >= 25 && n % 5 === 0) extra.push(4);
   for (const side of extra) {
     const far = towers.filter(t => t[2] === 0 && t[1] < FH * 0.62).sort((a, b) => Math.abs(b[0] - enemyBase.x) - Math.abs(a[0] - enemyBase.x))[0];
     if (far) { far[2] = side; far[3] = baseUnits; }
@@ -238,6 +242,8 @@ function levelData(n) {
 
 // ---------- Game state ----------
 let state = 'menu';          // menu | play | paused | over
+let mode = 'campaign';       // campaign | online | duo | practice (see pvp.js)
+let sceneTheme = null;       // PvP maps pick their own look
 let level = 1;
 let towers = [], rocks = [], units = [];
 let floats = [], shells = [], cutMarks = [], strikes = [];
@@ -257,18 +263,20 @@ function placeWorld() {
   for (const r of rocks) Object.assign(r, toWorld(r.bx, r.by));
 }
 // Portrait level coordinates to the field as it's shown now
+// (an online guest sees the field turned around, so their base is at the bottom too)
 function toWorld(x, y) {
+  if (isGuest()) { x = FW - x; y = FH - y; }
   return landscape ? { x: FH - y, y: x } : { x, y };
 }
 function buildScene() {
-  R3D.build(sceneLevel * 101 + 7, themeFor(sceneLevel), towers, rocks);
+  R3D.build(sceneLevel * 101 + 7, sceneTheme || themeFor(sceneLevel), towers, rocks);
 }
 function sfx(name) { if (!quiet) Sfx.play(name); }
 
 function loadTowers(data, n) {
   towers = data.towers.map(([x, y, owner, u, type = 'barracks'], id) => ({
     id, bx: x, by: y, x, y, owner, type,
-    units: u + (owner === PLAYER && state !== 'menu' ? 3 * save.up.garrison : 0),
+    units: u + (owner === PLAYER && state !== 'menu' && mode === 'campaign' ? 3 * save.up.garrison : 0),
     roads: [], flash: 0, pop: 0, reload: 0, aim: -Math.PI / 2,
   }));
   rocks = data.rocks.map(([x, y, r], id) => ({ bx: x, by: y, x, y, r, seed: id * 31 + n }));
@@ -280,6 +288,8 @@ function loadTowers(data, n) {
 
 function startLevel(n) {
   level = n;
+  mode = 'campaign';
+  sceneTheme = null;
   state = 'play';
   const data = levelData(n);
   loadTowers(data, n);
@@ -291,10 +301,11 @@ function startLevel(n) {
   charges = { strike: n >= 3 ? 1 + save.up.armory : 0, rally: n >= 6 ? 1 + save.up.armory : 0 };
   hintData = data.hint || null;
   hintTimer = n === 2 ? 25 : 10;
-  drag = null; cut = null;
+  clearPointers();
   showScreen(null);
   $('hud').classList.remove('hidden');
   $('abilities').classList.remove('hidden');
+  $('speed-btn').classList.remove('hidden');
   $('level-label').textContent = `Level ${n}`;
   buildAbilities();
   setHint(hintData);
@@ -337,6 +348,7 @@ function spawnUnit(from, to, power = 1) {
 
 // ---------- Simulation ----------
 function update(dt) {
+  if (isGuest()) return guestUpdate(dt);
   gameTime += dt;
   if (rally > 0) rally = Math.max(0, rally - dt);
 
@@ -352,7 +364,7 @@ function update(dt) {
       if (t.units >= power) {
         t.units -= power;
         spawnUnit(t, r.to, power);
-        r.timer = sendInterval(t) * (power > 1 ? 1 : 0.6);
+        r.timer = sendInterval(t) * (power > 1 ? 1 : 0.8);
       } else r.timer = 0;
     }
     if (t.type === 'watch') updateWatch(t, dt);
@@ -362,12 +374,7 @@ function update(dt) {
   for (const u of units) {
     if (u.dead) continue;
     u.d += unitSpeed(u) * dt;
-    const L = dist(u.from, u.to);
-    const k = Math.min(1, u.d / L);
-    const nx = -(u.to.y - u.from.y) / L, ny = (u.to.x - u.from.x) / L;
-    const sway = Math.sin(k * Math.PI) * u.lane;
-    u.x = u.from.x + (u.to.x - u.from.x) * k + nx * sway;
-    u.y = u.from.y + (u.to.y - u.from.y) * k + ny * sway;
+    const L = placeUnit(u);
     if (u.d >= L - towerRadius(u.to) * 0.5) { arrive(u); u.dead = true; }
   }
 
@@ -387,6 +394,18 @@ function update(dt) {
     if (hintTimer <= 0 && !handShown) { hintData = null; setHint(null); }
   }
   checkEnd();
+  if (mode === 'online') hostTick(dt);
+}
+
+// A soldier's place on its road
+function placeUnit(u) {
+  const L = dist(u.from, u.to);
+  const k = Math.min(1, u.d / L);
+  const nx = -(u.to.y - u.from.y) / L, ny = (u.to.x - u.from.x) / L;
+  const sway = Math.sin(k * Math.PI) * u.lane;
+  u.x = u.from.x + (u.to.x - u.from.x) * k + nx * sway;
+  u.y = u.from.y + (u.to.y - u.from.y) * k + ny * sway;
+  return L;
 }
 
 function arrive(u) {
@@ -410,7 +429,11 @@ function capture(t, side) {
   t.roads = [];
   t.pop = 1.5;
   R3D.capture(t.x, t.y, side);
-  if (side === PLAYER) {
+  pvpEvent(['cap', t.id, side]);
+  if (mode === 'duo') {
+    sfx('capture');
+    floatText(t, 'Captured!', SIDES[side].light);
+  } else if (side === PLAYER) {
     stats.captured++;
     sfx('capture');
     floatText(t, 'Captured!', SIDES[PLAYER].light);
@@ -425,7 +448,7 @@ function capture(t, side) {
 
 // Soldiers of different armies that meet fight: the stronger one (a tank) survives, weakened
 function fight() {
-  const R = 16, cell = 32, grid = new Map();
+  const R = 22, cell = 40, grid = new Map();
   for (const u of units) {
     if (u.dead) continue;
     const key = Math.floor(u.x / cell) + ',' + Math.floor(u.y / cell);
@@ -449,6 +472,7 @@ function fight() {
             if (v.power <= 0) v.dead = true;
             if (u.owner === PLAYER || v.owner === PLAYER) stats.killed++;
             clash((u.x + v.x) / 2, (u.y + v.y) / 2, u.owner, v.owner);
+            pvpEvent(['cl', u.id, v.id]);
             if (u.dead) break;
           }
         }
@@ -475,6 +499,7 @@ function updateWatch(t, dt) {
   shells.push({ x1: t.x, y1: t.y, x2: best.x, y2: best.y, h: 50, time: 0.18, dur: 0.18 });
   R3D.muzzle(t, best.x, best.y);
   R3D.hit(best.x, best.y, best.owner);
+  pvpEvent(['sh', t.id, best.id]);
   if (t.owner === PLAYER || best.owner === PLAYER) sfx('shoot');
 }
 
@@ -490,6 +515,7 @@ function alive(side) {
 
 function checkEnd() {
   if (state !== 'play') return;
+  if (mode !== 'campaign') return pvpCheckEnd();
   if (!alive(PLAYER)) return endGame(false);
   if (aiSides.every(a => a.side === PLAYER || !alive(a.side))) endGame(true);
 }
@@ -659,8 +685,9 @@ function updateEffects(dt) {
 }
 
 // ---------- Input ----------
-let drag = null;   // { from, sx, sy, p }  dragging a road out of a building
-let cut = null;    // { last }            swiping to cut roads
+// Each finger (or the mouse) is either dragging a road out of a building or swiping to cut.
+const drags = new Map();   // pointerId -> { from, side, sx, sy, p }
+const cuts = new Map();    // pointerId -> { last, side }
 
 function toField(e) {
   return R3D.ground(e.clientX, e.clientY) || { x: -9999, y: -9999 };
@@ -677,9 +704,15 @@ function towerAt(sx, sy, slack = 1) {
   }
   return best;
 }
+// Which armies the person (or people) at this screen control
+function controls(side) {
+  return mode === 'duo' ? side === PLAYER || side === 2 : side === PLAYER;
+}
+// With two players on one phone, blue sits at the bottom and red at the top
+const sideAtScreen = sy => (mode === 'duo' && sy < H / 2 ? 2 : PLAYER);
 
 canvas.addEventListener('pointerdown', e => {
-  if (state !== 'play') return;
+  if (state !== 'play' || screenOpen) return;
   Sfx.unlock();
   canvas.setPointerCapture?.(e.pointerId);
   const p = toField(e);
@@ -689,49 +722,73 @@ canvas.addEventListener('pointerdown', e => {
     else toast('Pick an enemy or gray building');
     return;
   }
-  if (t && t.owner === PLAYER) drag = { from: t, sx: e.clientX, sy: e.clientY, p, id: e.pointerId };
-  else cut = { last: p, id: e.pointerId };
+  if (t && controls(t.owner)) drags.set(e.pointerId, { from: t, side: t.owner, sx: e.clientX, sy: e.clientY, p });
+  else cuts.set(e.pointerId, { last: p, side: sideAtScreen(e.clientY) });
 });
 canvas.addEventListener('pointermove', e => {
-  if (drag && e.pointerId === drag.id) { drag.sx = e.clientX; drag.sy = e.clientY; drag.p = toField(e); }
-  if (cut && e.pointerId === cut.id) { const p = toField(e); swipe(cut.last, p); cut.last = p; }
+  const d = drags.get(e.pointerId);
+  if (d) { d.sx = e.clientX; d.sy = e.clientY; d.p = toField(e); }
+  const c = cuts.get(e.pointerId);
+  if (c) { const p = toField(e); swipe(c.last, p, c.side); c.last = p; }
 });
 function endPointer(e) {
-  if (drag && e.pointerId === drag.id) {
+  const d = drags.get(e.pointerId);
+  if (d) {
+    drags.delete(e.pointerId);
     const t = towerAt(e.clientX, e.clientY, 1.2);
-    if (t && t !== drag.from && state === 'play') {
-      const res = tryLink(drag.from, t, PLAYER);
+    if (t && t !== d.from && state === 'play' && d.from.owner === d.side) {
+      const res = requestLink(d.from, t, d.side);
       if (res === true) {
         linksMade++;
         sfx('go');
         if (handShown) { handShown = false; hintData = null; setHint(null); }
       } else if (res === 'full') {
-        toast(`This building can hold ${maxRoads(drag.from)} road${maxRoads(drag.from) > 1 ? 's' : ''}. More soldiers unlock more.`);
+        toast(`This building can hold ${maxRoads(d.from)} road${maxRoads(d.from) > 1 ? 's' : ''}. More soldiers unlock more.`);
         sfx('beep');
       } else if (res === 'blocked') {
         toast('A wall is in the way');
         sfx('beep');
       }
     }
-    drag = null;
   }
-  if (cut && e.pointerId === cut.id) cut = null;
+  cuts.delete(e.pointerId);
 }
 canvas.addEventListener('pointerup', endPointer);
 canvas.addEventListener('pointercancel', endPointer);
 canvas.addEventListener('contextmenu', e => e.preventDefault());
+function clearPointers() { drags.clear(); cuts.clear(); }
 
-// Cut any of your roads the swipe crosses
-function swipe(a, b) {
+// Build a road. Online, a guest asks the host, who runs the battle.
+function requestLink(a, b, side) {
+  if (isGuest()) {
+    const ok = canLink(a, b, side);
+    if (ok === true) Net.send({ t: 'cmd', c: 'link', a: a.id, b: b.id });
+    return ok;
+  }
+  return tryLink(a, b, side);
+}
+// Would tryLink work? (without building anything)
+function canLink(a, b, side) {
+  if (!a || !b || a === b) return 'same';
+  if (a.owner !== side) return 'not yours';
+  if (hasRoad(a, b)) return 'exists';
+  if (blocked(a, b)) return 'blocked';
+  if (a.roads.length >= maxRoads(a)) return 'full';
+  return true;
+}
+
+// Cut any of that army's roads the swipe crosses
+function swipe(a, b, side = PLAYER) {
   cutMarks.push({ x1: a.x, y1: a.y, x2: b.x, y2: b.y, life: 0.35 });
   for (const t of towers) {
-    if (t.owner !== PLAYER) continue;
+    if (t.owner !== side) continue;
     for (let i = t.roads.length - 1; i >= 0; i--) {
       const hit = segCross(a, b, t, t.roads[i].to);
       if (hit) {
+        if (isGuest()) Net.send({ t: 'cmd', c: 'cut', a: t.id, b: t.roads[i].to.id });
         cutRoad(t, i);
         cutsMade++;
-        R3D.hit(hit.x, hit.y, PLAYER);
+        R3D.hit(hit.x, hit.y, side);
         sfx('cut');
         if (hintData && level === 2) { hintData = null; setHint(null); }
       }
@@ -741,10 +798,10 @@ function swipe(a, b) {
 
 window.addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
-  if (k === 'p' || k === 'escape') { if (state === 'play') pause(); else if (state === 'paused') resume(); }
+  if (k === 'p' || k === 'escape') { if (screenOpen === 'paused') resume(); else if (state === 'play') pause(); }
   else if (k === 'm') toggleSound();
   else if (k === 'n') toggleMusic();
-  else if (k === 'f' && state === 'play') toggleSpeed();
+  else if (k === 'f' && state === 'play' && mode !== 'online') toggleSpeed();
   else if (k === '1' && state === 'play') useAbility('strike');
   else if (k === '2' && state === 'play') useAbility('rally');
 });
@@ -756,14 +813,14 @@ const P = (x, y, h = 0) => R3D.project(x, y, h);
 // What ring to draw under a building: the drag source, a drag target, or an airstrike target
 function highlight(t) {
   if (armed === 'strike' && t.owner !== PLAYER) return 'target';
-  if (!drag) return null;
-  if (t === drag.from) return 'source';
-  if (dragOver === t) return dragOk(t) ? 'over' : 'bad';
+  for (const d of drags.values()) {
+    if (t === d.from) return 'source';
+    if (d.over === t) return dragOk(d, t) ? 'over' : 'bad';
+  }
   return null;
 }
-let dragOver = null;
-function dragOk(t) {
-  const a = drag.from;
+function dragOk(d, t) {
+  const a = d.from;
   return t !== a && !hasRoad(a, t) && !blocked(a, t) && a.roads.length < maxRoads(a);
 }
 
@@ -806,29 +863,30 @@ function drawLabels() {
 }
 
 function drawDrag() {
-  if (!drag) return;
-  const a = drag.from;
-  const start = P(a.x, a.y, 4);
-  let end = { x: drag.sx, y: drag.sy }, ok = a.roads.length < maxRoads(a) && !blocked(a, drag.p);
-  if (dragOver && dragOver !== a) { end = P(dragOver.x, dragOver.y, 4); ok = dragOk(dragOver); }
-  const col = ok ? SIDES[PLAYER].color : '#ff4a3a';
-  ctx.lineCap = 'round';
-  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-  ctx.lineWidth = 16;
-  ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(end.x, end.y); ctx.stroke();
-  ctx.strokeStyle = col;
-  ctx.lineWidth = 10;
-  ctx.setLineDash([14, 10]);
-  ctx.lineDashOffset = -performance.now() / 20;
-  ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(end.x, end.y); ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.fillStyle = col;
-  ctx.beginPath(); ctx.arc(end.x, end.y, 9, 0, TAU); ctx.fill();
+  for (const d of drags.values()) {
+    const a = d.from;
+    const start = P(a.x, a.y, 4);
+    let end = { x: d.sx, y: d.sy }, ok = a.roads.length < maxRoads(a) && !blocked(a, d.p);
+    if (d.over && d.over !== a) { end = P(d.over.x, d.over.y, 4); ok = dragOk(d, d.over); }
+    const col = ok ? SIDES[d.side].color : '#ff4a3a';
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.lineWidth = 16;
+    ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(end.x, end.y); ctx.stroke();
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 10;
+    ctx.setLineDash([14, 10]);
+    ctx.lineDashOffset = -performance.now() / 20;
+    ctx.beginPath(); ctx.moveTo(start.x, start.y); ctx.lineTo(end.x, end.y); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = col;
+    ctx.beginPath(); ctx.arc(end.x, end.y, 9, 0, TAU); ctx.fill();
+  }
 }
 
 // A ghost hand that shows how to drag a road, on the first level
 function drawHand() {
-  if (!handShown || drag) return;
+  if (!handShown || drags.size) return;
   const from = towers.find(t => t.owner === PLAYER);
   const to = towers.filter(t => t.owner === NEUTRAL).sort((a, b) => a.units - b.units)[0];
   if (!from || !to) return;
@@ -890,7 +948,7 @@ function drawOverlay() {
 }
 
 function draw() {
-  dragOver = drag ? towerAt(drag.sx, drag.sy, 1.2) : null;
+  for (const d of drags.values()) d.over = towerAt(d.sx, d.sy, 1.2);
   R3D.render({ towers, units, shells, strikes, threatOn, highlight, gameTime });
   drawOverlay();
   const gl = $('gl');
@@ -906,7 +964,7 @@ function updateHud() {
   const tot = sideTotals();
   const sum = tot.reduce((a, b) => a + b, 0) || 1;
   const box = $('power');
-  const present = [PLAYER, ...aiSides.map(a => a.side).filter(s => s !== PLAYER), NEUTRAL];
+  const present = mode === 'campaign' ? [PLAYER, ...aiSides.map(a => a.side).filter(s => s !== PLAYER), NEUTRAL] : [PLAYER, 2, NEUTRAL];
   if (box.dataset.sides !== present.join()) {
     box.dataset.sides = present.join();
     box.innerHTML = present.map(sd => `<div data-side="${sd}" style="background:${SIDES[sd].color}"></div>`).join('');
@@ -916,7 +974,9 @@ function updateHud() {
     el.style.flexGrow = tot[sd] / sum;
     el.textContent = sd !== NEUTRAL && tot[sd] / sum > 0.12 ? Math.floor(tot[sd]) : '';
   }
-  $('time-label').textContent = fmtTime(gameTime);
+  // PvP counts down to the end of the match
+  $('time-label').textContent = fmtTime(mode === 'campaign' ? gameTime : Math.max(0, PVP_TIME - gameTime));
+  $('time-label').classList.toggle('urgent', mode !== 'campaign' && PVP_TIME - gameTime < 20);
   refreshAbilities();
 }
 
@@ -944,6 +1004,8 @@ function showScreen(id) {
 let returnTo = 'menu';
 function openMenu() {
   state = 'menu';
+  mode = 'campaign';
+  sceneTheme = null;
   armed = null;
   rally = 0;
   demoTimer = 0;
@@ -1018,13 +1080,16 @@ function openShop(from = 'menu') {
 
 function pause() {
   if (state !== 'play') return;
+  // An online match keeps going: the other player is still playing
+  if (mode === 'online') { clearPointers(); showScreen('paused'); refreshToggles(); return; }
   state = 'paused';
-  drag = cut = null;
+  clearPointers();
   showScreen('paused');
   refreshToggles();
   Music.stop();
 }
 function resume() {
+  if (mode === 'online' && screenOpen === 'paused') { showScreen(null); return; }
   if (state !== 'paused') return;
   state = 'play';
   showScreen(null);
@@ -1051,8 +1116,9 @@ function starsFor(time) {
 }
 
 function endGame(won) {
+  if (mode !== 'campaign') return;
   state = 'over';
-  drag = cut = null;
+  clearPointers();
   armed = null;
   setHint(null);
   refreshAbilities();
@@ -1124,8 +1190,8 @@ for (const b of document.querySelectorAll('.back-btn')) b.addEventListener('clic
 $('menu-btn').addEventListener('click', pause);
 $('speed-btn').addEventListener('click', toggleSpeed);
 $('resume-btn').addEventListener('click', resume);
-$('restart-btn').addEventListener('click', () => startLevel(level));
-$('quit-btn').addEventListener('click', openMenu);
+$('restart-btn').addEventListener('click', () => (mode === 'campaign' ? startLevel(level) : pvpRestart()));
+$('quit-btn').addEventListener('click', () => { if (mode === 'online') Net.leave(); openMenu(); });
 $('next-btn').addEventListener('click', () => startLevel(Math.min(level + 1, MAX_LEVEL)));
 $('replay-btn').addEventListener('click', () => startLevel(level));
 $('retry-btn').addEventListener('click', () => startLevel(level));
@@ -1133,12 +1199,13 @@ $('lose-shop-btn').addEventListener('click', () => openShop('lose'));
 for (const b of document.querySelectorAll('.menu-btn2')) b.addEventListener('click', openMenu);
 for (const id of ['sound-btn', 'sound-btn2']) $(id).addEventListener('click', toggleSound);
 for (const id of ['music-btn', 'music-btn2']) $(id).addEventListener('click', toggleMusic);
-document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && mode !== 'online') pause(); });
 
 // ---------- Main loop ----------
 let last = performance.now();
 let slowFrames = 0, qualityLowered = false;
 function frame(now) {
+  requestAnimationFrame(frame);
   const raw = (now - last) / 1000;
   const dt = Math.min(0.05, raw);
   last = now;
@@ -1156,7 +1223,6 @@ function frame(now) {
     menuDemo(dt);
   }
   draw();
-  requestAnimationFrame(frame);
 }
 
 // A battle between AI armies plays behind the menu
@@ -1171,16 +1237,8 @@ function menuDemo(dt) {
     demoTimer = 90;
   }
   demoTimer -= dt;
+  mode = 'campaign';
   quiet = true;
   update(dt);
   quiet = false;
-}
-
-// ---------- Start ----------
-if (!R3D.init(canvas, SIDES)) {
-  document.body.innerHTML = '<p style="padding:24px;text-align:center">Tower Siege needs WebGL, which this browser doesn\'t support.</p>';
-} else {
-  resize();
-  refreshMenu();
-  requestAnimationFrame(frame);
 }

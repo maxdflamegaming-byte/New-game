@@ -73,3 +73,40 @@ When you send the address, I'll:
 - **Updates:** every time the game's code changes on GitHub, Render rebuilds and restarts the server by itself (`autoDeploy`). With Fly, run `fly deploy` again.
 - **Old phones:** after an update that changes how the game talks to the server, older app versions are told to update.
 - **Size:** one small server handles about 50 rooms (400 players at once). Past that, move up a plan, or add a second server in another region and I'll add region picking.
+
+---
+
+# Tower Siege PvP server
+
+Tower Siege's online PvP uses its own small server, `tower-siege/server/server.js` (Node.js, one package: `ws`). It only **pairs players** (quick match by trophies, or a 4-letter friend code) and **passes messages** between the two. One phone runs the battle and sends what's happening about 10 times a second (a few KB each); the other sends its moves. Nothing is stored.
+
+Until the server is online, the PvP screen says it can't reach it, and **2 players on one phone** and **Practice vs bot** still work.
+
+## Put it on Render (free, all in the browser)
+
+1. Go to <https://render.com> and sign in with GitHub (the same account as for the Color Claim server).
+2. Click **New → Web Service** and pick **maxdflamegaming-byte/New-game**.
+3. Fill in:
+   - **Name:** `tower-siege-server`
+   - **Branch:** `claude/military-overturn-game-sewao2` (or `main` once it's merged)
+   - **Root Directory:** `tower-siege/server`
+   - **Runtime:** Node
+   - **Build Command:** `npm install --omit=dev`
+   - **Start Command:** `node server.js`
+   - **Instance Type:** Free
+4. Click **Create Web Service**. After a minute or two the logs end with
+   `[server] Tower Siege server on port 10000, protocol 1`.
+5. The address at the top should be `https://tower-siege-server.onrender.com`. The game already connects to `wss://tower-siege-server.onrender.com`. **If Render gave it a different address, send it to me** and I'll change `PVP_SERVER` in `tower-siege/pvp.js`.
+
+(`render.yaml` also lists this service, so a Blueprint synced from this branch creates it the same way.)
+
+Like the Color Claim server, the free plan **sleeps** after about 15 minutes without players. The first player then waits up to a minute; the game shows *"Waking up the server…"* meanwhile.
+
+## Try it on your own computer
+
+```sh
+cd tower-siege/server
+npm install
+node server.js            # listens on port 8090
+```
+Then open `tower-siege/index.html?server=ws://localhost:8090` in two browser windows. The browser tests do the same with two players: `node tests/run.js siege-pvp`.
