@@ -3,8 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <meta name="theme-color" content="#1d2b18">
+  <meta name="theme-color" content="#2b3a7a">
   <title>Tower Siege</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@700;800;900&display=swap">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -27,13 +30,13 @@
   <div id="hint" class="hidden"></div>
 
   <div id="menu" class="screen show">
+    <div class="top-coins"><span class="coin"></span><b id="menu-coins">0</b></div>
     <div class="logo">
-      <div class="logo-icon">🏰</div>
-      <h1>Tower Siege</h1>
-      <p>Drag roads between towers, march your army, and take every tower on the map.</p>
+      <h1><span>TOWER</span><span>SIEGE</span></h1>
+      <p>Drag roads between towers, march your army and take every building on the map.</p>
     </div>
-    <div class="coins-line"><span class="coin">●</span> <b id="menu-coins">0</b></div>
-    <button id="play-btn" class="big">Play · Level 1</button>
+    <div class="spacer"></div>
+    <button id="play-btn" class="big">PLAY</button>
     <div class="row">
       <button id="levels-btn">Levels</button>
       <button id="shop-btn">Upgrades</button>
@@ -46,35 +49,35 @@
   </div>
 
   <div id="levels" class="screen">
-    <h2>Levels</h2>
+    <h2 class="ribbon">Levels</h2>
     <p class="small"><span id="levels-stars">0</span> ★ collected</p>
     <div id="level-grid"></div>
     <button class="back-btn">Back</button>
   </div>
 
   <div id="shop" class="screen">
-    <h2>Upgrades</h2>
-    <div class="coins-line"><span class="coin">●</span> <b id="shop-coins">0</b></div>
+    <h2 class="ribbon">Upgrades</h2>
+    <div class="coins-line"><span class="coin"></span><b id="shop-coins">0</b></div>
     <div id="shop-list"></div>
     <button class="back-btn">Back</button>
   </div>
 
   <div id="help" class="screen">
-    <h2>How to play</h2>
+    <h2 class="ribbon">How to play</h2>
     <ul class="help-list">
       <li><b>Drag</b> from your blue tower to another tower to build a road. Soldiers march along it.</li>
       <li>Soldiers <b>attack</b> enemy and gray towers, and <b>reinforce</b> your own. Bring a tower to zero to take it.</li>
       <li><b>Swipe</b> across one of your roads to cut it.</li>
       <li>Bigger towers hold <b>more roads</b>: 1 road below 10 soldiers, 2 from 10, 3 from 30.</li>
       <li>Soldiers from different armies fight when they meet on the field.</li>
-      <li>🛡️ Forts take half damage · ⚙️ Workshops train twice as fast · 🎯 Cannons shoot passing enemies · Rocks block roads.</li>
+      <li>🏭 Tank factories send tanks worth 3 soldiers · 🛡️ Bunkers take half damage · 🗼 Watchtowers shoot enemies in their circle · Walls block roads.</li>
       <li>Take every enemy tower to win. Win fast for 3 stars.</li>
     </ul>
     <button class="back-btn">Got it</button>
   </div>
 
   <div id="paused" class="screen">
-    <h2>Paused</h2>
+    <h2 class="ribbon">Paused</h2>
     <button id="resume-btn" class="big">Resume</button>
     <div class="row">
       <button id="restart-btn">Restart</button>
@@ -87,9 +90,10 @@
   </div>
 
   <div id="win" class="screen">
-    <h2>Victory!</h2>
+    <div class="panel">
+    <h2 class="ribbon win">Victory!</h2>
     <div id="win-stars" class="stars"></div>
-    <p id="win-stats"></p>
+    <div id="win-stats" class="stat-row"></div>
     <p id="win-coins" class="coins-line"></p>
     <p id="win-unlock" class="unlock hidden"></p>
     <button id="next-btn" class="big">Next level</button>
@@ -97,22 +101,27 @@
       <button id="replay-btn">Replay</button>
       <button class="menu-btn2">Menu</button>
     </div>
+    </div>
   </div>
 
   <div id="lose" class="screen">
-    <h2>Defeat</h2>
-    <p id="lose-text">Your last tower has fallen.</p>
+    <div class="panel">
+    <h2 class="ribbon lose">Defeat</h2>
+    <p id="lose-text">Your last building has fallen.</p>
     <p id="lose-tip" class="small"></p>
     <button id="retry-btn" class="big">Try again</button>
     <div class="row">
       <button id="lose-shop-btn">Upgrades</button>
       <button class="menu-btn2">Menu</button>
     </div>
+    </div>
   </div>
 
   <script src="../shared/sfx.js"></script>
   <script src="../shared/music.js"></script>
   <script src="../shared/icons.js"></script>
+  <script src="vendor/three.min.js"></script>
+  <script src="render3d.js"></script>
   <script src="game.js"></script>
 </body>
 </html>

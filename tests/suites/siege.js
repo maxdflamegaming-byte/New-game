@@ -23,7 +23,8 @@ const { chromium, ROOT, OUT } = require('../lib');
   // A real drag from your tower to a gray one builds a road
   const pts = await page.evaluate(() => {
     const me = towers.find(t => t.owner === PLAYER), g = towers.find(t => t.owner === NEUTRAL);
-    return { a: { x: wx(me.x), y: wy(me.y) }, b: { x: wx(g.x), y: wy(g.y) } };
+    const a = R3D.towerScreen(me), b = R3D.towerScreen(g);
+    return { a, b };
   });
   await page.mouse.move(pts.a.x, pts.a.y);
   await page.mouse.down();
@@ -40,8 +41,7 @@ const { chromium, ROOT, OUT } = require('../lib');
   // Swipe to cut
   const mid = await page.evaluate(() => {
     const me = towers.find(t => t.owner === PLAYER), b = me.roads[0].to;
-    const x = wx((me.x + b.x) / 2), y = wy((me.y + b.y) / 2);
-    return { x, y };
+    return P((me.x + b.x) / 2, (me.y + b.y) / 2, 0);
   });
   await page.mouse.move(mid.x - 60, mid.y - 10);
   await page.mouse.down();
@@ -52,10 +52,10 @@ const { chromium, ROOT, OUT } = require('../lib');
   // Rules, checked directly with the simulation
   const rules = await page.evaluate(() => {
     const r = {};
-    aiSides = [];
+    for (const a of aiSides) a.timer = 1e9;
     units = [];
     const [me, g1, g2, foe] = towers;
-    me.units = 5; me.roads = [];
+    me.units = 5; me.roads = []; g1.roads = []; g2.roads = [];
     r.oneRoadSmall = tryLink(me, g1, PLAYER) === true && tryLink(me, g2, PLAYER) === 'full';
     me.units = 12;
     r.twoRoads = tryLink(me, g2, PLAYER) === true;
@@ -82,7 +82,7 @@ const { chromium, ROOT, OUT } = require('../lib');
     for (let i = 0; i < 400 && units.length; i++) { update(0.02); }
     r.meetAndFight = units.length === 0 && foe.owner === 2 && me.owner === PLAYER;
     // Rocks block roads
-    rocks = [{ x: (me.x + foe.x) / 2, y: (me.y + foe.y) / 2, r: 50 }];
+    rocks = [{ x: (me.x + foe.x) / 2, y: (me.y + foe.y) / 2, r: 30 }];
     me.units = 40; me.roads = [];
     r.rockBlocks = tryLink(me, foe, PLAYER) === 'blocked';
     rocks = [];
@@ -93,19 +93,41 @@ const { chromium, ROOT, OUT } = require('../lib');
   });
   for (const [k, v] of Object.entries(rules)) ok('Rule: ' + k, v);
 
-  // Cannons shoot passing enemies
-  const cannon = await page.evaluate(() => {
+  // Watchtowers shoot passing enemies; tanks take 3 hits
+  const watch = await page.evaluate(() => {
     startLevel(1);
-    aiSides = [];
+    for (const a of aiSides) a.timer = 1e9;
     const [me, g1, , foe] = towers;
-    g1.type = 'cannon'; g1.owner = 2; g1.units = 5; g1.reload = 0;
+    g1.type = 'watch'; g1.owner = 2; g1.units = 5; g1.reload = 0;
     units = [];
-    const u = { id: 1, from: me, to: foe, owner: PLAYER, d: 0, lane: 0, x: g1.x + 50, y: g1.y };
-    units.push(u);
-    updateCannon(g1, 0.016);
-    return u.dead === true && shots.length === 1;
+    const u = { id: 1, from: me, to: foe, owner: PLAYER, power: 1, d: 0, lane: 0, x: g1.x + 50, y: g1.y };
+    const tank = { id: 2, from: me, to: foe, owner: PLAYER, power: 3, d: 0, lane: 0, x: g1.x + 80, y: g1.y };
+    units.push(u, tank);
+    updateWatch(g1, 0.016);
+    const soldierDown = u.dead === true && shells.length === 1;
+    g1.reload = 0; updateWatch(g1, 0.016);
+    return soldierDown && tank.power === 2 && !tank.dead;
   });
-  ok('Cannons shoot enemy soldiers in range', cannon);
+  ok('Watchtowers shoot enemies in range (tanks take 3 hits)', watch);
+
+  // Tank factories send tanks worth 3 soldiers, and a tank beats a soldier
+  const tanks = await page.evaluate(() => {
+    startLevel(1);
+    for (const a of aiSides) a.timer = 1e9;
+    const [me, g1, g2, foe] = towers;
+    me.type = 'factory'; me.units = 20; me.roads = [];
+    tryLink(me, g1, PLAYER);
+    update(0.02);
+    const sent = units.find(u => u.owner === PLAYER);
+    const ok1 = sent && sent.power === 3 && Math.abs(me.units - 17) < 0.2;
+    units = [];
+    spawnUnit(me, foe, 3); spawnUnit(foe, me, 1);
+    me.roads = []; foe.roads = [];
+    for (let i = 0; i < 400 && units.length === 2; i++) update(0.02);
+    const left = units.filter(u => u.owner === PLAYER);
+    return ok1 && left.length === 1 && left[0].power === 2;
+  });
+  ok('Tank factories send tanks, and tanks beat soldiers', tanks);
 
   // The enemy attacks on its own
   const ai = await page.evaluate(() => {
@@ -121,16 +143,16 @@ const { chromium, ROOT, OUT } = require('../lib');
   await page.evaluate(() => { startLevel(3); });
   ok('Airstrike button appears from level 3', await page.isVisible('#ab-strike'));
   const strike = await page.evaluate(() => {
-    aiSides = [];
+    for (const a of aiSides) a.timer = 1e9;
     const foe = towers.find(t => t.owner === 2);
     foe.units = 30;
     useAbility('strike');
     const armedOk = armed === 'strike';
     dropStrike(foe);
-    for (let i = 0; i < 60; i++) update(0.02);
+    for (let i = 0; i < 100; i++) update(0.02);
     return { armedOk, units: foe.units, left: charges.strike };
   });
-  ok('Airstrike blows up half a tower', strike.armedOk && strike.units < 18 && strike.left === 0, JSON.stringify(strike));
+  ok('Airstrike blows up half a building', strike.armedOk && strike.units < 18 && strike.left === 0, JSON.stringify(strike));
 
   // Winning pays coins, saves stars and unlocks the next level
   await page.evaluate(() => { startLevel(1); for (const t of towers) if (t.owner === 2) { t.owner = PLAYER; } units = []; update(0.016); });
@@ -198,7 +220,7 @@ const { chromium, ROOT, OUT } = require('../lib');
   await land.waitForTimeout(800);
   const l = await land.evaluate(() => {
     const me = towers.find(t => t.owner === PLAYER), foe = towers.find(t => t.owner === 2);
-    return { landscape, left: me.x < foe.x, inside: towers.every(t => wx(t.x) > 0 && wx(t.x) < W && wy(t.y) > 50 && wy(t.y) < H) };
+    return { landscape, left: me.x < foe.x, inside: towers.every(t => { const s = R3D.towerScreen(t); return s.x > 0 && s.x < W && s.topY > 40 && s.y < H - 60; }) };
   });
   ok('Landscape puts your base on the left and fits the screen', l.landscape && l.left && l.inside, JSON.stringify(l));
   await land.evaluate(() => {

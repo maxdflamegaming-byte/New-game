@@ -98,19 +98,20 @@ A small "survivors-like" game.
 - **Controls:** WASD / arrow keys, or drag on a touch screen. **P** or the pause button pauses, **M** mutes.
 
 ### 🏰 Tower Siege (`tower-siege/`)
-A tower-conquest strategy game, inspired by games like Tower War.
-- **Drag** from one of your blue towers to any other tower to build a road. Soldiers march along it on their own: they attack enemy and gray towers and reinforce your own. Bring a tower below zero to take it.
+A bright cartoon tower-conquest strategy game in 3D, inspired by mobile games like Tower War.
+- **Drag** from one of your blue buildings to any other building to build a road. Your army marches along it on its own: soldiers attack enemy and gray buildings and reinforce your own. Bring a building below zero to take it.
 - **Swipe** across one of your roads to cut it (soldiers already on it keep marching).
-- Towers train soldiers and grow: below 10 soldiers a tower holds 1 road, from 10 it holds 2, from 30 it holds 3. Bigger towers also train and send faster. The dots under your towers show free road slots.
-- Soldiers from different armies fight when they meet on the field, so roads that cross or face each other turn into battles.
-- **Tower types:** 🏳️ Barracks, 🛡️ Fort (attackers do half damage), ⚙️ Workshop (trains twice as fast) and 🎯 Cannon (shoots enemy soldiers that march past). **Rocks** block roads.
-- **60 levels:** 3 tutorial levels, then generated mirrored maps that add forts, workshops, cannons, rocks, enemy outposts and, every third level from 12, a second (gold) enemy that also fights the red one.
-- **Enemy AI:** picks the cheapest nearby tower it can take, attacks from up to 3 towers at once, reinforces towers under attack and pulls back hopeless attacks. It thinks faster and gets bolder on later levels.
-- **Abilities:** 💣 Airstrike (from level 3: bomb a tower to destroy half its soldiers, at least 8) and 📯 Rally (from level 6: your roads send twice as fast and soldiers march faster for 8 seconds).
-- **Stars and coins:** win fast for up to 3 stars; every win pays coins (half for replays). Spend them on upgrades: Drill Sergeant (train faster), Swift Boots (march faster), Garrison (bigger starting towers) and Armory (extra ability charges).
-- A strength bar shows each army's share of all soldiers. There's a 2× speed button, a level select with your stars, a live AI battle behind the menu, and a tutorial hand on level 1.
-- On wide screens the field turns on its side, so your base starts on the left.
+- Buildings train soldiers and grow taller: below 10 soldiers a tower holds 1 road, from 10 it holds 2, from 30 it holds 3. The dots under the number on each roof show its roads (white = free). A full building says **Max**.
+- Armies fight wherever they meet on the field, so roads that cross or face each other turn into battles.
+- **Buildings:** Towers; 🏭 Tank Factories (send tanks worth 3 soldiers that crush soldiers in their way, with smoking chimneys); 🛡️ Bunkers (attackers do half damage); 🗼 Watchtowers (shoot enemies inside their range circle). **Walls** (crates, ice blocks, hedges or boulders) block roads.
+- **60 levels** on 4 map looks that change every 5 levels: grass, desert, snow and a crystal mine. 3 tutorial levels (with a hand showing the drag), then mirrored maps with more buildings, walls, enemy outposts and, on some levels, a third (yellow) and fourth (green) army that also fight each other.
+- **Enemy AI:** picks the cheapest nearby building it can take, attacks from up to 3 buildings at once, counts watchtowers on the way, reinforces buildings under attack and pulls back attacks that won't work. It thinks faster and gets bolder on later levels.
+- **Abilities:** ✈️ Airstrike (from level 3: a plane flies over and bombs a building, destroying half its soldiers, at least 8) and 📯 Rally (from level 6: your roads send twice as fast and your army moves faster for 8 seconds).
+- **Stars and coins:** win fast for up to 3 stars; every win pays coins (half for replays). Spend them on upgrades: Drill Sergeant (train faster), Swift Boots (move faster), Garrison (bigger starting buildings) and Armory (extra ability charges).
+- **Graphics:** real 3D with [three.js](https://threejs.org) (bundled in `tower-siege/vendor/`, MIT licence). Every model (stacked towers, factories, bunkers, watchtowers, chibi soldiers with colored helmets, tanks, the plane, trees, cacti, crystals, crates) is built in code from simple shapes, with soft shadows, chimney smoke, explosions, flying bits when soldiers clash and a burst of color when a building changes hands. A live AI battle plays behind the menu.
+- A strength bar shows each army's share of all soldiers, plus a 2× speed button and a level select with your stars. On wide screens the field turns on its side, so your base starts on the left.
 - **Controls:** mouse or touch. **P** pauses, **F** toggles 2× speed, **1** / **2** use the abilities, **M** mutes sound, **N** toggles music.
+- Code: `game.js` (rules, levels, enemy AI, screens), `render3d.js` (the 3D scene, models and effects).
 
 ## Play
 
