@@ -1,0 +1,4 @@
+.godot/
+*.import
+!assets/**/*.import
+export_credentials.cfg
