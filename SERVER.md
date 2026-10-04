@@ -76,11 +76,26 @@ When you send the address, I'll:
 
 ---
 
-# Tower Siege PvP server
+# Tower Siege server (PvP, leaderboard and clans)
 
-Tower Siege's online PvP uses its own small server, `tower-siege/server/server.js` (Node.js, one package: `ws`). It only **pairs players** (quick match by trophies, or a 4-letter friend code) and **passes messages** between the two. One phone runs the battle and sends what's happening about 10 times a second (a few KB each); the other sends its moves. Nothing is stored.
+Tower Siege has its own small server, `tower-siege/server/server.js` (Node.js; packages `ws` and `pg`). It:
+- **pairs players** for PvP (quick match by trophies, or a 4-letter friend code) and passes messages between the two. One phone runs the battle and sends what's happening about 10 times a second (a few KB each); the other sends its moves;
+- keeps an **account** for each phone (an id and a secret key the game stores; no sign-up, no email), with its name, **trophies**, wins and losses. The server records every online result itself, so trophies can't simply be typed in;
+- runs the **leaderboard** (top 50 players and top 50 clans) and the **clans** (create, search, join, leave; the leader can remove members; up to 25 members; a clan's trophies are its members' trophies added up).
 
 Until the server is online, the PvP screen says it can't reach it, and **2 players on one phone** and **Practice vs bot** still work.
+
+## Where the data is kept
+
+Accounts and clans must survive restarts. Render's free plan **wipes its disk every time the server sleeps or restarts**, so on Render use a free Postgres database:
+
+1. Go to <https://neon.tech> and sign up (free, no card needed).
+2. Create a project (any name, a region near your Render region, e.g. Singapore).
+3. On the project dashboard, copy the **connection string**. It looks like
+   `postgresql://user:password@ep-something.ap-southeast-1.aws.neon.tech/neondb?sslmode=require`.
+4. Paste it into the Render service as the environment variable **`DATABASE_URL`** (step 3 below).
+
+The server makes its one table (`tower_siege`) by itself. Without `DATABASE_URL` it saves to a file, `data.json` (or the path in `DATA_FILE`): fine on your own computer or a host with a lasting disk.
 
 ## Put it on Render (free, all in the browser)
 
@@ -94,19 +109,25 @@ Until the server is online, the PvP screen says it can't reach it, and **2 playe
    - **Build Command:** `npm install --omit=dev`
    - **Start Command:** `node server.js`
    - **Instance Type:** Free
+   - **Environment Variables:** add `DATABASE_URL` with the Neon connection string from above
 4. Click **Create Web Service**. After a minute or two the logs end with
-   `[server] Tower Siege server on port 10000, protocol 1`.
+   `[server] Tower Siege server on port 10000, protocol 2, postgres storage, 0 players, 0 clans`.
+   If it says `file storage`, `DATABASE_URL` isn't set, and everything will be lost when the server sleeps.
 5. The address at the top should be `https://tower-siege-server.onrender.com`. The game already connects to `wss://tower-siege-server.onrender.com`. **If Render gave it a different address, send it to me** and I'll change `PVP_SERVER` in `tower-siege/pvp.js`.
 
-(`render.yaml` also lists this service, so a Blueprint synced from this branch creates it the same way.)
+(`render.yaml` also lists this service, so a Blueprint synced from this branch creates it the same way and asks for `DATABASE_URL`.)
 
 Like the Color Claim server, the free plan **sleeps** after about 15 minutes without players. The first player then waits up to a minute; the game shows *"Waking up the server…"* meanwhile.
+
+## Data and privacy
+
+What the server stores per phone: the in-game name, trophies, wins, losses, the clan, and when the account was made. No email, no real name, no location. Clans store their name, tag, emblem, color, leader and members. The leaderboard shows names, clan tags and trophies to everyone. For Play Console's Data safety form that's **Name** (in-game) and **App interactions** (match results), for app functionality, stored, not shared.
 
 ## Try it on your own computer
 
 ```sh
 cd tower-siege/server
 npm install
-node server.js            # listens on port 8090
+node server.js            # listens on port 8090, saves to data.json
 ```
-Then open `tower-siege/index.html?server=ws://localhost:8090` in two browser windows. The browser tests do the same with two players: `node tests/run.js siege-pvp`.
+Then open `tower-siege/index.html?server=ws://localhost:8090` in two browser windows. The browser tests do the same with two players (`node tests/run.js siege-pvp`), and `node tests/run.js siege-store` checks the Postgres and file storage.

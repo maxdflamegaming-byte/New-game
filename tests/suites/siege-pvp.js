@@ -6,10 +6,18 @@ const { chromium, ROOT, OUT } = require('../lib');
 (async () => {
   const ok = (name, cond, extra = '') => console.log((cond ? 'PASS ' : 'FAIL ') + name + (extra ? '  ' + extra : ''));
   const PORT = 8099;
-  const server = spawn(process.execPath, [path.join(ROOT, 'tower-siege/server/server.js')], { env: { ...process.env, PORT: String(PORT) } });
+  // A fresh data file each run; restarting the server later checks everything was saved
+  const fs = require('fs');
+  const dataFile = path.join(OUT, 'siege-server-data.json');
+  fs.rmSync(dataFile, { force: true });
   let serverLog = '';
-  server.stdout.on('data', d => (serverLog += d));
-  server.stderr.on('data', d => (serverLog += d));
+  const startServer = () => {
+    const sv = spawn(process.execPath, [path.join(ROOT, 'tower-siege/server/server.js')], { env: { ...process.env, PORT: String(PORT), DATA_FILE: dataFile, DATABASE_URL: '' } });
+    sv.stdout.on('data', d => (serverLog += d));
+    sv.stderr.on('data', d => (serverLog += d));
+    return sv;
+  };
+  let server = startServer();
   await new Promise(r => setTimeout(r, 800));
   ok('The PvP server starts', serverLog.includes('Tower Siege server on port'), serverLog.trim().slice(0, 200));
 
@@ -21,6 +29,7 @@ const { chromium, ROOT, OUT } = require('../lib');
     browsers.push(br);
     const p = await br.newPage({ viewport: { width: 420, height: 860 } });
     p.on('pageerror', e => errors.push(e.message));
+    p.on('dialog', d => d.accept());
     await p.goto(`file://${ROOT}/tower-siege/index.html?server=ws://127.0.0.1:${PORT}`);
     await p.evaluate(() => localStorage.clear());
     await p.reload();
@@ -120,6 +129,75 @@ const { chromium, ROOT, OUT } = require('../lib');
   await b.click('#quit-btn');
   await a.waitForTimeout(1800);
   ok('When the opponent leaves, you win', await a.isVisible('#pvp-end') && (await a.textContent('#end-title')) === 'Victory!');
+  await a.waitForTimeout(800);
+
+  // ---------- Leaderboard ----------
+  const tro = await Promise.all([a, b].map(p => p.evaluate(() => ({ name: save.name, trophies: save.trophies, pid: save.pid }))));
+  ok('Trophies and accounts come from the server', tro.every(t => t.pid) && tro[0].trophies > 0, JSON.stringify(tro));
+  await a.click('#pvp-end .menu-btn2');
+  await a.click('#board-btn');
+  await a.waitForSelector('#board-list .lb-row');
+  const rows = await a.evaluate(() => [...document.querySelectorAll('#board-list .lb-row')].map(r => r.textContent.replace(/\s+/g, ' ').trim()));
+  const leader = tro.slice().sort((x, y) => y.trophies - x.trophies)[0];
+  ok('The leaderboard lists players by trophies', rows.length === 2 && rows[0].includes(leader.name) && rows[0].includes(String(leader.trophies)), JSON.stringify(rows));
+  ok('Your own row is highlighted', await a.evaluate(() => !!document.querySelector('#board-list .lb-row.me')));
+  await a.screenshot({ path: OUT + '/tsp-board.png' });
+
+  // ---------- Clans ----------
+  await a.click('#board .back-btn');
+  await a.click('#clans-btn');
+  await a.waitForSelector('#clan-browse:not(.hidden)');
+  await a.screenshot({ path: OUT + '/tsp-clans.png' });
+  await a.fill('#clan-name', 'Red Foxes');
+  await a.fill('#clan-tag', 'fox');
+  await a.click('#emblem-pick [data-emblem="🐺"]');
+  await a.click('#clan-create');
+  await a.waitForSelector('#clan-mine:not(.hidden)');
+  ok('Creating a clan makes you its leader', await a.evaluate(() => save.clan?.tag === 'FOX' && save.clan.emblem === '🐺' && clanView.leader === save.pid && clanView.list.length === 1));
+  await b.click('#clans-btn');
+  await b.waitForSelector('#clan-browse:not(.hidden)');
+  await b.fill('#clan-name', 'Copycats');
+  await b.fill('#clan-tag', 'FOX');
+  await b.click('#clan-create');
+  await b.waitForFunction(() => $('clans-status').textContent.includes('taken'));
+  ok('Clan tags are unique', true);
+  await b.fill('#clan-search', 'fox');
+  await b.waitForSelector('#clan-list [data-clan]');
+  await b.click('#clan-list [data-clan]');
+  await b.waitForSelector('#clan-mine:not(.hidden)');
+  await b.click('#clan-join');
+  await b.waitForFunction(() => save.clan?.tag === 'FOX');
+  ok('Another player finds the clan and joins', await b.evaluate(() => clanView.list.length === 2 && clanView.trophies === clanView.list.reduce((s, m) => s + m.trophies, 0)));
+  await b.screenshot({ path: OUT + '/tsp-clan.png' });
+  await a.click('#clans .back-btn');
+  await a.click('#clans-btn');
+  await a.waitForSelector('#clan-members [data-kick]');
+  await a.click('#clan-members [data-kick]');
+  await a.waitForFunction(() => clanView.list.length === 1);
+  ok('The leader can remove a member', true);
+  await b.click('#clans .back-btn');
+  await b.click('#clans-btn');
+  await b.waitForSelector('#clan-browse:not(.hidden)');
+  ok('A removed member sees they have no clan', await b.evaluate(() => save.clan === null));
+  await b.click('#clans .back-btn');
+  await a.click('#clans .back-btn');
+  await a.click('#board-btn');
+  await a.waitForSelector('#board-list .lb-row');
+  await a.click('#board .tab[data-tab="clans"]');
+  ok('The clan leaderboard shows the clan', (await a.textContent('#board-list')).includes('Red Foxes'));
+  ok('Clan tags show on the player leaderboard', await a.evaluate(() => boardData.players.some(p => p.tag === 'FOX')));
+
+  // ---------- Everything is saved ----------
+  server.kill();
+  await new Promise(r => server.on('exit', r));
+  server = startServer();
+  await a.waitForTimeout(900);
+  await a.click('#board .back-btn');
+  await a.click('#board-btn');
+  await a.waitForSelector('#board-list .lb-row');
+  const after = await a.evaluate(() => ({ trophies: save.trophies, clan: save.clan?.tag, top: boardData.players[0] }));
+  ok('After a server restart, accounts, trophies and clans are still there', after.trophies === tro[0].trophies && after.clan === 'FOX', JSON.stringify(after));
+  await a.click('#board .back-btn');
 
   // 2 players on one phone: blue drags from the bottom, red from the top
   await b.click('#pvp-btn');

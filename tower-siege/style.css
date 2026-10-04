@@ -503,3 +503,91 @@ button.big.pvp {
 .trophy-change.down { color: #ffd0d0; }
 .ribbon.red { background: linear-gradient(#ff8a7a, var(--red)); }
 #time-label.urgent { background: var(--red); animation: pulse 0.5s infinite alternate; }
+
+/* ---------- Leaderboard and clans ---------- */
+.list-panel { width: min(460px, 100%); padding-top: 22px; gap: 10px; }
+.list-panel h3 { font: 400 20px var(--title); align-self: flex-start; text-shadow: 0 2px 0 var(--ink); }
+#clan-browse, #clan-mine { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+#clan-browse.hidden, #clan-mine.hidden { display: none; }
+.tabs { display: flex; gap: 6px; width: 100%; }
+.tabs .tab { flex: 1; padding: 8px; font-size: 17px; background: rgba(255, 255, 255, 0.3); box-shadow: 0 3px 0 var(--ink); }
+.tabs .tab.on { background: linear-gradient(#ffd84a, var(--yellow)); text-shadow: 0 2px 0 var(--yellow-dark); }
+.lb-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  max-height: 46vh;
+  overflow-y: auto;
+  padding: 2px;
+}
+.lb-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
+  border: 3px solid rgba(33, 96, 184, 0.35);
+  text-align: left;
+  font-size: 22px;
+}
+.lb-row[data-clan] { cursor: pointer; }
+.lb-row[data-clan]:hover { border-color: var(--ink); }
+.lb-row.me { background: #fff6c8; border-color: var(--yellow-dark); }
+.lb-row .avatar, .lb-row .emblem { width: 38px; height: 38px; font-size: 20px; border-radius: 11px; border-width: 2px; box-shadow: none; }
+.lb-row .rank { width: 28px; text-align: center; font: 400 18px var(--title); }
+.lb-name { flex: 1; min-width: 0; font: 400 17px var(--title); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lb-name em { font-style: normal; color: #6b7fa6; }
+.lb-name small { display: block; font: 700 12px Nunito, system-ui, sans-serif; color: #6b7fa6; }
+.lb-score { font: 400 17px var(--title); white-space: nowrap; }
+.lb-row .kick { padding: 2px 8px; font-size: 14px; border-radius: 10px; background: var(--red); box-shadow: 0 2px 0 var(--ink); border-width: 2px; }
+.crown { font-size: 15px; }
+.empty { padding: 16px; opacity: 0.9; }
+.emblem {
+  flex: none;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  border: 3px solid var(--ink);
+  display: grid;
+  place-items: center;
+  font-size: 30px;
+  box-shadow: inset 0 -5px 0 rgba(0, 0, 0, 0.18), 0 3px 0 var(--ink);
+}
+.clan-head { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; }
+.clan-head .emblem { width: 70px; height: 70px; font-size: 38px; }
+.clan-head b { font: 400 24px var(--title); }
+.clan-head em { font-style: normal; opacity: 0.85; }
+.clan-head span { display: block; font-size: 14px; }
+.clan-form { display: flex; gap: 8px; width: 100%; align-items: center; }
+.clan-form input, #clan-search {
+  font: 400 18px var(--title);
+  color: var(--ink);
+  background: #fff;
+  border: 3px solid var(--ink);
+  border-radius: 12px;
+  padding: 6px 10px;
+  outline: none;
+  min-width: 0;
+}
+.clan-form #clan-name { flex: 1; }
+.clan-form #clan-tag { width: 74px; text-transform: uppercase; text-align: center; letter-spacing: 2px; }
+#clan-search { width: 100%; }
+.picker { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.pick { width: 40px; height: 40px; padding: 0; font-size: 22px; border-radius: 12px; background: rgba(255, 255, 255, 0.85); box-shadow: 0 2px 0 var(--ink); border-width: 2px; }
+.pick.on { outline: 3px solid #fff; outline-offset: 2px; transform: scale(1.08); }
+.pick.swatch { width: 32px; height: 32px; }
+button.big.small-big { font-size: 22px; padding: 8px 22px 10px; min-width: 0; }
+.clan-chip {
+  margin: 5px 0 0 6px;
+  padding: 2px 10px;
+  font: 700 12px Nunito, system-ui, sans-serif;
+  border-radius: 10px;
+  border-width: 2px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--ink);
+  text-shadow: none;
+  box-shadow: 0 2px 0 var(--ink);
+}

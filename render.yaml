@@ -13,8 +13,8 @@ services:
     autoDeploy: true
     branch: claude/game-ideas-brainstorm-g3f06o
 
-  # The Tower Siege PvP server (tower-siege/server, see SERVER.md). A small Node.js app that
-  # pairs players and passes their messages; the free plan sleeps the same way as above.
+  # The Tower Siege server (tower-siege/server, see SERVER.md): PvP matches, trophies, the
+  # leaderboard and clans. The free plan sleeps the same way as above.
   - type: web
     name: tower-siege-server
     runtime: node
@@ -25,3 +25,8 @@ services:
     region: singapore
     autoDeploy: true
     branch: claude/military-overturn-game-sewao2
+    envVars:
+      # Where accounts, trophies and clans are saved: a Postgres address (a free Neon database
+      # works; see SERVER.md). Render's free disk is wiped on every restart, so set this.
+      - key: DATABASE_URL
+        sync: false

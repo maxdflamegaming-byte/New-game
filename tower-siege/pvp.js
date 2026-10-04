@@ -3,14 +3,13 @@
 // PvP for Tower Siege: online 1-vs-1, two players on one phone, and practice against a bot.
 // Online, one phone (the host) runs the battle and sends what's happening to the other (the
 // guest) about 10 times a second; the guest sends its moves. The server (server/server.js)
-// only pairs players and passes messages. Each player sees their own army in blue at the bottom:
+// pairs players, passes messages and keeps the trophies (see social.js for the leaderboard and clans). Each player sees their own army in blue at the bottom:
 // the guest's copy swaps blue and red and turns the field around.
 
-const PVP_PROTOCOL = 1;
+const PVP_PROTOCOL = 2;
 const PVP_SERVER = new URLSearchParams(location.search).get('server') || 'wss://tower-siege-server.onrender.com';
 const PVP_TIME = 180;            // a match lasts at most 3 minutes; then the bigger army wins
 const SNAP_EVERY = 0.1;          // seconds between the host's updates
-const WIN_TROPHIES = 30, LOSS_TROPHIES = 15;
 const LEAGUES = [
   { name: 'Bronze', min: 0, color: '#e0965a' },
   { name: 'Silver', min: 150, color: '#c3cede' },
@@ -40,12 +39,18 @@ const Net = {
         let ws;
         try { ws = new WebSocket(PVP_SERVER); } catch { reject(new Error('down')); return; }
         let welcomed = false;
-        ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', v: PVP_PROTOCOL, name: save.name, trophies: save.trophies }));
+        // The account: an id and a secret token the server gave this phone the first time
+        ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', v: PVP_PROTOCOL, id: save.pid, token: save.token, name: save.name, trophies: save.trophies }));
         ws.onmessage = ev => {
           let msg;
           try { msg = JSON.parse(ev.data); } catch { return; }
           if (!welcomed) {
-            if (msg.t === 'welcome') { welcomed = true; this.ws = ws; this.ready = true; resolve(); }
+            if (msg.t === 'welcome') {
+              welcomed = true; this.ws = ws; this.ready = true;
+              if (msg.token) save.token = msg.token;
+              applyYou(msg.you);
+              resolve();
+            }
             else if (msg.t === 'old') { ws.close(); reject(new Error('old')); }
             return;
           }
@@ -68,10 +73,51 @@ const Net = {
     this.send({ t: 'leave' });
     this.role = null;
   },
+  // Send a message and wait for the server's answer (one of `types`, or an error)
+  waiting: [],
+  request(msg, types, ms = 10000) {
+    return new Promise((resolve, reject) => {
+      const w = { types: [...types, 'clanerr'], resolve, reject };
+      w.timer = setTimeout(() => { this.waiting = this.waiting.filter(x => x !== w); reject(new Error('timeout')); }, ms);
+      this.waiting.push(w);
+      this.send(msg);
+    });
+  },
 };
 
+// What the server knows about us: name, trophies, wins and clan
+function applyYou(you) {
+  if (!you) return;
+  save.pid = you.id;
+  save.name = you.name;
+  save.trophies = you.trophies;
+  save.pvpWins = you.wins;
+  save.pvpLosses = you.losses;
+  save.clan = you.clan;
+  writeSave();
+}
+
 function onNet(msg) {
+  // Answers to requests (leaderboard, clans)
+  const w = Net.waiting.find(x => x.types.includes(msg.t));
+  if (w) {
+    Net.waiting = Net.waiting.filter(x => x !== w);
+    clearTimeout(w.timer);
+    if (msg.you) applyYou(msg.you);
+    if (msg.t === 'clanerr') w.reject(new Error(msg.msg)); else w.resolve(msg);
+    return;
+  }
   switch (msg.t) {
+    case 'me':
+      applyYou(msg.you);
+      break;
+    case 'result':
+      // The server keeps the trophies; it sends the change after every online match
+      applyYou(msg.you);
+      if (msg.delta > 0) { save.coins += 20; writeSave(); }
+      if (pvp) pvp.result = msg.delta;
+      showTrophyChange();
+      break;
     case 'waiting':
       $('wait-text').textContent = 'Looking for an opponent…';
       break;
@@ -124,13 +170,18 @@ function avatarHtml(name, side) {
 }
 
 function openPvp() {
-  if (!save.name) { save.name = 'Commander' + (100 + Math.floor(Math.random() * 900)); writeSave(); }
+  ensureName();
   refreshPvpCard();
   pvpStatus('');
   showScreen('pvp');
 }
+function ensureName() {
+  if (!save.name) { save.name = 'Commander' + (100 + Math.floor(Math.random() * 900)); writeSave(); }
+}
+const tagText = tag => (tag ? `[${tag}] ` : '');
 function refreshPvpCard() {
   $('pvp-name').value = save.name;
+  $('pvp-clan').textContent = save.clan ? `${save.clan.emblem} ${save.clan.name} [${save.clan.tag}]` : 'No clan yet';
   const lg = leagueOf(save.trophies);
   $('pvp-trophies').textContent = save.trophies;
   $('pvp-league').textContent = `${lg.name} league · ${save.pvpWins} wins`;
@@ -175,9 +226,9 @@ function cancelFind() {
 
 // The "you vs them" card before an online match
 function showVs(then) {
-  const me = { name: save.name, trophies: save.trophies }, them = Net.opp || { name: 'Player', trophies: 0 };
+  const me = { name: save.name, trophies: save.trophies, tag: save.clan?.tag }, them = Net.opp || { name: 'Player', trophies: 0 };
   const card = (p, side) => `<div class="vs-card" style="--c:${SIDES[side].color};--d:${SIDES[side].dark}">
-    ${avatarHtml(p.name, side)}<b>${escapeHtml(p.name)}</b><span>🏆 ${p.trophies} · ${leagueOf(p.trophies).name}</span></div>`;
+    ${avatarHtml(p.name, side)}<b>${escapeHtml(tagText(p.tag) + p.name)}</b><span>🏆 ${p.trophies} · ${leagueOf(p.trophies).name}</span></div>`;
   $('vs-row').innerHTML = card(me, PLAYER) + '<div class="vs">VS</div>' + card(them, 2);
   showScreen('pvp-vs');
   sfx('go');
@@ -347,21 +398,14 @@ function finishPvp(winner, why) {
   clearPointers();
   setHint(null);
   Music.stop();
-  let trophies = 0;
-  if (mode === 'online' && winner !== null) {
-    if (winner === PLAYER) { trophies = WIN_TROPHIES; save.pvpWins++; }
-    else if (winner !== 0) { trophies = -Math.min(LOSS_TROPHIES, save.trophies); save.pvpLosses++; }
-    save.trophies += trophies;
-    if (winner === PLAYER) save.coins += 20;
-    writeSave();
-  }
   const happy = mode === 'duo' || winner === PLAYER;
   sfx(happy ? 'win' : 'death');
   if (happy && winner) for (const t of towers) if (t.owner === winner) R3D.capture(t.x, t.y, winner);
-  setTimeout(() => showPvpEnd(winner, why, trophies), 1100);
+  setTimeout(() => showPvpEnd(winner, why), 1100);
 }
 
-function showPvpEnd(winner, why, trophies) {
+function showPvpEnd(winner, why) {
+  pvp.winner = winner;
   const title = $('end-title');
   let text;
   if (mode === 'duo') text = winner === 1 ? 'Blue wins!' : winner === 2 ? 'Red wins!' : 'Draw!';
@@ -373,22 +417,32 @@ function showPvpEnd(winner, why, trophies) {
     left: 'Your opponent left the match.',
     lost: 'The connection to the server was lost. No trophies were lost.',
   }[why] || (winner === PLAYER || mode === 'duo' ? 'Every enemy building taken!' : 'Your last building has fallen.');
-  const tr = $('end-trophies');
-  tr.classList.toggle('hidden', mode !== 'online' || winner === null);
-  tr.innerHTML = `🏆 ${trophies >= 0 ? '+' : ''}${trophies} <small>${save.trophies} total</small>` + (trophies > 0 ? ' <span class="coin"></span> +20' : '');
-  tr.className = 'trophy-change ' + (trophies > 0 ? 'up' : trophies < 0 ? 'down' : '') + (mode !== 'online' || winner === null ? ' hidden' : '');
-  const lg = leagueOf(save.trophies);
-  $('end-league').textContent = mode === 'online' ? `${lg.name} league` : mode === 'practice' ? 'Practice matches don\'t change your trophies' : '';
+  showTrophyChange();
   $('again-btn').textContent = mode === 'online' ? 'Find a new match' : 'Play again';
   $('hud').classList.add('hidden');
   showScreen('pvp-end');
 }
 
+// The trophies won or lost, once the server has sent them (the end screen may already be up)
+function showTrophyChange() {
+  if (!pvp) return;
+  const tr = $('end-trophies');
+  const online = mode === 'online' && pvp.winner !== null;
+  const d = pvp.result;
+  if (!online) tr.className = 'trophy-change hidden';
+  else if (d == null) { tr.className = 'trophy-change'; tr.innerHTML = '🏆 <small>…</small>'; }
+  else {
+    tr.className = 'trophy-change ' + (d > 0 ? 'up' : d < 0 ? 'down' : '');
+    tr.innerHTML = `🏆 ${d >= 0 ? '+' : ''}${d} <small>${save.trophies} total</small>` + (d > 0 ? ' <span class="coin"></span> +20' : '');
+  }
+  const lg = leagueOf(save.trophies);
+  $('end-league').textContent = mode === 'online' ? `${lg.name} league` : mode === 'practice' ? 'Practice matches don\'t change your trophies' : '';
+}
 // ---------- Buttons ----------
 $('pvp-btn').addEventListener('click', () => { Sfx.unlock(); openPvp(); });
 $('pvp-name').addEventListener('change', () => {
   const name = $('pvp-name').value.replace(/[^\p{L}\p{N} _.-]/gu, '').trim().slice(0, 16);
-  if (name) { save.name = name; writeSave(); }
+  if (name) { save.name = name; writeSave(); Net.send({ t: 'name', name }); }
   refreshPvpCard();
 });
 $('find-btn').addEventListener('click', () => { Sfx.unlock(); findMatch(); });

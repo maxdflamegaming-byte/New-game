@@ -42,6 +42,10 @@
       <button id="levels-btn">Levels</button>
       <button id="shop-btn">Upgrades</button>
     </div>
+    <div class="row">
+      <button id="board-btn">🏆 Leaderboard</button>
+      <button id="clans-btn">🛡️ Clans</button>
+    </div>
     <div class="row toggles">
       <button id="sound-btn" class="icon-btn" title="Sound (M)" aria-label="Sound on/off"></button>
       <button id="music-btn" class="icon-btn" title="Music (N)" aria-label="Music on/off"></button>
@@ -98,6 +102,7 @@
         <div class="pvp-who">
           <input id="pvp-name" maxlength="16" aria-label="Your name" autocomplete="off" spellcheck="false">
           <div id="pvp-league" class="league"></div>
+          <button id="pvp-clan" class="clan-chip">No clan yet</button>
         </div>
         <div class="trophy-pill">🏆 <b id="pvp-trophies">0</b></div>
       </div>
@@ -113,6 +118,51 @@
       </div>
       <p id="pvp-status" class="status"></p>
       <p class="small">Online: win +30 🏆, lose −15 🏆. No upgrades or abilities in PvP, everyone starts equal. Matches last up to 3 minutes.</p>
+    </div>
+    <button class="back-btn">Back</button>
+  </div>
+
+  <div id="board" class="screen">
+    <h2 class="ribbon">Leaderboard</h2>
+    <div class="panel list-panel">
+      <div class="tabs">
+        <button class="tab on" data-tab="players">Players</button>
+        <button class="tab" data-tab="clans">Clans</button>
+      </div>
+      <div id="board-list" class="lb-list"></div>
+      <p id="board-me" class="small"></p>
+      <p id="board-status" class="status"></p>
+    </div>
+    <button class="back-btn">Back</button>
+  </div>
+
+  <div id="clans" class="screen">
+    <h2 class="ribbon">Clans</h2>
+    <div class="panel list-panel">
+      <div id="clan-browse" class="hidden">
+        <h3>Start a clan</h3>
+        <div class="clan-form">
+          <div id="clan-preview"></div>
+          <input id="clan-name" maxlength="20" placeholder="Clan name" aria-label="Clan name" autocomplete="off" spellcheck="false">
+          <input id="clan-tag" maxlength="4" placeholder="TAG" aria-label="Clan tag (2 to 4 letters)" autocomplete="off" spellcheck="false">
+        </div>
+        <div id="emblem-pick" class="picker"></div>
+        <div id="color-pick" class="picker"></div>
+        <button id="clan-create" class="big small-big">Create clan</button>
+        <h3>Join a clan</h3>
+        <input id="clan-search" placeholder="Search by name or tag" aria-label="Search clans" autocomplete="off" spellcheck="false">
+        <div id="clan-list" class="lb-list"></div>
+      </div>
+      <div id="clan-mine" class="hidden">
+        <div id="clan-head" class="clan-head"></div>
+        <div id="clan-members" class="lb-list"></div>
+        <div class="row">
+          <button id="clan-join" class="big small-big">Join clan</button>
+          <button id="clan-back">All clans</button>
+          <button id="clan-leave">Leave clan</button>
+        </div>
+      </div>
+      <p id="clans-status" class="status"></p>
     </div>
     <button class="back-btn">Back</button>
   </div>
@@ -180,5 +230,6 @@
   <script src="render3d.js"></script>
   <script src="game.js"></script>
   <script src="pvp.js"></script>
+  <script src="social.js"></script>
 </body>
 </html>

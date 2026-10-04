@@ -106,7 +106,7 @@ const UPGRADES = [
   { id: 'armory', icon: '💣', name: 'Armory', desc: '+1 Airstrike and +1 Rally every battle', max: 2, cost: [250, 600] },
 ];
 function defaultSave() {
-  return { level: 1, stars: {}, coins: 0, up: { drill: 0, boots: 0, garrison: 0, armory: 0 }, seen: {}, help: false, name: '', trophies: 0, pvpWins: 0, pvpLosses: 0 };
+  return { level: 1, stars: {}, coins: 0, up: { drill: 0, boots: 0, garrison: 0, armory: 0 }, seen: {}, help: false, name: '', trophies: 0, pvpWins: 0, pvpLosses: 0, pid: '', token: '', clan: null };
 }
 function loadSave() {
   try {
