@@ -56,7 +56,7 @@ var shake := 0.0
 var demo_timer := 0.0
 var quiet := false             # the menu's demo battle makes no sound
 var slow_frames := 0
-var quality_lowered := false
+const GFX := ["low", "medium", "high"]
 
 # Input and things the overlay draws
 var drags := {}                # touch index -> {from, side, pos, p, over}
@@ -98,6 +98,7 @@ func _ready() -> void:
 	_connect_battle()
 	get_viewport().size_changed.connect(_layout)
 	_layout()
+	apply_gfx()
 	open_menu()
 
 
@@ -105,7 +106,7 @@ func _ready() -> void:
 func default_save() -> Dictionary:
 	return {"level": 1, "stars": {}, "coins": 0, "up": {"drill": 0, "boots": 0, "garrison": 0, "armory": 0},
 		"seen": {}, "muted": false, "music": true, "name": "", "trophies": 0, "pvp_wins": 0, "pvp_losses": 0,
-		"pid": "", "token": "", "clan": null}
+		"pid": "", "token": "", "clan": null, "gfx": "auto", "vibrate": true}
 
 
 func load_save() -> void:
@@ -140,6 +141,8 @@ func _layout() -> void:
 	var fw := Levels.FH if landscape else Levels.FW
 	var fh := Levels.FW if landscape else Levels.FH
 	world.layout(size, HUD_TOP, HUD_BOTTOM, fw, fh)
+	if world.soldier_shadows:
+		world.set_quality(world.quality) # the 3D resolution follows the screen size
 	if was != landscape and not battle.towers.is_empty():
 		battle.landscape = landscape
 		battle.place()
@@ -148,6 +151,24 @@ func _layout() -> void:
 
 func build_scene() -> void:
 	world.build(scene_level * 101 + 7, scene_theme if scene_theme != "" else Levels.theme_for(scene_level), battle)
+
+
+## "auto" starts at Medium and steps down by itself if the phone can't keep up
+func apply_gfx() -> void:
+	var g: String = save.gfx
+	world.set_quality(GFX.find(g) if g in GFX else 1)
+	slow_frames = 0
+
+
+func set_gfx(g: String) -> void:
+	save.gfx = g
+	write_save()
+	apply_gfx()
+
+
+func vibrate(ms: int) -> void:
+	if save.vibrate and not quiet:
+		Input.vibrate_handheld(ms)
 
 
 func play_sound(name: String) -> void:
@@ -220,12 +241,13 @@ func _on_captured(t, side: int, old: int) -> void:
 		floats.append({"t": t, "text": "Captured!", "color": SIDES[side].light, "life": 1.3})
 	elif side == Battle.PLAYER:
 		play_sound("capture")
+		vibrate(25)
 		floats.append({"t": t, "text": "Captured!", "color": SIDES[1].light, "life": 1.3})
 	elif old == Battle.PLAYER:
 		play_sound("warn")
+		vibrate(70)
 		if not quiet:
 			shake = maxf(shake, 6)
-			Input.vibrate_handheld(60)
 		floats.append({"t": t, "text": "Lost!", "color": SIDES[side].light, "life": 1.3})
 
 
@@ -258,6 +280,7 @@ func _on_bombed(t) -> void:
 	world.explode(t.x - 26, t.y + 24, false)
 	shake = 12
 	play_sound("boom")
+	vibrate(90)
 
 
 func check_end() -> void:
@@ -278,6 +301,7 @@ func end_game(won: bool) -> void:
 	armed = ""
 	set_hint("")
 	music.play_track("menu")
+	vibrate(120 if won else 200)
 	if won:
 		play_sound("win")
 		for t in battle.towers:
@@ -576,12 +600,14 @@ func buy(id: String) -> void:
 # ---------- Each frame ----------
 func _process(delta: float) -> void:
 	var dt := minf(0.05, delta)
-	# If the game keeps running below ~35 frames a second, switch to lighter graphics once
-	if not quality_lowered and delta < 0.5:
+	# On Auto, if the game keeps running below ~35 frames a second, step the graphics down
+	if save.gfx == "auto" and world.quality > 0 and delta < 0.5:
 		slow_frames = slow_frames + 1 if delta > 1.0 / 35 else maxi(0, slow_frames - 2)
 		if slow_frames > 150:
-			quality_lowered = true
+			slow_frames = 0
 			world.lower_quality()
+			if state == "play":
+				ui.toast("Graphics lowered to keep the game smooth")
 	if state == "play":
 		for i in speed:
 			step(dt)

@@ -28,6 +28,9 @@ func _frames(n: int) -> void:
 
 func _run() -> void:
 	await _frames(30)
+	var q := OS.get_environment("GFX")
+	if q != "":
+		main.set_gfx(q)
 	if what.begins_with("level:"):
 		var n := int(what.split(":")[1])
 		main.save.level = 60
@@ -46,7 +49,7 @@ func _run() -> void:
 	elif what == "pvp":
 		main.net.open_pvp()
 		await _frames(10)
-	elif what in ["levels", "shop", "help"]:
+	elif what in ["levels", "shop", "help", "settings"]:
 		main.ui.show_screen(what)
 		await _frames(10)
 	elif what == "win":

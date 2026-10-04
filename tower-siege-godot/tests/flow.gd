@@ -116,5 +116,24 @@ func _run() -> void:
 	main.net.start_pvp("practice", 777)
 	ok("Practice has a bot", main.mode == "practice" and main.battle.ai_sides.size() == 1)
 
+	# Graphics settings
+	main.set_gfx("low")
+	ok("Low graphics: no smoothing, no soldier shadows", main.world.quality == 0 and not main.world.soldier_shadows.visible and get_root().msaa_3d == Viewport.MSAA_DISABLED)
+	main.set_gfx("high")
+	ok("High graphics: full resolution", main.world.quality == 2 and is_equal_approx(get_root().scaling_3d_scale, 1.0) and main.world.soldier_shadows.visible)
+	main.set_gfx("auto")
+	ok("Auto starts at Medium", main.world.quality == 1)
+	main.state = "menu"
+	for i in 200:
+		main._process(0.06)
+	ok("Auto steps the graphics down when the game runs slowly", main.world.quality == 0)
+	main.ui.show_screen("settings")
+	await _frames(2)
+	ok("The settings screen opens", main.screen_open == "settings")
+	var tris := 0
+	var m: Mesh = main.world.soldiers.multimesh.mesh
+	tris = m.surface_get_arrays(0)[Mesh.ARRAY_INDEX].size() / 3
+	ok("Soldiers are light to draw", tris <= 300, str(tris))
+
 	print("FLOW DONE %d failed" % fails)
 	quit(1 if fails else 0)

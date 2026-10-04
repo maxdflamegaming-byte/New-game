@@ -46,6 +46,8 @@ var win_coins: Label
 var win_unlock: Label
 var next_btn: Button
 var lose_tip: Label
+var vibrate_btn: Button
+var gfx_btns := {}
 
 
 func build() -> void:
@@ -61,6 +63,7 @@ func build() -> void:
 	_build_levels()
 	_build_shop()
 	_build_help()
+	_build_settings()
 	_build_paused()
 	_build_win()
 	_build_lose()
@@ -266,7 +269,7 @@ func show_screen(id: String) -> void:
 			refresh_levels()
 		"shop":
 			refresh_shop()
-		"paused":
+		"paused", "settings":
 			refresh_toggles()
 
 
@@ -500,20 +503,20 @@ func _build_menu() -> void:
 	row2.add_child(button("🏆 Leaderboard", "blue", 26, func(): main.net.open_board()))
 	row2.add_child(button("🛡 Clans", "blue", 26, func(): main.net.open_clans()))
 	col.add_child(row2)
-	col.add_child(_toggles())
+	var row3 := hbox()
+	row3.add_child(button("⚙ Settings", "blue", 24, func(): show_screen("settings")))
+	row3.add_child(button("?", "blue", 26, func(): show_screen("help")))
+	col.add_child(row3)
 
 
 func _toggles() -> HBoxContainer:
 	var row := hbox()
 	var s := button("Sound", "blue", 22, func(): main.toggle_sound())
 	var m := button("Music", "blue", 22, func(): main.toggle_music())
-	var h := button("?", "blue", 26, func(): show_screen("help"))
 	sound_btns.append(s)
 	music_btns.append(m)
 	row.add_child(s)
 	row.add_child(m)
-	if sound_btns.size() == 1:
-		row.add_child(h)
 	return row
 
 
@@ -522,6 +525,42 @@ func refresh_toggles() -> void:
 		b.text = "Sound: off" if main.save.muted else "Sound: on"
 	for b in music_btns:
 		b.text = "Music: off" if not main.save.music or main.save.muted else "Music: on"
+	if vibrate_btn:
+		vibrate_btn.text = "Vibration: on" if main.save.vibrate else "Vibration: off"
+		for g in gfx_btns:
+			var on: bool = main.save.gfx == g
+			gfx_btns[g].add_theme_stylebox_override("normal", box(YELLOW if on else PANEL_LIGHT))
+			gfx_btns[g].add_theme_color_override("font_outline_color", Color("#b06a00") if on else INK)
+
+
+# ---------- Settings ----------
+func _build_settings() -> void:
+	var col := screen("settings")
+	col.add_child(ribbon("Settings"))
+	var p := panel()
+	var v := vbox(18)
+	p.add_child(v)
+	v.add_child(_toggles())
+	vibrate_btn = button("Vibration: on", "blue", 22, func():
+		main.save.vibrate = not main.save.vibrate
+		main.write_save()
+		main.vibrate(40)
+		refresh_toggles())
+	vibrate_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	v.add_child(vibrate_btn)
+	v.add_child(label("Graphics", 28))
+	var row := hbox(8)
+	for g in ["auto", "low", "medium", "high"]:
+		var b := button(g.capitalize(), "blue", 22, func():
+			main.set_gfx(g)
+			refresh_toggles())
+		b.custom_minimum_size.x = 128
+		gfx_btns[g] = b
+		row.add_child(b)
+	v.add_child(row)
+	v.add_child(wrapped(label("Auto starts at Medium and lowers the graphics by itself if the game runs slowly. Low is easiest on older phones and the battery.", 18, WHITE, 4, font_m), 540))
+	col.add_child(p)
+	col.add_child(back_button())
 
 
 func refresh_menu() -> void:

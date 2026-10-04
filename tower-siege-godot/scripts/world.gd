@@ -35,7 +35,9 @@ var glow_shader: Shader = preload("res://shaders/glow.gdshader")
 var models := {}               # tower id -> {node, mesh_inst, mat, flag, ring, lv, type, side, top, smoke, bounce}
 var roads := {}                # key -> MeshInstance3D
 var soldiers: MultiMeshInstance3D
+var soldier_shadows: MultiMeshInstance3D
 var tanks: MultiMeshInstance3D
+var quality := 1               # 0 low, 1 medium, 2 high (see set_quality)
 var bit_mm: MultiMeshInstance3D
 var bits: Array = []           # flying confetti / clash bits
 var puffs: Array[Sprite3D] = []
@@ -521,15 +523,24 @@ func _make_units() -> void:
 	var k := MeshKit.new()
 	k.box(9, 9, 6.5, Vector3(0, 11.5, 0), T)
 	k.box(9.4, 1.8, 6.9, Vector3(0, 9, 0), Color.WHITE)
-	k.sphere(5.6, Vector3(0, 21, 0.4), Color("#ffd3a8"))
-	k.sphere(6.4, Vector3(0, 22.2, 0), MeshKit.LIGHT, Vector3(1, 0.85, 1), true)
-	k.cyl(7.2, 7.2, 1.4, 12, Vector3(0, 22.4, 0), MeshKit.DARK)
-	k.sphere(0.95, Vector3(-2, 20.6, 5.5), Color("#27304a"), Vector3.ONE, false, 6, 4)
-	k.sphere(0.95, Vector3(2, 20.6, 5.5), Color("#27304a"), Vector3.ONE, false, 6, 4)
+	k.sphere(5.6, Vector3(0, 21, 0.4), Color("#ffd3a8"), Vector3.ONE, false, 8, 4)
+	k.sphere(6.4, Vector3(0, 22.2, 0), MeshKit.LIGHT, Vector3(1, 0.85, 1), true, 8, 3)
+	k.cyl(7.2, 7.2, 1.4, 8, Vector3(0, 22.4, 0), MeshKit.DARK, Basis(Vector3.UP, PI / 8))
+	k.box(1.6, 1.8, 0.6, Vector3(-2, 20.6, 5.7), Color("#27304a"))
+	k.box(1.6, 1.8, 0.6, Vector3(2, 20.6, 5.7), Color("#27304a"))
 	k.box(2, 2.4, 15, Vector3(5.8, 12, 3), Color("#46506b"))
 	k.box(3.4, 7, 3.4, Vector3(-2.4, 3.5, 0), Color("#5a6278"), 0.0, Vector2(1, 7))
 	k.box(3.4, 7, 3.4, Vector3(2.4, 3.5, 0), Color("#5a6278"), 0.0, Vector2(2, 7))
 	soldiers = _unit_mm(k.mesh(), MAX_SOLDIERS, true)
+	soldiers.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# Soldiers' shadows come from a few plain boxes in the same places, which is much cheaper
+	var sh := MeshKit.new()
+	sh.box(9, 16, 6.5, Vector3(0, 12, 0), Color.WHITE)
+	sh.box(12, 9, 11, Vector3(0, 22, 0), Color.WHITE)
+	sh.box(8, 6, 3.4, Vector3(0, 3, 0), Color.WHITE)
+	soldier_shadows = _unit_mm(sh.mesh(), MAX_SOLDIERS, false)
+	soldier_shadows.material_override = StandardMaterial3D.new()
+	soldier_shadows.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 	# Tank
 	var tk := MeshKit.new()
 	tk.box(20, 8, 28, Vector3(0, 8, 0), T).box(16, 3, 8, Vector3(0, 9, 15), T)
@@ -556,6 +567,8 @@ func _unit_mm(m: Mesh, count: int, walk: bool) -> MultiMeshInstance3D:
 
 func _draw_units(units: Array) -> void:
 	var smm := soldiers.multimesh
+	var shm := soldier_shadows.multimesh
+	var shadows := soldier_shadows.visible
 	var tmm := tanks.multimesh
 	var s := 0
 	var k := 0
@@ -573,10 +586,14 @@ func _draw_units(units: Array) -> void:
 		else:
 			if s >= MAX_SOLDIERS:
 				continue
-			smm.set_instance_transform(s, Transform3D(Basis(Vector3.UP, ang).scaled(Vector3.ONE * 1.75 * S), Vector3(u.x, 0, u.y)))
+			var xf := Transform3D(Basis(Vector3.UP, ang).scaled(Vector3.ONE * 1.75 * S), Vector3(u.x, 0, u.y))
+			smm.set_instance_transform(s, xf)
+			if shadows:
+				shm.set_instance_transform(s, xf)
 			smm.set_instance_custom_data(s, Color(team.r, team.g, team.b, fmod(u.id * 0.137, 1.0)))
 			s += 1
 	smm.visible_instance_count = s
+	shm.visible_instance_count = s if shadows else 0
 	tmm.visible_instance_count = k
 
 
@@ -1012,7 +1029,27 @@ func render(dt: float, battle: Battle, highlight: Callable, shells_list: Array) 
 	_move_clouds()
 
 
-func lower_quality() -> void:
-	sun.shadow_blur = 0.0
-	RenderingServer.directional_shadow_atlas_set_size(1024, true)
-	get_viewport().msaa_3d = Viewport.MSAA_DISABLED
+## Graphics quality. Low: the 3D drawn at about 640 pixels across and scaled up, hard shadows
+## from buildings only, no smoothing. Medium: about 900 pixels across, soft shadows, soldiers'
+## shadows, smoothing. High: the screen's full resolution and the softest shadows.
+## The HUD and labels are always drawn at full resolution.
+func set_quality(q: int) -> void:
+	quality = clampi(q, 0, 2)
+	var vp := get_viewport()
+	var short := float(mini(vp.size.x, vp.size.y))
+	var target: float = [640.0, 900.0, 100000.0][quality]
+	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
+	vp.scaling_3d_scale = clampf(target / maxf(short, 1.0), 0.5, 1.0)
+	vp.msaa_3d = Viewport.MSAA_DISABLED if quality == 0 else Viewport.MSAA_2X
+	sun.shadow_blur = [0.0, 1.0, 1.5][quality]
+	RenderingServer.directional_shadow_atlas_set_size(1024 if quality == 0 else 2048, true)
+	soldier_shadows.visible = quality > 0
+	for c in clouds:
+		c.visible = quality > 0
+
+
+func lower_quality() -> bool:
+	if quality == 0:
+		return false
+	set_quality(quality - 1)
+	return true
