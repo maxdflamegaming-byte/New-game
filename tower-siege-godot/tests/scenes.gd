@@ -22,6 +22,8 @@ func _run() -> void:
 	var every := float(OS.get_cmdline_user_args()[2]) if OS.get_cmdline_user_args().size() > 2 else 0.5
 	var count := int(OS.get_cmdline_user_args()[3]) if OS.get_cmdline_user_args().size() > 3 else 16
 	main.cutscene.auto = true
+	if OS.get_environment("LANG_CODE") != "":
+		main.set_lang(OS.get_environment("LANG_CODE"))
 	main.save.level = 61
 	if what == "intro":
 		main.start_level(1)
