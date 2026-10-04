@@ -13,6 +13,7 @@ var normals := PackedVector3Array()
 var colors := PackedColorArray()
 var uv2s := PackedVector2Array()
 var indices := PackedInt32Array()
+var tag := Vector2.ZERO           # UV2 for shapes that don't set their own (Vector2(3, 0) = a flag)
 
 
 ## color: a Color, or TEAM / DARK / LIGHT. leg: (1 or 2, hip height) for a soldier's legs.
@@ -32,7 +33,7 @@ func add(m: PrimitiveMesh, xf: Transform3D, color, leg := Vector2.ZERO) -> MeshK
 		verts.append(xf * v[i])
 		normals.append((xf.basis * n[i]).normalized())
 		colors.append(c)
-		uv2s.append(leg)
+		uv2s.append(leg if leg != Vector2.ZERO else tag)
 	for i in idx:
 		indices.append(i + off)
 	return self

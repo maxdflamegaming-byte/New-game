@@ -350,8 +350,10 @@ func open_clans() -> void:
 func start_pvp(kind: String, seed_value: int) -> void:
 	if kind != "online":
 		role = ""
+	main.cutscene.abort()
 	main.mode = kind
 	main.level = 0
+	main.world.drift = false
 	main.state = "play"
 	main.load_battle(Levels.gen(14, true, seed_value), 1000 + seed_value % 997, Levels.THEMES[seed_value % Levels.THEMES.size()])
 	# The guest's copy: their army (red on the host) shows as blue
@@ -556,6 +558,7 @@ func _guest_unit(row: Array, u: Battle.Unit) -> Battle.Unit:
 		u.to = b.towers[int(row[2])]
 		u.lane = -float(row[6])
 		u.d = float(row[3])
+		u.tank = int(row[4]) > 1
 	# Keep the smooth local position unless it has drifted
 	var d := float(row[3])
 	u.d = d if absf(u.d - d) > 40 else u.d + (d - u.d) * 0.5
@@ -590,13 +593,22 @@ func _guest_event(e: Array, old: Dictionary) -> void:
 			if a != null and c != null and (a.owner == 1 or c.owner == 1):
 				b.stats.killed += 1
 			main.world.clash(u.x, u.y, a.owner if a != null else 1, c.owner if c != null else 2)
+			# The host only says which two met: the weaker one (or both) is knocked out
+			if a != null and c != null:
+				if a.power <= c.power:
+					main.world.knock(a.x, a.y, a.owner, a.tank)
+				if c.power <= a.power:
+					main.world.knock(c.x, c.y, c.owner, c.tank)
 	elif e[0] == "sh" and int(e[1]) < b.towers.size():
 		var t := b.towers[int(e[1])]
 		var u = old.get(int(e[2]))
 		if u != null:
 			main.shells.append({"x1": t.x, "y1": t.y, "x2": u.x, "y2": u.y, "h": 50.0, "time": 0.18, "dur": 0.18})
 			main.world.muzzle(t, u.x, u.y)
+			main.world.kick(t)
 			main.world.hit(u.x, u.y, u.owner)
+			if u.power <= 1:
+				main.world.knock(u.x, u.y, u.owner, u.tank)
 
 
 func guest_update(dt: float) -> void:

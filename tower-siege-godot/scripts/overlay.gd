@@ -32,7 +32,7 @@ func _draw() -> void:
 		return
 	var b: Battle = main.battle
 	var w: World = main.world
-	if show_labels and main.state != "menu" and main.screen_open == "":
+	if show_labels and main.state != "menu" and main.state != "cutscene" and main.screen_open == "" and not main.cutscene.playing():
 		for t in b.towers:
 			_label(t, w)
 	# Swipe trail
@@ -47,12 +47,14 @@ func _draw() -> void:
 		draw_arc(c, r, 0, TAU, 48, red, 4, true)
 		for d in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
 			draw_line(c + d * (r - 12), c + d * (r + 12), red, 4)
-	if main.state != "menu" and main.screen_open == "":
+	if main.state != "menu" and main.screen_open == "" and not main.cutscene.playing():
 		for f in main.floats:
 			var p := w.project(f.t.x, f.t.y, w.tower_top(f.t) + 30 + (1.3 - f.life) * 40)
 			var col: Color = f.color
 			col.a = minf(1, f.life * 1.5)
-			outlined(f.text, p, 26, col, Color(0.08, 0.1, 0.2, col.a))
+			# Pops in big, then settles
+			var age: float = 1.3 - f.life
+			outlined(f.text, p, int(26 * (1.0 + 0.6 * maxf(0.0, 1.0 - age / 0.18))), col, Color(0.08, 0.1, 0.2, col.a))
 	_drags(w, b)
 	_hand(w, b)
 	if main.state == "play" and main.screen_open == "":
@@ -96,7 +98,8 @@ func _upgrade_offer() -> void:
 # The number on a roof, and dots for its roads (white = free, faded = in use)
 func _label(t, w: World) -> void:
 	var s := w.tower_screen(t)
-	var size := int(clampf(w.px_per_unit(t.x, t.y) * 46, 16, 40))
+	# The number swells when soldiers arrive or the building changes hands
+	var size := int(clampf(w.px_per_unit(t.x, t.y) * 46, 16, 40) * (1.0 + t.pop * 0.12))
 	var n := floori(maxf(0, t.units))
 	var text := "Max" if n >= Battle.CAP else str(n)
 	if t.type == "factory":
@@ -144,7 +147,7 @@ func _drags(w: World, b: Battle) -> void:
 
 # A ghost hand that shows how to drag a road, on the first level
 func _hand(w: World, b: Battle) -> void:
-	if not main.hand_shown or not main.drags.is_empty():
+	if not main.hand_shown or not main.drags.is_empty() or main.state != "play":
 		return
 	var from = null
 	var to = null

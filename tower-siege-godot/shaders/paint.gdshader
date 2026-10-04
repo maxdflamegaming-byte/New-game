@@ -3,6 +3,8 @@
 // "the army's color" instead: alpha 0.5 = the color, 0.25 = its dark shade, 0.75 = its light
 // shade. The army's color is a uniform for buildings, or each instance's custom data in a
 // MultiMesh (rgb = color, a = a 0-1 phase for the walk). Faces are drawn flat, for a low-poly look.
+// Animation: soldiers' legs swing (UV2.x 1 or 2), flags flutter (UV2.x 3), and plants sway in
+// the wind (the `sway` uniform, more the higher up the plant).
 shader_type spatial;
 render_mode cull_back, depth_draw_opaque;
 
@@ -11,6 +13,7 @@ uniform bool use_instance = false;
 uniform bool walk = false;          // soldiers: UV2.x 1 = left leg, 2 = right leg; UV2.y = hip height
 uniform float rough = 0.55;
 uniform float hit_flash = 0.0;      // white flash when a building is hit
+uniform float sway = 0.0;           // trees and flowers bending in the wind
 
 varying vec3 v_team;
 
@@ -34,6 +37,20 @@ void vertex() {
 			VERTEX = v;
 		}
 		VERTEX.y += abs(sin(t)) * 2.0;
+		// A little sway from side to side while marching
+		VERTEX.x += sin(t * 0.5) * 0.06 * VERTEX.y;
+	}
+	if (UV2.x > 2.5) {
+		// A flag: ripples run out from the pole, bigger at the free end
+		VERTEX.z += sin(TIME * 7.0 - VERTEX.x * 0.45) * VERTEX.x * 0.09;
+		VERTEX.y += sin(TIME * 5.0 - VERTEX.x * 0.3) * VERTEX.x * 0.03;
+	}
+	if (sway > 0.0) {
+		vec3 o = MODEL_MATRIX[3].xyz;
+		float ph = o.x * 0.011 + o.z * 0.017;
+		float h = max(VERTEX.y, 0.0) / 40.0;
+		VERTEX.x += sin(TIME * 1.7 + ph) * sway * h * h * 3.0;
+		VERTEX.z += cos(TIME * 1.3 + ph * 1.7) * sway * h * h * 1.5;
 	}
 }
 

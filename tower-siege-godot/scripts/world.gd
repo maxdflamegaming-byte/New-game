@@ -49,8 +49,16 @@ var fires: Array[MeshInstance3D] = []
 var rings: Array[MeshInstance3D] = []
 var shells: Array[MeshInstance3D] = []
 var plane: Node3D
+var bombs: Array[MeshInstance3D] = []
+var helm_mm: MultiMeshInstance3D
+var helmets: Array = []        # knocked-off helmets flying through the air
+var dying_roads: Array = []    # cut roads snapping back: [{mi, life, grow}]
 var clouds: Array[MeshInstance3D] = []
 var time := 0.0
+var cam_base := Transform3D()  # where the battle camera sits (set by layout)
+var cam_free := false          # a cut scene is moving the camera
+var drift := false             # on the menu the camera slowly circles the field
+const MAX_HELMETS := 60
 
 
 func setup(side_list: Array) -> void:
@@ -111,6 +119,7 @@ func layout(size: Vector2, top: float, bottom: float, field_w: float, field_h: f
 	var d := 2400.0
 	var pad := 6.0
 	var corners := [Vector3(-20, 120, -40), Vector3(fw + 20, 120, -40), Vector3(-20, 0, fh + 30), Vector3(fw + 20, 0, fh + 30)]
+	var was := camera.transform
 	for i in 40:
 		camera.position = target + Vector3(0, sin(pitch) * d, cos(pitch) * d)
 		camera.look_at(target, Vector3.UP)
@@ -130,6 +139,9 @@ func layout(size: Vector2, top: float, bottom: float, field_w: float, field_h: f
 		d *= pow(k, 0.85)
 		var want_y := top + pad + avail_h / 2
 		target.z += ((y0 + y1) / 2 - want_y) * (fh / maxf(1, y1 - y0)) * 0.6
+	cam_base = camera.transform
+	if cam_free:
+		camera.transform = was
 	# The sun from the upper left
 	sun.rotation = Vector3(deg_to_rad(-62), deg_to_rad(-38), 0)
 
@@ -175,6 +187,8 @@ func build(seed_value: int, theme_name: String, battle: Battle) -> void:
 		level_root.queue_free()
 	models.clear()
 	roads.clear()
+	dying_roads.clear()
+	helmets.clear()
 	level_root = Node3D.new()
 	add_child(level_root)
 	var th: Dictionary = THEMES.get(theme_name, THEMES.grass)
@@ -266,7 +280,7 @@ func build(seed_value: int, theme_name: String, battle: Battle) -> void:
 		_sync_tower(t)
 
 
-func _instanced(m: Mesh, list: Array, color_fn := Callable(), shadow := true) -> void:
+func _instanced(m: Mesh, list: Array, color_fn := Callable(), shadow := true, sway := 0.0) -> void:
 	if list.is_empty():
 		return
 	var mm := MultiMesh.new()
@@ -282,6 +296,8 @@ func _instanced(m: Mesh, list: Array, color_fn := Callable(), shadow := true) ->
 	var mi := MultiMeshInstance3D.new()
 	mi.multimesh = mm
 	mi.material_override = paint_material(Color.WHITE, true)
+	if sway > 0:
+		mi.material_override.set_shader_parameter("sway", sway)
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadow else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	level_root.add_child(mi)
 
@@ -295,11 +311,11 @@ func _add_props(P: Dictionary) -> void:
 		k.cone(17, 22, 8, Vector3(0, 18, 0), T).cone(14, 19, 8, Vector3(0, 30, 0), T).cone(10, 16, 8, Vector3(0, 41, 0), T)
 		if kind == "snowpine":
 			k.cone(9, 9, 8, Vector3(0, 46, 0), Color.WHITE).cone(14, 5, 8, Vector3(0, 32, 0), Color.WHITE)
-		_instanced(k.mesh(), P[kind], func(c): return Color.from_hsv(0.3 + c * 0.06, 0.6, 0.62 + c * 0.12))
+		_instanced(k.mesh(), P[kind], func(c): return Color.from_hsv(0.3 + c * 0.06, 0.6, 0.62 + c * 0.12), true, 0.8)
 	# Cacti
 	_instanced(MeshKit.new().cyl(5, 5.5, 34, 8, Vector3(0, 17, 0), T).sphere(5, Vector3(0, 34, 0), T, Vector3.ONE, true)
 		.cyl(3.5, 3.5, 12, 6, Vector3(9, 20, 0), T).cyl(3.5, 3.5, 6, 6, Vector3(6, 15, 0), T, Basis(Vector3.BACK, PI / 2)).mesh(),
-		P.cactus, func(c): return Color.from_hsv(0.3, 0.6, 0.75 + c * 0.1))
+		P.cactus, func(c): return Color.from_hsv(0.3, 0.6, 0.75 + c * 0.1), true, 0.15)
 	# Palm trees: a leaning trunk, a crown of leaves and coconuts
 	var palm := MeshKit.new()
 	for i in 5:
@@ -310,10 +326,10 @@ func _add_props(P: Dictionary) -> void:
 		palm.add(_box_mesh(6, 1.4, 26), Transform3D(b, Vector3(8, 50, 0) + b * Vector3(0, 0, 13)), T)
 	for p in [Vector3(6, 47, 2), Vector3(10, 47, -2), Vector3(8, 46, 3)]:
 		palm.sphere(2.6, p, Color("#8a5a32"))
-	_instanced(palm.mesh(), P.palm, func(c): return Color.from_hsv(0.3, 0.7, 0.7 + c * 0.1))
+	_instanced(palm.mesh(), P.palm, func(c): return Color.from_hsv(0.3, 0.7, 0.7 + c * 0.1), true, 0.7)
 	# Flowers: a stem and a bright head
 	_instanced(MeshKit.new().cyl(0.7, 0.7, 8, 4, Vector3(0, 4, 0), Color("#62c94a")).sphere(3.2, Vector3(0, 9, 0), T, Vector3(1, 0.6, 1)).mesh(),
-		P.flower, func(c): return Color(BRIGHT[int(c * BRIGHT.size()) % BRIGHT.size()]), false)
+		P.flower, func(c): return Color(BRIGHT[int(c * BRIGHT.size()) % BRIGHT.size()]), false, 3.0)
 	# Rocks
 	_instanced(MeshKit.new().sphere(14, Vector3(0, 6, 0), T, Vector3(1, 0.7, 1), false, 7, 4).mesh(), P.rock, func(c): return Color.from_hsv(0.6, 0.06, 0.78 + c * 0.12))
 	# Barrels in bright colors, crates and old tires
@@ -481,7 +497,9 @@ func _build_model(t, lv: int) -> Dictionary:
 
 ## The flag on your buildings can be decorated (bought under Looks)
 func _flag_mesh(style := "plain") -> ArrayMesh:
-	var k := MeshKit.new().box(14, 9, 0.8, Vector3(7.4, 0, 0), MeshKit.TEAM)
+	var k := MeshKit.new()
+	k.tag = Vector2(3, 0) # the shader makes it flutter
+	k.box(14, 9, 0.8, Vector3(7.4, 0, 0), MeshKit.TEAM)
 	var W := Color.WHITE
 	match style:
 		"stripe":
@@ -539,6 +557,8 @@ func _sync_tower(t) -> Dictionary:
 	var info = models.get(t.id)
 	if info == null or info.lv != lv or info.type != t.type:
 		var grew: bool = info != null and info.type == t.type
+		# If it changed hands at the same moment, the new model still plays the capture
+		var old_side: int = info.side if info != null else t.owner
 		if info != null:
 			info.node.queue_free()
 		var built := _build_model(t, lv)
@@ -547,7 +567,7 @@ func _sync_tower(t) -> Dictionary:
 		node.add_child(holder)
 		var mi := MeshInstance3D.new()
 		mi.mesh = built.mesh
-		var mat := paint_material(_team_lin(t.owner))
+		var mat := paint_material(_team_lin(old_side))
 		mi.material_override = mat
 		holder.add_child(mi)
 		if _pole_m == null:
@@ -558,7 +578,7 @@ func _sync_tower(t) -> Dictionary:
 		pole.position = built.flag_at
 		holder.add_child(pole)
 		var flag := MeshInstance3D.new()
-		flag.mesh = _flag_for(t.owner)
+		flag.mesh = _flag_for(old_side)
 		flag.material_override = mat
 		flag.position = built.flag_at + Vector3(0, 18, 0)
 		holder.add_child(flag)
@@ -579,15 +599,19 @@ func _sync_tower(t) -> Dictionary:
 		ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		node.add_child(ring)
 		level_root.add_child(node)
-		info = {"node": node, "holder": holder, "mat": mat, "flag": flag, "ring": ring, "range": range_ring,
-			"lv": lv, "type": t.type, "side": t.owner, "top": built.top * S, "smoke": built.smoke,
-			"muzzle": built.muzzle * S, "bounce": 0.0, "smoke_t": randf()}
+		info = {"node": node, "holder": holder, "mat": mat, "flag": flag, "pole": pole, "ring": ring, "range": range_ring,
+			"lv": lv, "type": t.type, "side": old_side, "top": built.top * S, "smoke": built.smoke,
+			"muzzle": built.muzzle * S, "bounce": 0.0, "smoke_t": randf(), "kick": 0.0,
+			"pole_y": pole.position.y, "flag_y": flag.position.y, "raise": 0.0, "color_from": _team_lin(old_side), "color_t": 1.0}
 		models[t.id] = info
 		if grew:
 			info.bounce = 1.0
 			sparkle(t.x, t.y, sides[t.owner].light)
 	if info.side != t.owner:
-		info.mat.set_shader_parameter("team_color", _team_lin(t.owner))
+		# Captured: the colors wipe over with a white flash and the new flag is raised
+		info.color_from = _team_lin(info.side)
+		info.color_t = 0.0
+		info.raise = 1.0
 		info.flag.mesh = _flag_for(t.owner)
 		info.side = t.owner
 	info.node.position = Vector3(t.x, 0, t.y)
@@ -680,10 +704,60 @@ func set_look(hat: String, flag: String) -> void:
 				models[id].flag.mesh = _flag_for(Battle.PLAYER)
 
 
+## A picture of a node (a character's head for the dialog box), drawn once in a small separate
+## scene. The node is freed afterwards. Null where nothing can be drawn (no screen).
+func render_node(node: Node3D, cam_pos: Vector3, look: Vector3, px := 200) -> Texture2D:
+	if DisplayServer.get_name() == "headless":
+		node.free()
+		return null # nothing is ever drawn, so the picture would never come
+	var vp := _studio(px)
+	vp.add_child(node)
+	var cam: Camera3D = vp.get_node("Cam")
+	cam.position = cam_pos
+	cam.look_at(look)
+	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	await RenderingServer.frame_post_draw
+	var img := vp.get_texture().get_image()
+	vp.queue_free()
+	if img == null or img.is_empty():
+		return null
+	return ImageTexture.create_from_image(img)
+
+
+## A small separate scene with soft light and a camera, for drawing pictures
+func _studio(px: int) -> SubViewport:
+	var vp := SubViewport.new()
+	vp.size = Vector2i(px, px)
+	vp.own_world_3d = true
+	vp.transparent_bg = true
+	vp.msaa_3d = Viewport.MSAA_4X
+	vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	add_child(vp)
+	var we := WorldEnvironment.new()
+	var e := Environment.new()
+	e.background_mode = Environment.BG_CLEAR_COLOR
+	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	e.ambient_light_color = Color("#eef6ff")
+	e.ambient_light_energy = 0.55
+	we.environment = e
+	vp.add_child(we)
+	var light := DirectionalLight3D.new()
+	light.light_color = Color("#fff4e0")
+	light.rotation = Vector3(-0.8, 0.6, 0)
+	vp.add_child(light)
+	var cam := Camera3D.new()
+	cam.name = "Cam"
+	cam.fov = 30
+	vp.add_child(cam)
+	return vp
+
+
 ## Pictures of every hat and flag for the Looks screen, drawn once in a small separate scene:
 ## {"hat:crown": Texture2D, ...}. Empty where nothing can be drawn (no screen).
 func make_previews(items: Array) -> Dictionary:
 	var out := {}
+	if DisplayServer.get_name() == "headless":
+		return out
 	var vp := SubViewport.new()
 	vp.size = Vector2i(180, 180)
 	vp.own_world_3d = true
@@ -767,16 +841,21 @@ func _draw_units(units: Array) -> void:
 		var dz: float = u.to.y - u.from.y
 		var ang := atan2(dx, dz)
 		var team: Color = sides[u.owner].color.srgb_to_linear()
+		# Pop out of the building at the start of the road, and shrink into the one at the end
+		var L := sqrt(dx * dx + dz * dz)
+		var k_in := clampf((u.d - u.from.radius() * 0.5) / 28.0, 0.0, 1.0)
+		var k_out := clampf((L - u.to.radius() * 0.5 - u.d) / 22.0, 0.0, 1.0)
+		var pop := (0.35 + 0.65 * k_in + 0.25 * sin(k_in * PI)) * (0.4 + 0.6 * k_out)
 		if u.power > 1:
 			if k >= MAX_TANKS:
 				continue
-			tmm.set_instance_transform(k, Transform3D(Basis(Vector3.UP, ang).scaled(Vector3.ONE * 1.55 * S), Vector3(u.x, absf(sin(time * 20 + u.id)) * 0.6, u.y)))
+			tmm.set_instance_transform(k, Transform3D(Basis(Vector3.UP, ang).scaled(Vector3.ONE * 1.55 * S * pop), Vector3(u.x, absf(sin(time * 20 + u.id)) * 0.6, u.y)))
 			tmm.set_instance_custom_data(k, Color(team.r, team.g, team.b, 0))
 			k += 1
 		else:
 			if s + me >= MAX_SOLDIERS:
 				continue
-			var xf := Transform3D(Basis(Vector3.UP, ang).scaled(Vector3.ONE * 1.75 * S), Vector3(u.x, 0, u.y))
+			var xf := Transform3D(Basis(Vector3.UP, ang).scaled(Vector3.ONE * 1.75 * S * pop), Vector3(u.x, 0, u.y))
 			var cd := Color(team.r, team.g, team.b, fmod(u.id * 0.137, 1.0))
 			if shadows:
 				shm.set_instance_transform(s + me, xf)
@@ -843,6 +922,8 @@ func _sync_roads(towers: Array, game_time: float) -> void:
 				mi.material_override = _road_mats[t.owner]
 				mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 				mi.set_meta("grow", grow)
+				mi.set_meta("a", Vector2(t.x, t.y))
+				mi.set_meta("b", Vector2(r.to.x, r.to.y))
 				level_root.add_child(mi)
 				roads[key] = mi
 			elif mi.get_meta("grow") < 1.0:
@@ -852,8 +933,18 @@ func _sync_roads(towers: Array, game_time: float) -> void:
 			order += 1
 	for key in roads.keys():
 		if not seen.has(key):
-			roads[key].queue_free()
+			# A cut road snaps back to the building it came from
+			dying_roads.append({"mi": roads[key], "life": 0.22, "grow": float(roads[key].get_meta("grow"))})
 			roads.erase(key)
+	for d in dying_roads:
+		d.life -= get_process_delta_time()
+		if not is_instance_valid(d.mi):
+			continue
+		if d.life <= 0:
+			d.mi.queue_free()
+		else:
+			d.mi.mesh = _road_mesh(d.mi.get_meta("a"), d.mi.get_meta("b"), d.grow * d.life / 0.22)
+	dying_roads = dying_roads.filter(func(d): return d.life > 0 and is_instance_valid(d.mi))
 
 
 # ---------- Effects ----------
@@ -943,6 +1034,30 @@ func _make_fx() -> void:
 	bit_mm.extra_cull_margin = 16000
 	bit_mm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(bit_mm)
+	# Knocked-off helmets: one MultiMesh, colored per helmet
+	var hm := MultiMesh.new()
+	hm.transform_format = MultiMesh.TRANSFORM_3D
+	hm.use_custom_data = true
+	hm.mesh = MeshKit.new().sphere(6.4, Vector3.ZERO, MeshKit.LIGHT, Vector3(1, 0.85, 1), true, 8, 3).cyl(7.2, 7.2, 1.4, 8, Vector3(0, 0.2, 0), MeshKit.DARK).mesh()
+	hm.instance_count = MAX_HELMETS
+	hm.visible_instance_count = 0
+	helm_mm = MultiMeshInstance3D.new()
+	helm_mm.multimesh = hm
+	helm_mm.material_override = paint_material(Color.WHITE, true)
+	helm_mm.extra_cull_margin = 16000
+	helm_mm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(helm_mm)
+	# Bombs that fall from the airstrike plane
+	var bomb := MeshKit.new().sphere(5, Vector3.ZERO, Color("#3b4256"), Vector3(1, 1.6, 1), false, 8, 4)
+	bomb.box(1, 6, 7, Vector3(0, 9, 0), Color("#ff5257")).box(7, 6, 1, Vector3(0, 9, 0), Color("#ff5257"))
+	var bomb_m := bomb.mesh()
+	for i in 3:
+		var b := MeshInstance3D.new()
+		b.mesh = bomb_m
+		b.material_override = paint_material(Color.WHITE)
+		b.visible = false
+		add_child(b)
+		bombs.append(b)
 	# The airstrike plane
 	var p := MeshKit.new()
 	p.cyl(5, 7, 52, 10, Vector3.ZERO, Color.WHITE, Basis(Vector3.RIGHT, PI / 2))
@@ -996,13 +1111,76 @@ func ring(x: float, z: float, color: Color, size: float) -> void:
 	r.set_meta("fx", {"life": 0.7, "max": 0.7, "size": size, "color": color})
 
 
-func chunks(x: float, z: float, color: Color, n: int, speed := 90.0) -> void:
+func chunks(x: float, z: float, color: Color, n: int, speed := 90.0, y := 16.0, life := 0.9) -> void:
 	for i in n:
 		if bits.size() >= MAX_BITS:
 			return
 		var a := randf() * TAU
 		var v := speed * (0.4 + randf() * 0.6)
-		bits.append({"p": Vector3(x, 16, z), "v": Vector3(cos(a) * v, 60 + randf() * 70, sin(a) * v), "life": 0.9, "spin": randf() * 10, "rot": randf() * TAU, "c": color.srgb_to_linear()})
+		bits.append({"p": Vector3(x, y, z), "v": Vector3(cos(a) * v, 60 + randf() * 70, sin(a) * v), "life": life, "spin": randf() * 10, "rot": randf() * TAU, "c": color.srgb_to_linear()})
+
+
+## A firework bursting in the sky: a flash, a ring of sparks and twinkling stars
+func burst(x: float, y: float, z: float, color: Color) -> void:
+	fireball(x, y, z, 26, Color(1, 1, 0.9))
+	chunks(x, z, color, 16, 230, y, 1.3)
+	chunks(x, z, Color.WHITE, 5, 200, y, 1.1)
+	for i in 4:
+		var s: Sprite3D = _take(stars)
+		if s == null:
+			break
+		var a := randf() * TAU
+		s.visible = true
+		s.position = Vector3(x + cos(a) * 50, y + (randf() - 0.5) * 60, z + sin(a) * 30)
+		s.modulate = color.lightened(0.4)
+		s.set_meta("fx", {"life": 0.8, "max": 0.8, "size": 22})
+
+
+## A soldier knocked out: its helmet flies off and tumbles, with a puff and a dizzy star.
+## A tank blows up instead.
+func knock(x: float, z: float, side: int, tank := false) -> void:
+	if tank:
+		explode(x, z, false)
+		chunks(x, z, Color("#5a6278"), 5, 110)
+		return
+	if helmets.size() < MAX_HELMETS:
+		helmets.append({"p": Vector3(x, 34, z), "v": Vector3((randf() - 0.5) * 120, 150 + randf() * 70, (randf() - 0.5) * 120),
+			"rot": Vector3(randf() * TAU, randf() * TAU, 0), "spin": Vector3((randf() - 0.5) * 24, (randf() - 0.5) * 12, (randf() - 0.5) * 24),
+			"life": 1.1, "c": sides[side].color.srgb_to_linear()})
+	puff(x, 24, z, Color.WHITE, 22, 0.4, 24)
+	var s: Sprite3D = _take(stars)
+	if s != null:
+		s.visible = true
+		s.position = Vector3(x, 50, z)
+		s.modulate = Color("#fff07a")
+		s.set_meta("fx", {"life": 0.6, "max": 0.6, "size": 14})
+
+
+## A bomb hits a building: fire bursts from its roof and walls, smoke rolls out and bits of it
+## fly off (an explosion at its middle would be hidden inside it)
+func blast(t) -> void:
+	var top := tower_top(t)
+	var r: float = t.radius() * 0.95
+	fireball(t.x, top + 10, t.y, 62)
+	fireball(t.x, top * 0.75, t.y, 48, Color("#ff7b29"))
+	for i in 6:
+		var a := i * TAU / 6 + randf() * 0.5
+		fireball(t.x + cos(a) * r, 18 + randf() * top * 0.5, t.y + sin(a) * r, 26 + randf() * 14, Color("#ffb347") if i % 2 == 0 else Color("#ff7b29"))
+	for i in 10:
+		var a := randf() * TAU
+		puff(t.x + cos(a) * r * 1.1, 10 + randf() * top, t.y + sin(a) * r * 1.1, Color("#7a7a7a"), 70, 1.2 + randf() * 0.6, 40)
+	for i in 4:
+		puff(t.x + (randf() - 0.5) * 40, top + 10, t.y + (randf() - 0.5) * 40, Color("#5c5c5c"), 90, 1.6, 50)
+	chunks(t.x, t.y, sides[t.owner].color, 10, 170)
+	chunks(t.x, t.y, Color("#ffffff"), 6, 150)
+	ring(t.x, t.y, Color("#ffd28a"), 160)
+
+
+## A building's gun fires: it rocks back a little
+func kick(t) -> void:
+	var info = models.get(t.id)
+	if info:
+		info.kick = 1.0
 
 
 func explode(x: float, y: float, big: bool) -> void:
@@ -1131,6 +1309,28 @@ func _update_fx(dt: float, towers: Array) -> void:
 		mm.set_instance_transform(i, Transform3D(Basis(Vector3(1, 1, 0).normalized(), b.rot).scaled(Vector3.ONE * sc), b.p))
 		mm.set_instance_custom_data(i, b.c)
 	mm.visible_instance_count = bits.size()
+	# Helmets: fly, bounce once, then shrink away
+	var alive := []
+	for h in helmets:
+		h.life -= dt
+		if h.life <= 0:
+			continue
+		h.v.y -= 420 * dt
+		h.p += h.v * dt
+		if h.p.y < 3 and h.v.y < 0:
+			h.p.y = 3
+			h.v = Vector3(h.v.x * 0.5, -h.v.y * 0.35, h.v.z * 0.5)
+			h.spin *= 0.5
+		h.rot += h.spin * dt
+		alive.append(h)
+	helmets = alive
+	var hmm := helm_mm.multimesh
+	for i in helmets.size():
+		var h = helmets[i]
+		var sc := minf(1.0, h.life * 3) * 1.75 * S
+		hmm.set_instance_transform(i, Transform3D(Basis.from_euler(h.rot).scaled(Vector3.ONE * sc), h.p))
+		hmm.set_instance_custom_data(i, h.c)
+	hmm.visible_instance_count = helmets.size()
 	# Chimney smoke from tank factories
 	for t in towers:
 		var info = models.get(t.id)
@@ -1182,8 +1382,26 @@ func render(dt: float, battle: Battle, highlight: Callable, shells_list: Array) 
 			var b: float = sin((1.0 - info.bounce) * PI * 3) * info.bounce * 0.18
 			sy += b
 			sx -= b * 0.5
+		# Its gun's recoil
+		if info.kick > 0:
+			info.kick = maxf(0, info.kick - dt * 7)
+			sy -= info.kick * 0.07
+			sx += info.kick * 0.03
 		info.holder.scale = Vector3(S * pop * sx, S * pop * sy, S * pop * sx)
-		info.mat.set_shader_parameter("hit_flash", t.flash)
+		var flash: float = t.flash
+		# Just captured: the old color wipes to the new one through a white flash
+		if info.color_t < 1.0:
+			info.color_t = minf(1.0, info.color_t + dt * 2.5)
+			info.mat.set_shader_parameter("team_color", info.color_from.lerp(_team_lin(t.owner), smoothstep(0.35, 0.65, info.color_t)))
+			flash = maxf(flash, sin(info.color_t * PI) * 0.9)
+		info.mat.set_shader_parameter("hit_flash", flash)
+		# ... and the new flag is raised up its pole
+		if info.raise > 0:
+			info.raise = maxf(0, info.raise - dt * 1.3)
+			var r: float = info.raise * info.raise
+			info.pole.position.y = info.pole_y - 22 * r
+			info.flag.position.y = info.flag_y - 36 * r
+			info.flag.scale = Vector3.ONE * (1.0 - r * 0.5)
 		info.flag.rotation.y = sin(time * 4 + t.id) * 0.4
 		if info.range:
 			var rc: Color = Color.WHITE if t.owner == 0 else sides[t.owner].light
@@ -1222,8 +1440,45 @@ func render(dt: float, battle: Battle, highlight: Callable, shells_list: Array) 
 		plane.rotation = Vector3(0, atan2(dir.x, dir.z), sin(time * 4) * 0.1)
 		if k > 0.55 and randf() < 0.5:
 			puff(plane.position.x, 160, plane.position.z, Color.WHITE, 14, 0.6, 0)
+	# Its bombs drop from where the plane was and whistle down onto the target
+	for i in bombs.size():
+		var b := bombs[i]
+		b.visible = false
+		if battle.strikes.is_empty():
+			continue
+		var st = battle.strikes[0]
+		var k: float = 1.0 - st.time / st.dur
+		var k0 := 0.58 + i * 0.06
+		var kb := (k - k0) / (1.0 - k0)
+		if kb <= 0 or kb >= 1:
+			continue
+		var dir := Vector3(0.6, 0, -0.8)
+		var off := Vector3((i - 1) * 26, 0, (i % 2) * 20 - 10)
+		var from := Vector3(st.t.x, 0, st.t.y) + dir * (k0 - 0.8) * 1500 + off
+		var to := Vector3(st.t.x, 0, st.t.y) + off * 0.6
+		var p := from.lerp(to, kb)
+		b.visible = true
+		b.position = Vector3(p.x, 165 * (1.0 - kb * kb) + 8, p.z)
+		b.rotation = Vector3(0, atan2(dir.x, dir.z), 0)
+		b.scale = Vector3.ONE * S
 	_update_fx(dt, battle.towers)
 	_move_clouds()
+	_apply_camera(dt)
+
+
+## The camera: where layout put it, slowly circling on the menu, or left alone during a cut scene
+func _apply_camera(dt: float) -> void:
+	if cam_free:
+		return
+	if drift:
+		var c := Vector3(fw / 2, 0, fh / 2)
+		var a := sin(time * 0.12) * 0.08
+		var xf := cam_base
+		xf.origin = c + (xf.origin - c).rotated(Vector3.UP, a) + Vector3(0, sin(time * 0.21) * 24, 0)
+		xf.basis = Basis(Vector3.UP, a) * xf.basis
+		camera.transform = camera.transform.interpolate_with(xf, minf(1.0, dt * 2.5))
+	else:
+		camera.transform = cam_base
 
 
 ## Graphics quality. Low: the 3D drawn at about 640 pixels across and scaled up, hard shadows

@@ -18,6 +18,7 @@ func _initialize() -> void:
 	root.size = size
 	main = load("res://scenes/main.tscn").instantiate()
 	root.add_child(main)
+	main.cinematics = what.begins_with("cut:")
 	_run()
 
 

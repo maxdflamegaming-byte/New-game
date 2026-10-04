@@ -30,6 +30,8 @@ var hint_panel: PanelContainer
 var hint_label: Label
 var _toast_tween: Tween
 var _hud_t := 0.0
+var _anim_t := 0.0
+var title_labels: Array[Label] = []
 
 # Screen parts that change
 var menu_coins: Label
@@ -46,9 +48,12 @@ var win_coins: Label
 var win_unlock: Label
 var next_btn: Button
 var ad_btn: Button
+var win_ribbon: Control
+var lose_ribbon: Control
 var _win_coins := 0
 var lose_tip: Label
 var vibrate_btn: Button
+var cutscenes_btn: Button
 var gfx_btns := {}
 var lang_btns := {}
 var missions_btn: Button
@@ -86,6 +91,20 @@ func build() -> void:
 	_build_win()
 	_build_lose()
 	_build_toast()
+
+
+func _process(dt: float) -> void:
+	if main == null or main.screen_open != "menu":
+		return
+	# On the menu the title bobs and tilts, and PLAY gently breathes
+	var t := Time.get_ticks_msec() / 1000.0
+	for i in title_labels.size():
+		var l := title_labels[i]
+		l.pivot_offset = l.size / 2
+		l.rotation = sin(t * 1.3 + i * 1.7) * 0.03
+		l.scale = Vector2.ONE * (1.0 + 0.025 * sin(t * 2.0 + i))
+	if play_btn.get_draw_mode() != BaseButton.DRAW_PRESSED:
+		play_btn.scale = Vector2.ONE * (1.0 + 0.03 * sin(t * 3.2))
 
 
 func _fit() -> void:
@@ -177,7 +196,20 @@ func button(text: String, kind := "blue", size := 26, on_press := Callable()) ->
 		b.pressed.connect(func():
 			main.play_sound("tap")
 			on_press.call())
+	squishy(b)
 	return b
+
+
+## Pressing squashes a control a little; letting go springs it back
+func squishy(c: Control) -> void:
+	c.resized.connect(func(): c.pivot_offset = c.size / 2)
+	if c is BaseButton:
+		c.button_down.connect(func():
+			var tw := c.create_tween()
+			tw.tween_property(c, "scale", Vector2(0.92, 0.92), 0.06))
+		c.button_up.connect(func():
+			var tw := c.create_tween()
+			tw.tween_property(c, "scale", Vector2.ONE, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT))
 
 
 func label(text: String, size := 26, color := WHITE, outline := 8, font: Font = null) -> Label:
@@ -266,6 +298,33 @@ func screen(id: String, backdrop := Color(0.43, 0.75, 1.0, 0.55)) -> VBoxContain
 	return col
 
 
+## A screen appearing: it fades in and its content springs up from a little smaller
+func _pop_in(root: Control) -> void:
+	root.modulate.a = 0.0
+	var tw := root.create_tween()
+	tw.tween_property(root, "modulate:a", 1.0, 0.18)
+	var scroll: Control = root.get_child(1)
+	scroll.pivot_offset = scroll.size / 2
+	scroll.scale = Vector2(0.93, 0.93)
+	var tw2 := scroll.create_tween()
+	tw2.tween_property(scroll, "scale", Vector2.ONE, 0.32).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+## A control popping in: it grows from small with a little overshoot
+func pop(c: Control, delay := 0.0, from := 0.4) -> void:
+	c.scale = Vector2.ONE * from
+	c.modulate.a = 0.0
+	# Its size is only known once the screen has been laid out
+	await get_tree().process_frame
+	if not is_instance_valid(c):
+		return
+	c.pivot_offset = c.size / 2
+	var tw := c.create_tween()
+	tw.tween_interval(delay)
+	tw.tween_property(c, "modulate:a", 1.0, 0.12)
+	tw.parallel().tween_property(c, "scale", Vector2.ONE, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
 func spacer(h := 8) -> Control:
 	var c := Control.new()
 	c.custom_minimum_size.y = h
@@ -277,9 +336,12 @@ func back_button(to := "menu") -> Button:
 
 
 func show_screen(id: String) -> void:
+	var was: String = main.screen_open
 	for k in screens:
 		screens[k].visible = k == id
 	main.screen_open = id
+	if id != "" and id != was:
+		_pop_in(screens[id])
 	match id:
 		"menu":
 			refresh_menu()
@@ -388,6 +450,16 @@ func _pill(text: String) -> Label:
 
 func start_hud(title: String, campaign: bool) -> void:
 	hud.visible = true
+	# The bars slide in from the edges
+	hud.modulate.a = 0.0
+	var tw := hud.create_tween()
+	tw.tween_property(hud, "modulate:a", 1.0, 0.25)
+	for c: Control in [hud.get_child(0), abilities]:
+		# Where its anchors put it (not where a slide that was cut short left it)
+		var y := c.anchor_top * hud.size.y + c.offset_top
+		c.position.y = y + (-90.0 if c != abilities else 140.0)
+		var t2 := c.create_tween()
+		t2.tween_property(c, "position:y", y, 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	level_label.text = title
 	abilities.visible = campaign
 	speed_btn.visible = campaign
@@ -403,7 +475,17 @@ func hide_hud() -> void:
 
 
 func update_hud() -> void:
-	_hud_t -= get_process_delta_time()
+	var dt := get_process_delta_time()
+	# Every frame: the strength bar glides to its new sizes, and ready abilities pulse
+	for r in power_bar.get_children():
+		if r.has_meta("want"):
+			r.size_flags_stretch_ratio = lerpf(r.size_flags_stretch_ratio, r.get_meta("want"), minf(1.0, dt * 6))
+	_anim_t += dt
+	for id in ability_btns:
+		var b: Button = ability_btns[id].btn
+		b.pivot_offset = b.size / 2
+		b.scale = Vector2.ONE * (1.0 + 0.045 * sin(_anim_t * 5.0)) if b.visible and not b.disabled and main.armed != id else Vector2.ONE
+	_hud_t -= dt
 	if _hud_t > 0:
 		return
 	_hud_t = 0.15
@@ -442,7 +524,7 @@ func update_hud() -> void:
 		if r.is_queued_for_deletion():
 			continue
 		var sd: int = r.get_meta("side")
-		r.size_flags_stretch_ratio = maxf(0.001, tot[sd] / sum)
+		r.set_meta("want", maxf(0.001, tot[sd] / sum))
 		r.get_child(0).text = str(floori(tot[sd])) if sd != 0 and tot[sd] / sum > 0.12 else ""
 	var t: float = b.time if main.mode == "campaign" else maxf(0, Net.PVP_TIME - b.time)
 	time_label.text = "%d:%02d" % [floori(t / 60), floori(fmod(t, 60))]
@@ -487,7 +569,9 @@ func toast(text: String, seconds := 2.2) -> void:
 	if _toast_tween:
 		_toast_tween.kill()
 	_toast_tween = create_tween()
+	toast_panel.offset_top = 70
 	_toast_tween.tween_property(toast_panel, "modulate:a", 1.0, 0.2)
+	_toast_tween.parallel().tween_property(toast_panel, "offset_top", 104.0, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_toast_tween.tween_interval(seconds)
 	_toast_tween.tween_property(toast_panel, "modulate:a", 0.0, 0.3)
 
@@ -501,8 +585,10 @@ func _build_menu() -> void:
 	coins_row.add_child(menu_coins.get_parent())
 	col.add_child(coins_row)
 	var t1 := label("TOWER", 120, YELLOW, 18)
+	title_labels.append(t1)
 	t1.add_theme_constant_override("line_spacing", -30)
 	var t2 := label("SIEGE", 120, Color("#ff7ad1"), 18)
+	title_labels.append(t2)
 	col.add_child(t1)
 	col.add_child(t2)
 	var tag := PanelContainer.new()
@@ -558,6 +644,7 @@ func refresh_toggles() -> void:
 		b.text = "Music: off" if not main.save.music or main.save.muted else "Music: on"
 	if vibrate_btn:
 		vibrate_btn.text = "Vibration: on" if main.save.vibrate else "Vibration: off"
+		cutscenes_btn.text = "Story scenes: on" if main.save.cutscenes else "Story scenes: off"
 		for g in gfx_btns:
 			var on: bool = main.save.gfx == g
 			gfx_btns[g].add_theme_stylebox_override("normal", box(YELLOW if on else PANEL_LIGHT))
@@ -766,8 +853,17 @@ func _build_settings() -> void:
 		main.write_save()
 		main.vibrate(40)
 		refresh_toggles())
-	vibrate_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	v.add_child(vibrate_btn)
+	var row2 := hbox(10)
+	row2.add_child(vibrate_btn)
+	cutscenes_btn = button("Story scenes: on", "blue", 22, func():
+		main.save.cutscenes = not main.save.cutscenes
+		main.write_save()
+		refresh_toggles())
+	row2.add_child(cutscenes_btn)
+	v.add_child(row2)
+	var watch := button("🎬 Watch the story again", "blue", 22, func(): main.watch_story())
+	watch.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	v.add_child(watch)
 	v.add_child(label("Graphics", 28))
 	var row := hbox(8)
 	for g in ["auto", "low", "medium", "high"]:
@@ -843,6 +939,10 @@ func refresh_levels() -> void:
 		var level_n := n
 		b.pressed.connect(func(): main.start_level(level_n))
 		level_grid.add_child(b)
+		b.modulate.a = 0.0
+		var tw := b.create_tween()
+		tw.tween_interval(minf(0.6, n * 0.012))
+		tw.tween_property(b, "modulate:a", 1.0, 0.15)
 	levels_stars.text = tr("%d ★ collected") % total
 
 
@@ -952,7 +1052,8 @@ func _build_win() -> void:
 	var p := panel()
 	var v := vbox(16)
 	p.add_child(v)
-	v.add_child(ribbon("Victory!", ORANGE))
+	win_ribbon = ribbon("Victory!", ORANGE)
+	v.add_child(win_ribbon)
 	var stars := hbox(8)
 	for i in 3:
 		var s := label("★", 96 if i == 1 else 76, Color(1, 1, 1, 0.35), 10)
@@ -1007,8 +1108,13 @@ func show_win(stars: int, coins: int, unlock: String, time: float, stats: Dictio
 	win_stats.add_child(_stat("%d:%02d" % [floori(time / 60), floori(fmod(time, 60))], "Time"))
 	win_stats.add_child(_stat(str(stats.captured), "Captured"))
 	win_stats.add_child(_stat(str(stats.killed), "Beaten"))
-	win_coins.text = "● +%d" % coins
+	win_coins.text = "● +0"
 	_win_coins = coins
+	var count := create_tween()
+	count.tween_interval(0.5)
+	count.tween_method(func(v: float):
+		win_coins.text = "● +%d" % roundi(v)
+		main.play_sound("tick"), 0.0, float(coins), minf(1.2, 0.3 + coins * 0.01))
 	ad_btn.visible = coins > 0 and Services.rewarded_ready()
 	ad_btn.disabled = false
 	win_unlock.text = unlock
@@ -1027,6 +1133,9 @@ func show_win(stars: int, coins: int, unlock: String, time: float, stats: Dictio
 				tw.tween_property(s, "scale", Vector2.ONE, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 				main.play_sound("coin"))
 	show_screen("win")
+	pop(win_ribbon, 0.05, 0.3)
+	for i in win_stats.get_child_count():
+		pop(win_stats.get_child(i), 0.9 + i * 0.1, 0.6)
 
 
 func _build_lose() -> void:
@@ -1034,7 +1143,8 @@ func _build_lose() -> void:
 	var p := panel()
 	var v := vbox(16)
 	p.add_child(v)
-	v.add_child(ribbon("Defeat", Color("#9a8cff")))
+	lose_ribbon = ribbon("Defeat", Color("#9a8cff"))
+	v.add_child(lose_ribbon)
 	v.add_child(label("Your last building has fallen.", 26, WHITE, 6, font_m))
 	lose_tip = wrapped(label("", 22, WHITE, 5, font_m), 540)
 	v.add_child(lose_tip)
@@ -1053,3 +1163,4 @@ func show_lose(tip: String) -> void:
 	hide_hud()
 	lose_tip.text = tr("Tip: %s") % tr(tip)
 	show_screen("lose")
+	pop(lose_ribbon, 0.05, 0.3)

@@ -46,6 +46,14 @@ var _recipes := {
 	"pop": [0.03, [["tone", 600, 1300, 0.08, "sine", 0.05]]],
 	"boom": [0.2, [["noise", 0.6, 0.18], ["tone", 120, 30, 0.5, "sine", 0.15]]],
 	"trophy": [0.5, [["arp", [784, 988, 1175, 1568], 0.08, "triangle", 0.09]]],
+	# Cut scenes: voices (a blip per few letters), camera whooshes, a victory fanfare, the boss
+	# drum and fireworks
+	"blip": [0.06, [["tone", 600, 660, 0.045, "square", 0.02]]],
+	"blip_low": [0.06, [["tone", 230, 210, 0.06, "square", 0.03]]],
+	"whoosh": [0.4, [["noise", 0.45, 0.06], ["tone", 180, 820, 0.4, "sine", 0.03]]],
+	"fanfare": [1.0, [["arp", [523, 659, 784, 1047, 784, 1047, 1319], 0.11, "square", 0.045], ["arp", [262, 330, 392, 523], 0.2, "triangle", 0.07]]],
+	"drum": [0.6, [["tone", 110, 50, 0.5, "sine", 0.18], ["noise", 0.4, 0.1], ["tone", 90, 45, 0.6, "saw", 0.05]]],
+	"firework": [0.12, [["noise", 0.35, 0.08], ["arp", [1568, 2093, 2637], 0.04, "sine", 0.03]]],
 }
 
 

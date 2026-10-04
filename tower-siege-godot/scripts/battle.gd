@@ -86,6 +86,7 @@ class Unit:
 	var x := 0.0
 	var y := 0.0
 	var dead := false
+	var tank := false      # started out as a tank (for how it's drawn when knocked out)
 
 
 class Wall:
@@ -109,6 +110,7 @@ var stats := {"captured": 0, "lost": 0, "killed": 0}
 var next_unit_id := 0
 var landscape := false
 var flipped := false         # an online guest sees the field turned around
+var struck: Array = []       # the soldiers the last airstrike knocked out: [[x, y, owner, tank]]
 
 
 func load_map(data: Dictionary, garrison := 0) -> void:
@@ -262,6 +264,7 @@ func spawn_unit(from: Tower, to: Tower, power: int) -> void:
 	u.to = to
 	u.owner = from.owner
 	u.power = power
+	u.tank = power > 1
 	u.d = from.radius() * 0.5
 	u.lane = (randf() - 0.5) * 10
 	u.x = from.x
@@ -556,9 +559,11 @@ func _update_strikes(dt: float) -> void:
 			if t.owner != PLAYER:
 				t.units = maxf(0, t.units - maxf(8, t.units * 0.5))
 			t.flash = 1.0
+			struck = []
 			for u in units:
 				if u.owner != PLAYER and dist(u.x, u.y, t.x, t.y) < 130:
 					u.dead = true
+					struck.append([u.x, u.y, u.owner, u.tank])
 			units = units.filter(func(u): return not u.dead)
 			bombed.emit(t)
 	strikes = strikes.filter(func(s): return not s.done)

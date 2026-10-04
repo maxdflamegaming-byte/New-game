@@ -39,12 +39,15 @@ var net: Net
 var sfx
 var music
 
-var state := "menu"            # menu, play, paused, over
+var state := "menu"            # menu, play, paused, over, cutscene
 var mode := "campaign"         # campaign, online, duo, practice
 var level := 1
 var daily := false             # playing today's daily challenge
 var upgrade_offer := {}        # {t, life}: the ⬆ button over one of your buildings
 var reward_shown_day := -1
+var cinematics := true         # cut scenes play (the tests switch them off to go faster)
+var cutscene: Cutscene
+var story: Story
 var screen_open := ""          # the screen showing, or "" during play
 var speed := 1
 var charges := {"strike": 0, "rally": 0}
@@ -97,6 +100,12 @@ func _ready() -> void:
 	add_child(ui_layer)
 	ui_layer.add_child(ui)
 	ui.build()
+	cutscene = Cutscene.new()
+	cutscene.main = self
+	cutscene.ui = ui
+	add_child(cutscene)
+	cutscene.build()
+	story = Story.new(self, cutscene)
 	net = Net.new()
 	net.main = self
 	add_child(net)
@@ -112,7 +121,7 @@ func _ready() -> void:
 func default_save() -> Dictionary:
 	var d := {"level": 1, "stars": {}, "coins": 0, "up": {"drill": 0, "boots": 0, "garrison": 0, "armory": 0},
 		"seen": {}, "muted": false, "music": true, "name": "", "trophies": 0, "pvp_wins": 0, "pvp_losses": 0,
-		"pid": "", "token": "", "clan": null, "gfx": "auto", "vibrate": true, "lang": ""}
+		"pid": "", "token": "", "clan": null, "gfx": "auto", "vibrate": true, "lang": "", "cutscenes": true}
 	d.merge(Progress.defaults())
 	return d
 
@@ -175,6 +184,25 @@ func set_gfx(g: String) -> void:
 	save.gfx = g
 	write_save()
 	apply_gfx()
+
+
+## Settings: watch the opening again (on level 1's map), then back to the menu
+func watch_story() -> void:
+	level = 1
+	daily = false
+	mode = "campaign"
+	state = "cutscene"
+	world.drift = false
+	ui.show_screen("")
+	ui.hide_hud()
+	set_hint("")
+	load_battle(Levels.data(1), 1)
+	music.play_track("game")
+	var r := cutscene.begin()
+	await story.intro(r)
+	if cutscene.current(r):
+		cutscene.finish(r)
+		open_menu()
 
 
 func set_lang(code: String) -> void:
@@ -256,10 +284,24 @@ func start_daily() -> void:
 	_begin(data, "Daily challenge", level)
 
 
+## Before a level: its cut scenes (story, boss, the fly-in), then the HUD, hints and music
 func _begin(data: Dictionary, title: String, n: int) -> void:
+	world.drift = false
 	upgrade_offer = {}
 	clear_pointers()
 	ui.show_screen("")
+	ui.hide_hud()
+	set_hint("")
+	var boss: bool = Levels.is_boss(n) and not daily
+	if cinematics:
+		state = "cutscene"
+		music.play_track("boss" if boss else "game")
+		var r := cutscene.begin(not save.cutscenes)
+		await story.level_start(r, 0 if daily else n, title)
+		if not cutscene.current(r):
+			return # something else started meanwhile
+		cutscene.finish(r)
+	state = "play"
 	ui.start_hud(title, true)
 	set_hint(data.get("hint", ""), 25.0 if n == 2 else 10.0)
 	# Introduce a new building the first time it shows up
@@ -269,7 +311,7 @@ func _begin(data: Dictionary, title: String, n: int) -> void:
 			write_save()
 			get_tree().create_timer(0.6).timeout.connect(func(): ui.toast(Battle.TYPES[k].intro, 4.2))
 			break
-	music.play_track("game")
+	music.play_track("boss" if boss else "game")
 
 
 func set_hint(text: String, seconds := 10.0) -> void:
@@ -312,6 +354,9 @@ func _on_captured(t, side: int, old: int) -> void:
 
 func _on_clashed(x: float, y: float, a: int, b: int, ua, ub) -> void:
 	world.clash(x, y, a, b)
+	for u in [ua, ub]:
+		if u.dead:
+			world.knock(u.x, u.y, u.owner, u.tank)
 	net.event(["cl", ua.id, ub.id])
 	if randf() < 0.3:
 		play_sound("pop")
@@ -320,7 +365,10 @@ func _on_clashed(x: float, y: float, a: int, b: int, ua, ub) -> void:
 func _on_shot(t, u) -> void:
 	shells.append({"x1": t.x, "y1": t.y, "x2": u.x, "y2": u.y, "h": 50.0, "time": 0.18, "dur": 0.18})
 	world.muzzle(t, u.x, u.y)
+	world.kick(t)
 	world.hit(u.x, u.y, u.owner)
+	if u.dead:
+		world.knock(u.x, u.y, u.owner, u.tank)
 	net.event(["sh", t.id, u.id])
 	if t.owner == Battle.PLAYER or u.owner == Battle.PLAYER:
 		play_sound("shoot")
@@ -334,9 +382,9 @@ func _on_hit(t, side: int) -> void:
 
 
 func _on_bombed(t) -> void:
-	world.explode(t.x, t.y, true)
-	world.explode(t.x + 30, t.y - 20, false)
-	world.explode(t.x - 26, t.y + 24, false)
+	world.blast(t)
+	for k in battle.struck:
+		world.knock(k[0], k[1], k[2], k[3])
 	shake = 12
 	play_sound("boom")
 	vibrate(90)
@@ -369,7 +417,23 @@ func end_game(won: bool) -> void:
 			world.capture(t.x, t.y, Battle.PLAYER)
 	else:
 		play_sound("death")
-	get_tree().create_timer(1.1).timeout.connect(func(): show_win() if won else show_lose())
+	if not cinematics:
+		get_tree().create_timer(1.1).timeout.connect(func(): show_win() if won else show_lose())
+		return
+	# The celebration (or Grumble's laugh), then the results
+	ui.hide_hud()
+	var r := cutscene.begin(true)
+	if won:
+		await story.victory(r, 0 if daily else level)
+	else:
+		await story.defeat(r)
+	if not cutscene.current(r):
+		return
+	cutscene.finish(r)
+	if won:
+		show_win()
+	else:
+		show_lose()
 
 
 func stars_for(time: float) -> int:
@@ -633,7 +697,9 @@ func highlight(t) -> String:
 
 # ---------- Screens and buttons ----------
 func open_menu() -> void:
+	cutscene.abort()
 	state = "menu"
+	world.drift = true
 	mode = "campaign"
 	armed = ""
 	scene_theme = ""

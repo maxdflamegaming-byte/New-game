@@ -19,6 +19,7 @@ func _initialize() -> void:
 	DirAccess.remove_absolute(ProjectSettings.globalize_path("user://tower_siege.json"))
 	main = load("res://scenes/main.tscn").instantiate()
 	root.add_child(main)
+	main.cinematics = false # tested on their own at the end
 	_run()
 
 
@@ -248,6 +249,9 @@ func _run() -> void:
 	# Languages
 	await _languages()
 
+	# Cut scenes
+	await _cutscenes()
+
 	# Graphics settings
 	await _graphics()
 
@@ -279,6 +283,72 @@ func _languages() -> void:
 	main.set_lang("")
 	ok("Auto goes back to the phone's language (English here)", TranslationServer.get_locale() == "en" or I18n.current() == "en")
 	main.open_menu()
+
+
+## Wait (in game time) until cond is true
+func _until(cond: Callable, secs: float) -> bool:
+	var t0 := Time.get_ticks_msec()
+	while Time.get_ticks_msec() - t0 < secs * 1000:
+		if cond.call():
+			return true
+		await process_frame
+	return false
+
+
+func _cutscenes() -> void:
+	main.cinematics = true
+	main.cutscene.auto = true
+	Engine.time_scale = 4.0
+	main.save.seen.erase("story_1")
+	main.start_level(1)
+	await _frames(5)
+	ok("Level 1 starts with the story", main.state == "cutscene" and main.cutscene.playing() and not main.ui.hud.visible)
+	ok("Captain Skye comes on and talks", await _until(func(): return main.cutscene.actors.has("skye") and main.cutscene.dialog.visible, 10))
+	var me: Battle.Tower = main.battle.towers[0]
+	var g: Battle.Tower = main.battle.towers[1]
+	var a: Dictionary = main.world.tower_screen(me)
+	var b: Dictionary = main.world.tower_screen(g)
+	await _drag(3, Vector2(a.x, a.y), Vector2(b.x, b.y))
+	ok("Touches during a cut scene don't play the game", me.roads.is_empty() and main.battle.units.is_empty())
+	ok("General Grumble comes on too", await _until(func(): return main.cutscene.actors.has("grumble"), 15))
+	main.cutscene.skip()
+	ok("Skip goes straight to the level", await _until(func(): return main.state == "play", 3) and not main.cutscene.playing() and main.ui.hud.visible and not main.world.cam_free)
+	ok("The camera is back where the battle needs it", main.world.camera.transform.is_equal_approx(main.world.cam_base))
+	ok("The story is told once", main.save.seen.has("story_1"))
+	main.start_level(4)
+	await _frames(3)
+	ok("Other levels start with a quick fly-in", main.state == "cutscene" and main.cutscene.actors.is_empty())
+	ok("... and then the level begins", await _until(func(): return main.state == "play", 5))
+	main.save.level = 11
+	main.start_level(10)
+	ok("A boss level: Grumble taunts from his castle", await _until(func(): return main.cutscene.actors.has("grumble") and main.cutscene.dialog.visible, 12))
+	ok("... then the boss level begins", await _until(func(): return main.state == "play", 25))
+	for t in main.battle.towers:
+		if t.owner >= 2:
+			t.owner = 1
+	main.battle.units.clear()
+	ok("Winning a boss level: Grumble runs off, then the celebration", await _until(func(): return main.cutscene.actors.has("grumble"), 10) and await _until(func(): return main.cutscene.stage.get_child_count() >= 12, 15))
+	ok("... then the results", await _until(func(): return main.screen_open == "win", 15))
+	main.start_level(5)
+	await _until(func(): return main.state == "play", 6)
+	for t in main.battle.towers:
+		if t.owner == 1:
+			t.owner = 2
+	main.battle.units.clear()
+	ok("Losing: Grumble laughs, then the results", await _until(func(): return main.cutscene.playing(), 3) and await _until(func(): return main.screen_open == "lose", 10))
+	main.save.cutscenes = false
+	main.save.seen.erase("story_6")
+	main.start_level(6)
+	await _frames(3)
+	ok("With story scenes off, levels start with just the fly-in", main.state == "cutscene" and await _until(func(): return main.state == "play", 5) and not main.save.seen.has("story_6"))
+	main.save.cutscenes = true
+	main.watch_story()
+	ok("Settings can play the story again", await _until(func(): return main.cutscene.actors.has("skye"), 10))
+	main.cutscene.skip()
+	ok("... and it goes back to the menu", await _until(func(): return main.state == "menu" and main.screen_open == "menu", 5))
+	Engine.time_scale = 1.0
+	main.cinematics = false
+	main.cutscene.auto = false
 
 
 func _graphics() -> void:

@@ -12,6 +12,7 @@ func _initialize() -> void:
 	DisplayServer.window_set_size(Vector2i(720, 1280))
 	main = load("res://scenes/main.tscn").instantiate()
 	root.add_child(main)
+	main.cinematics = false
 	_run()
 
 
