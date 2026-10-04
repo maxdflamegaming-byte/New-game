@@ -39,7 +39,7 @@ const T := {
 	"Fly": "Kibarkan",
 	"Settings": "Pengaturan",
 	"Graphics": "Grafis",
-	"Auto starts at Medium and lowers the graphics by itself if the game runs slowly. Low is easiest on older phones and the battery.": "Otomatis dimulai dari Medium dan menurunkan grafis sendiri jika game melambat. Low paling ringan untuk HP lama dan baterai.",
+	"Auto starts at Medium and lowers the graphics by itself if the game runs slowly. Low is easiest on older phones and the battery.": "Otomatis dimulai dari Sedang dan menurunkan grafis sendiri jika game melambat. Rendah paling ringan untuk HP lama dan baterai.",
 	"Language": "Bahasa",
 	"PLAY  ·  Level %d": "MAIN  ·  Level %d",
 	"🎁 Missions": "🎁 Misi",
@@ -245,4 +245,7 @@ const T := {
 	"That clan doesn't exist any more.": "Klan itu sudah tidak ada.",
 	"That clan is full.": "Klan itu sudah penuh.",
 	"Auto": "Otomatis",
+	"Low": "Rendah",
+	"Medium": "Sedang",
+	"High": "Tinggi",
 }

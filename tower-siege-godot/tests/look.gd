@@ -28,6 +28,8 @@ func _frames(n: int) -> void:
 
 func _run() -> void:
 	await _frames(30)
+	if OS.get_environment("LANG_CODE") != "":
+		main.set_lang(OS.get_environment("LANG_CODE"))
 	var q := OS.get_environment("GFX")
 	if q != "":
 		main.set_gfx(q)

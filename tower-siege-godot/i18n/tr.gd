@@ -245,4 +245,7 @@ const T := {
 	"That clan doesn't exist any more.": "O klan artık yok.",
 	"That clan is full.": "O klan dolu.",
 	"Auto": "Otomatik",
+	"Low": "Düşük",
+	"Medium": "Orta",
+	"High": "Yüksek",
 }

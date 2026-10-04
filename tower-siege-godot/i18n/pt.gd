@@ -245,4 +245,7 @@ const T := {
 	"That clan doesn't exist any more.": "Esse clã não existe mais.",
 	"That clan is full.": "Esse clã está cheio.",
 	"Auto": "Auto",
+	"Low": "Baixo",
+	"Medium": "Médio",
+	"High": "Alto",
 }

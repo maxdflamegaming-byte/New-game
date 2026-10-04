@@ -246,8 +246,7 @@ func _run() -> void:
 	main.open_menu()
 
 	# Languages
-	if ResourceLoader.exists("res://i18n/es.gd"):
-		await _languages()
+	await _languages()
 
 	# Graphics settings
 	await _graphics()
@@ -259,7 +258,7 @@ func _languages() -> void:
 	var langs_ok := true
 	var why := ""
 	for code in I18n.LANGS:
-		if code == "" or code == "en" or not ResourceLoader.exists("res://i18n/%s.gd" % code):
+		if code == "" or code == "en":
 			continue
 		var table: Dictionary = load("res://i18n/%s.gd" % code).T
 		if table.keys().size() != keys.size():

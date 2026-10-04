@@ -245,4 +245,7 @@ const T := {
 	"That clan doesn't exist any more.": "Этого клана больше нет.",
 	"That clan is full.": "Этот клан заполнен.",
 	"Auto": "Авто",
+	"Low": "Низкая",
+	"Medium": "Средняя",
+	"High": "Высокая",
 }

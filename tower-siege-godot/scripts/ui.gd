@@ -510,7 +510,7 @@ func _build_menu() -> void:
 	tag.add_child(wrapped(label("Drag roads between towers, march your army and take every building on the map.", 22, INK, 0, font_m), 560))
 	tag.custom_minimum_size.x = 600
 	col.add_child(tag)
-	col.add_child(spacer(110))
+	col.add_child(spacer(30))
 	play_btn = button("PLAY", "yellow", 52, func(): main.start_level(mini(main.save.level, Levels.LAST_LEVEL)))
 	play_btn.custom_minimum_size = Vector2(440, 110)
 	play_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
