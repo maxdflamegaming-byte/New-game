@@ -1,0 +1,641 @@
+extends Node
+## Tower Siege (Godot): the game flow, touch input, saving, and the link between the battle
+## (battle.gd), the 3D world (world.gd), the overlay (overlay.gd) and the screens (ui.gd).
+## PvP, the leaderboard and clans are in net.gd.
+
+const SIDES := [
+	{"name": "Neutral", "color": Color("#9eaabd"), "dark": Color("#66728a"), "light": Color("#dfe5ee")},
+	{"name": "Blue", "color": Color("#3d9bff"), "dark": Color("#2366d6"), "light": Color("#b5dcff")},
+	{"name": "Red", "color": Color("#ff5257"), "dark": Color("#cc2b3a"), "light": Color("#ffb3b5")},
+	{"name": "Yellow", "color": Color("#ffc21f"), "dark": Color("#d98a00"), "light": Color("#ffe796")},
+	{"name": "Green", "color": Color("#45d35a"), "dark": Color("#22963a"), "light": Color("#b3f2bb")},
+]
+const HUD_TOP := 92.0
+const HUD_BOTTOM := 130.0
+const SAVE_PATH := "user://tower_siege.json"
+const UPGRADES := [
+	{"id": "drill", "icon": "Drill", "name": "Drill Sergeant", "desc": "Your buildings train soldiers 8% faster per level", "max": 5, "cost": [60, 120, 220, 360, 550]},
+	{"id": "boots", "icon": "Boots", "name": "Swift Boots", "desc": "Your soldiers and tanks move 7% faster per level", "max": 5, "cost": [50, 100, 180, 300, 480]},
+	{"id": "garrison", "icon": "Fort", "name": "Garrison", "desc": "+3 soldiers in each of your starting buildings per level", "max": 5, "cost": [40, 90, 160, 260, 400]},
+	{"id": "armory", "icon": "Bomb", "name": "Armory", "desc": "+1 Airstrike and +1 Rally every battle", "max": 2, "cost": [250, 600]},
+]
+const TIPS := [
+	"Take the gray buildings near you first. They're cheap, and every building trains soldiers.",
+	"Attack from two or three buildings at once to break a big tower.",
+	"Cut roads to buildings that are already safe, so your soldiers stay home to defend.",
+	"Tank factories send tanks worth 3 soldiers each. Grab them early.",
+	"Bunkers take half damage. Leave them for later unless you have a big army.",
+	"Stay out of watchtower circles, or send a big wave all at once.",
+	"Upgrades make every battle easier. Spend your coins!",
+	"When two enemies fight, wait for them to wear each other down.",
+]
+
+var save := {}
+var battle: Battle
+var world: World
+var overlay: Overlay
+var ui: UI
+var net: Net
+var sfx
+var music
+
+var state := "menu"            # menu, play, paused, over
+var mode := "campaign"         # campaign, online, duo, practice
+var level := 1
+var screen_open := ""          # the screen showing, or "" during play
+var speed := 1
+var charges := {"strike": 0, "rally": 0}
+var armed := ""                # an ability waiting for a target
+var hint_text := ""
+var hint_timer := 0.0
+var hand_shown := false
+var landscape := false
+var scene_level := 1
+var scene_theme := ""
+var shake := 0.0
+var demo_timer := 0.0
+var quiet := false             # the menu's demo battle makes no sound
+var slow_frames := 0
+var quality_lowered := false
+
+# Input and things the overlay draws
+var drags := {}                # touch index -> {from, side, pos, p, over}
+var cuts := {}                 # touch index -> {last, side}
+var cut_marks := []
+var floats := []
+var shells := []
+
+
+func _ready() -> void:
+	load_save()
+	sfx = load("res://scripts/sfx.gd").new()
+	sfx.muted = save.muted
+	add_child(sfx)
+	music = load("res://scripts/music.gd").new()
+	add_child(music)
+	music.set_enabled(save.music and not save.muted)
+	world = World.new()
+	add_child(world)
+	world.setup(SIDES)
+	world.set_plane_color(SIDES[1].color)
+	var layer := CanvasLayer.new()
+	add_child(layer)
+	overlay = Overlay.new()
+	overlay.main = self
+	overlay.font = load("res://assets/fonts/Fredoka-Bold.ttf")
+	layer.add_child(overlay)
+	ui = UI.new()
+	ui.main = self
+	var ui_layer := CanvasLayer.new()
+	ui_layer.layer = 2
+	add_child(ui_layer)
+	ui_layer.add_child(ui)
+	ui.build()
+	net = Net.new()
+	net.main = self
+	add_child(net)
+	battle = Battle.new()
+	_connect_battle()
+	get_viewport().size_changed.connect(_layout)
+	_layout()
+	open_menu()
+
+
+# ---------- Saving ----------
+func default_save() -> Dictionary:
+	return {"level": 1, "stars": {}, "coins": 0, "up": {"drill": 0, "boots": 0, "garrison": 0, "armory": 0},
+		"seen": {}, "muted": false, "music": true, "name": "", "trophies": 0, "pvp_wins": 0, "pvp_losses": 0,
+		"pid": "", "token": "", "clan": null}
+
+
+func load_save() -> void:
+	save = default_save()
+	if FileAccess.file_exists(SAVE_PATH):
+		var data = JSON.parse_string(FileAccess.get_file_as_string(SAVE_PATH))
+		if data is Dictionary:
+			for k in data:
+				save[k] = data[k]
+			var up: Dictionary = default_save().up
+			up.merge(data.get("up", {}), true)
+			save.up = up
+	# JSON gives back numbers as floats
+	save.level = int(save.level)
+	save.coins = int(save.coins)
+	save.trophies = int(save.trophies)
+	for k in save.up:
+		save.up[k] = int(save.up[k])
+
+
+func write_save() -> void:
+	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	if f:
+		f.store_string(JSON.stringify(save))
+
+
+# ---------- Layout ----------
+func _layout() -> void:
+	var size := get_viewport().get_visible_rect().size
+	var was := landscape
+	landscape = size.x > size.y * 1.05
+	var fw := Levels.FH if landscape else Levels.FW
+	var fh := Levels.FW if landscape else Levels.FH
+	world.layout(size, HUD_TOP, HUD_BOTTOM, fw, fh)
+	if was != landscape and not battle.towers.is_empty():
+		battle.landscape = landscape
+		battle.place()
+		build_scene()
+
+
+func build_scene() -> void:
+	world.build(scene_level * 101 + 7, scene_theme if scene_theme != "" else Levels.theme_for(scene_level), battle)
+
+
+func play_sound(name: String) -> void:
+	if not quiet:
+		sfx.play(name)
+
+
+# ---------- Battles ----------
+func _connect_battle() -> void:
+	battle.captured.connect(_on_captured)
+	battle.clashed.connect(_on_clashed)
+	battle.shot.connect(_on_shot)
+	battle.hit.connect(_on_hit)
+	battle.bombed.connect(_on_bombed)
+
+
+func load_battle(data: Dictionary, n: int, theme := "") -> void:
+	battle.mode = mode
+	battle.boost = {"drill": save.up.drill, "boots": save.up.boots}
+	battle.landscape = landscape
+	battle.flipped = net.is_guest()
+	battle.load_map(data, 3 * save.up.garrison if mode == "campaign" and state != "menu" else 0)
+	battle.ai_sides.clear()
+	floats.clear()
+	shells.clear()
+	cut_marks.clear()
+	scene_level = n
+	scene_theme = theme
+	build_scene()
+
+
+func start_level(n: int) -> void:
+	level = n
+	mode = "campaign"
+	state = "play"
+	var data := Levels.data(n)
+	load_battle(data, n)
+	for side in [2, 3, 4]:
+		if battle.towers.any(func(t): return t.owner == side):
+			battle.ai_sides.append({"side": side, "timer": 2.5 + (side - 2) * 0.7, "cfg": data.ai})
+	armed = ""
+	shake = 0.0
+	hand_shown = data.get("hand", false)
+	charges = {"strike": 1 + save.up.armory if n >= 3 else 0, "rally": 1 + save.up.armory if n >= 6 else 0}
+	clear_pointers()
+	ui.show_screen("")
+	ui.start_hud("Level %d" % n, true)
+	set_hint(data.get("hint", ""), 25.0 if n == 2 else 10.0)
+	# Introduce a new building the first time it shows up
+	for k in Battle.TYPES:
+		if Battle.TYPES[k].has("intro") and not save.seen.has(k) and battle.towers.any(func(t): return t.type == k):
+			save.seen[k] = true
+			write_save()
+			get_tree().create_timer(0.6).timeout.connect(func(): ui.toast(Battle.TYPES[k].intro, 4.2))
+			break
+	music.play_track("game")
+
+
+func set_hint(text: String, seconds := 10.0) -> void:
+	hint_text = text
+	hint_timer = seconds
+	ui.set_hint(text)
+
+
+func _on_captured(t, side: int, old: int) -> void:
+	world.capture(t.x, t.y, side)
+	net.event(["cap", t.id, side])
+	if mode == "duo":
+		play_sound("capture")
+		floats.append({"t": t, "text": "Captured!", "color": SIDES[side].light, "life": 1.3})
+	elif side == Battle.PLAYER:
+		play_sound("capture")
+		floats.append({"t": t, "text": "Captured!", "color": SIDES[1].light, "life": 1.3})
+	elif old == Battle.PLAYER:
+		play_sound("warn")
+		if not quiet:
+			shake = maxf(shake, 6)
+			Input.vibrate_handheld(60)
+		floats.append({"t": t, "text": "Lost!", "color": SIDES[side].light, "life": 1.3})
+
+
+func _on_clashed(x: float, y: float, a: int, b: int, ua, ub) -> void:
+	world.clash(x, y, a, b)
+	net.event(["cl", ua.id, ub.id])
+	if randf() < 0.3:
+		play_sound("pop")
+
+
+func _on_shot(t, u) -> void:
+	shells.append({"x1": t.x, "y1": t.y, "x2": u.x, "y2": u.y, "h": 50.0, "time": 0.18, "dur": 0.18})
+	world.muzzle(t, u.x, u.y)
+	world.hit(u.x, u.y, u.owner)
+	net.event(["sh", t.id, u.id])
+	if t.owner == Battle.PLAYER or u.owner == Battle.PLAYER:
+		play_sound("shoot")
+
+
+func _on_hit(t, side: int) -> void:
+	if randf() < 0.5:
+		world.hit(t.x, t.y, side)
+	if t.owner == Battle.PLAYER:
+		play_sound("hit")
+
+
+func _on_bombed(t) -> void:
+	world.explode(t.x, t.y, true)
+	world.explode(t.x + 30, t.y - 20, false)
+	world.explode(t.x - 26, t.y + 24, false)
+	shake = 12
+	play_sound("boom")
+
+
+func check_end() -> void:
+	if state != "play":
+		return
+	if mode != "campaign":
+		net.check_end()
+		return
+	if not battle.alive(Battle.PLAYER):
+		end_game(false)
+	elif battle.ai_sides.all(func(a): return a.side == Battle.PLAYER or not battle.alive(a.side)):
+		end_game(true)
+
+
+func end_game(won: bool) -> void:
+	state = "over"
+	clear_pointers()
+	armed = ""
+	set_hint("")
+	music.play_track("menu")
+	if won:
+		play_sound("win")
+		for t in battle.towers:
+			world.capture(t.x, t.y, Battle.PLAYER)
+	else:
+		play_sound("death")
+	get_tree().create_timer(1.1).timeout.connect(func(): show_win() if won else show_lose())
+
+
+func stars_for(time: float) -> int:
+	var par := 30.0 + battle.towers.size() * 7
+	return 3 if time <= par else 2 if time <= par * 1.8 else 1
+
+
+func show_win() -> void:
+	var stars := stars_for(battle.time)
+	var key := str(level)
+	var first: bool = level >= save.level
+	var coins := 15 + level * 2 + stars * 5
+	if not first:
+		coins = roundi(coins / 2.0)
+	save.coins += coins
+	save.stars[key] = maxi(int(save.stars.get(key, 0)), stars)
+	var unlock := ""
+	if first and level < Levels.MAX_LEVEL:
+		save.level = level + 1
+		if level + 1 == 3:
+			unlock = "Airstrike unlocked! Bomb a building once per battle."
+		elif level + 1 == 6:
+			unlock = "Rally unlocked! Double your marching power for 8 seconds."
+	write_save()
+	ui.show_win(stars, coins, unlock, battle.time, battle.stats)
+
+
+func show_lose() -> void:
+	ui.show_lose(TIPS[(level + int(battle.time)) % TIPS.size()])
+
+
+# ---------- Abilities ----------
+func use_ability(id: String) -> void:
+	if state != "play":
+		return
+	if id == "strike":
+		if armed == "strike":
+			armed = ""
+			ui.set_hint(hint_text)
+		elif charges.strike > 0:
+			armed = "strike"
+			ui.set_hint("Tap an enemy or gray building to bomb it")
+			play_sound("beep")
+	elif id == "rally" and charges.rally > 0 and battle.rally <= 0:
+		charges.rally -= 1
+		battle.rally = Battle.RALLY_TIME
+		play_sound("speed")
+		ui.toast("Rally! Your roads send twice as fast for 8 seconds")
+		for t in battle.towers:
+			if t.owner == Battle.PLAYER:
+				world.capture(t.x, t.y, Battle.PLAYER)
+	ui.refresh_abilities()
+
+
+func drop_strike(t) -> void:
+	charges.strike -= 1
+	armed = ""
+	ui.set_hint(hint_text)
+	battle.drop_strike(t)
+	play_sound("warn")
+	ui.refresh_abilities()
+
+
+# ---------- Input ----------
+## Which armies the person (or people) at this screen control
+func controls(side: int) -> bool:
+	return side == 1 or side == 2 if mode == "duo" else side == 1
+
+
+## With two players on one phone, blue sits at the bottom and red at the top
+func side_at(pos: Vector2) -> int:
+	return 2 if mode == "duo" and pos.y < get_viewport().get_visible_rect().size.y / 2 else 1
+
+
+func tower_at(pos: Vector2, slack := 1.0):
+	var best = null
+	var bd := INF
+	for t in battle.towers:
+		var s := world.tower_screen(t)
+		var d := Geometry2D.get_closest_point_to_segment(pos, s.base, Vector2(s.top_x, s.top_y)).distance_to(pos)
+		var reach := maxf(s.r + 10, 30) * slack
+		if d < reach and d < bd:
+			bd = d
+			best = t
+	return best
+
+
+func clear_pointers() -> void:
+	drags.clear()
+	cuts.clear()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventScreenTouch:
+		if event.pressed:
+			pointer_down(event.index, event.position)
+		else:
+			pointer_up(event.index, event.position)
+	elif event is InputEventScreenDrag:
+		pointer_move(event.index, event.position)
+	elif event is InputEventKey and event.pressed and not event.echo:
+		match event.keycode:
+			KEY_P, KEY_ESCAPE:
+				if screen_open == "paused":
+					resume()
+				elif state == "play":
+					pause()
+			KEY_M:
+				toggle_sound()
+			KEY_N:
+				toggle_music()
+			KEY_F:
+				if state == "play" and mode == "campaign":
+					toggle_speed()
+			KEY_1:
+				use_ability("strike")
+			KEY_2:
+				use_ability("rally")
+
+
+func pointer_down(index: int, pos: Vector2) -> void:
+	if state != "play" or screen_open != "":
+		return
+	var p = world.ground(pos)
+	var t = tower_at(pos)
+	if armed == "strike":
+		if t != null and t.owner != Battle.PLAYER:
+			drop_strike(t)
+		else:
+			ui.toast("Pick an enemy or gray building")
+		return
+	if t != null and controls(t.owner):
+		drags[index] = {"from": t, "side": t.owner, "pos": pos, "p": p, "over": null}
+	elif p != null:
+		cuts[index] = {"last": p, "side": side_at(pos)}
+
+
+func pointer_move(index: int, pos: Vector2) -> void:
+	if drags.has(index):
+		drags[index].pos = pos
+		drags[index].p = world.ground(pos)
+	if cuts.has(index):
+		var p = world.ground(pos)
+		if p != null:
+			swipe(cuts[index].last, p, cuts[index].side)
+			cuts[index].last = p
+
+
+func pointer_up(index: int, pos: Vector2) -> void:
+	if drags.has(index):
+		var d: Dictionary = drags[index]
+		drags.erase(index)
+		var t = tower_at(pos, 1.2)
+		if t != null and t != d.from and state == "play" and d.from.owner == d.side:
+			var res = request_link(d.from, t, d.side)
+			if res is bool and res:
+				play_sound("go")
+				if hand_shown:
+					hand_shown = false
+					set_hint("")
+			elif res is String and res == "full":
+				ui.toast("This building can hold %d road%s. More soldiers unlock more." % [d.from.max_roads(), "s" if d.from.max_roads() > 1 else ""])
+				play_sound("beep")
+			elif res is String and res == "blocked":
+				ui.toast("A wall is in the way")
+				play_sound("beep")
+	cuts.erase(index)
+
+
+## Build a road. Online, a guest asks the host, who runs the battle.
+func request_link(a, b, side: int):
+	if net.is_guest():
+		var ok = battle.can_link(a, b, side)
+		if ok is bool:
+			net.send({"t": "cmd", "c": "link", "a": a.id, "b": b.id})
+		return ok
+	return battle.link(a, b, side)
+
+
+## Cut any of that army's roads the swipe crosses
+func swipe(a: Vector2, b: Vector2, side: int) -> void:
+	cut_marks.append({"x1": a.x, "y1": a.y, "x2": b.x, "y2": b.y, "life": 0.35})
+	for t in battle.towers:
+		if t.owner != side:
+			continue
+		for i in range(t.roads.size() - 1, -1, -1):
+			var to = t.roads[i].to
+			var hit = Geometry2D.segment_intersects_segment(a, b, Vector2(t.x, t.y), Vector2(to.x, to.y))
+			if hit != null:
+				if net.is_guest():
+					net.send({"t": "cmd", "c": "cut", "a": t.id, "b": to.id})
+				t.roads.remove_at(i)
+				world.hit(hit.x, hit.y, side)
+				play_sound("cut")
+				if level == 2 and hint_text != "" and mode == "campaign":
+					set_hint("")
+
+
+## The ring under a building: the drag source, a drag target, or an airstrike target
+func highlight(t) -> String:
+	if armed == "strike" and t.owner != Battle.PLAYER:
+		return "target"
+	for d in drags.values():
+		if t == d.from:
+			return "source"
+		if d.over == t:
+			return "over" if battle.can_link(d.from, t, d.side) is bool else "bad"
+	return ""
+
+
+# ---------- Screens and buttons ----------
+func open_menu() -> void:
+	state = "menu"
+	mode = "campaign"
+	armed = ""
+	scene_theme = ""
+	demo_timer = 0.0
+	battle.rally = 0.0
+	ui.hide_hud()
+	set_hint("")
+	ui.show_screen("menu")
+	music.play_track("menu")
+
+
+func pause() -> void:
+	if state != "play":
+		return
+	clear_pointers()
+	# An online match keeps going: the other player is still playing
+	if mode != "online":
+		state = "paused"
+	ui.show_screen("paused")
+
+
+func resume() -> void:
+	if screen_open != "paused":
+		return
+	if state == "paused":
+		state = "play"
+	ui.show_screen("")
+
+
+func restart() -> void:
+	if mode == "campaign":
+		start_level(level)
+	else:
+		net.restart()
+
+
+func quit_to_menu() -> void:
+	if mode == "online":
+		net.leave()
+	open_menu()
+
+
+func toggle_speed() -> void:
+	speed = 2 if speed == 1 else 1
+	ui.refresh_speed()
+
+
+func toggle_sound() -> void:
+	save.muted = not save.muted
+	sfx.muted = save.muted
+	music.set_enabled(save.music and not save.muted)
+	write_save()
+	ui.refresh_toggles()
+
+
+func toggle_music() -> void:
+	save.music = not save.music
+	music.set_enabled(save.music and not save.muted)
+	write_save()
+	ui.refresh_toggles()
+
+
+func buy(id: String) -> void:
+	for u in UPGRADES:
+		if u.id != id:
+			continue
+		var lv: int = save.up[id]
+		if lv >= u.max or save.coins < u.cost[lv]:
+			return
+		save.coins -= u.cost[lv]
+		save.up[id] = lv + 1
+		write_save()
+		play_sound("coin")
+
+
+# ---------- Each frame ----------
+func _process(delta: float) -> void:
+	var dt := minf(0.05, delta)
+	# If the game keeps running below ~35 frames a second, switch to lighter graphics once
+	if not quality_lowered and delta < 0.5:
+		slow_frames = slow_frames + 1 if delta > 1.0 / 35 else maxi(0, slow_frames - 2)
+		if slow_frames > 150:
+			quality_lowered = true
+			world.lower_quality()
+	if state == "play":
+		for i in speed:
+			step(dt)
+		ui.update_hud()
+	elif state == "menu":
+		_menu_demo(dt)
+	_update_effects(dt)
+	for d in drags.values():
+		d.over = tower_at(d.pos, 1.2)
+	world.render(dt, battle, highlight, shells)
+	shake = maxf(0, shake - dt * 30)
+	world.camera.h_offset = (randf() - 0.5) * shake * 0.6 if shake > 0 else 0.0
+	world.camera.v_offset = (randf() - 0.5) * shake * 0.6 if shake > 0 else 0.0
+
+
+func step(dt: float) -> void:
+	if net.is_guest():
+		net.guest_update(dt)
+		return
+	battle.update(dt)
+	if hint_text != "" and armed == "":
+		hint_timer -= dt
+		if hint_timer <= 0 and not hand_shown:
+			set_hint("")
+	check_end()
+	if mode == "online":
+		net.host_tick(dt)
+
+
+func _update_effects(dt: float) -> void:
+	for f in floats:
+		f.life -= dt
+	floats = floats.filter(func(f): return f.life > 0)
+	for s in shells:
+		s.time -= dt
+	shells = shells.filter(func(s): return s.time > 0)
+	for c in cut_marks:
+		c.life -= dt
+	cut_marks = cut_marks.filter(func(c): return c.life > 0)
+
+
+## A battle between computer armies plays behind the menu
+func _menu_demo(dt: float) -> void:
+	if not battle.towers.is_empty() and (not battle.alive(1) or not battle.alive(2)):
+		demo_timer = minf(demo_timer, 3)
+	if demo_timer <= 0 or battle.towers.is_empty():
+		var n := 7 + randi() % 30
+		mode = "campaign"
+		load_battle(Levels.gen(n), n)
+		for side in [1, 2, 3, 4]:
+			if battle.towers.any(func(t): return t.owner == side):
+				battle.ai_sides.append({"side": side, "timer": 1.0 + side * 0.4, "cfg": {"think": 1.4, "margin": 3.0, "bold": 0.5}})
+		demo_timer = 90.0
+	demo_timer -= dt
+	quiet = true
+	battle.update(dt)
+	quiet = false
