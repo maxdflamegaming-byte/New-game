@@ -9,7 +9,8 @@ extends RefCounted
 
 const FW := 900.0
 const FH := 1400.0
-const MAX_LEVEL := 60
+const MAX_LEVEL := 60          # the levels that match the web version; after them, endless levels
+const LAST_LEVEL := 999
 const THEMES := ["grass", "desert", "snow", "beach"]
 
 ## AI: think = seconds between moves, margin = spare soldiers it wants before attacking,
@@ -49,7 +50,59 @@ static func data(n: int) -> Dictionary:
 		var d: Dictionary = TUTORIAL[n - 1].duplicate(true)
 		d["rocks"] = []
 		return d
-	return gen(n)
+	return extras(gen(n), n)
+
+
+static func is_boss(n: int) -> bool:
+	return n >= 10 and n % 10 == 0
+
+
+## What this version adds to a generated campaign level: a boss Castle every 10th level,
+## Training Camps, enemies that upgrade their buildings from level 25, and endless levels
+## (after 60) whose enemies keep getting stronger
+static func extras(d: Dictionary, n: int) -> Dictionary:
+	var towers: Array = d.towers
+	if is_boss(n):
+		towers[1][4] = "castle"
+		towers[1][3] = int(towers[1][3]) + 5 + n / 6
+		d.hint = "Boss level! Attack the Castle from several buildings at once, and stay clear of its circle until you do."
+	# Training Camps: the first pair of gray towers (they come in mirrored pairs) on some levels
+	if n >= 15 and (n * 37) % 5 < 2:
+		for i in range(2, towers.size() - 1, 2):
+			if towers[i][2] == 0 and towers[i][4] == "barracks" and towers[i + 1][4] == "barracks":
+				towers[i][4] = "camp"
+				towers[i + 1][4] = "camp"
+				break
+	if n > MAX_LEVEL:
+		var extra := (n - MAX_LEVEL) / 2
+		for t in towers:
+			if int(t[2]) >= 2:
+				t[3] = int(t[3]) + extra
+	d.ai = d.ai.duplicate()
+	d.ai.upgrade = n >= 25
+	if n == 8 and d.hint == "":
+		d.hint = "Tap one of your buildings, then the ⬆ button: spend soldiers so it trains faster."
+	if n == MAX_LEVEL + 1 and d.hint == "":
+		d.hint = "Endless levels: every level from here gets a little harder."
+	return d
+
+
+## Today's challenge: one map for everyone, made from the date (days since 1970, UTC)
+static func daily(day: int) -> Dictionary:
+	var seed_value := (day * 2654435761 + 977) & 0x7fffffff
+	var n := 25 + day % 20
+	var d := gen(14, true, seed_value)
+	var base := gen(n)
+	d.ai = base.ai.duplicate()
+	d.ai.upgrade = true
+	for t in d.towers:
+		if int(t[2]) == 2:
+			t[3] = int(t[3]) + n / 3
+		elif int(t[2]) == 0:
+			t[3] = int(t[3]) + n / 6
+	d.hint = "Daily challenge: the same map for everyone today. Win it for a big coin prize!"
+	d.theme = THEMES[day % THEMES.size()]
+	return d
 
 
 ## The web version's random numbers (mulberry32), on 32-bit unsigned values

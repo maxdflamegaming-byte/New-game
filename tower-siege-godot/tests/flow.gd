@@ -49,7 +49,13 @@ func _drag(index: int, from: Vector2, to: Vector2) -> void:
 
 func _run() -> void:
 	await _frames(10)
-	ok("The menu shows with a battle behind it", main.screen_open == "menu" and main.state == "menu" and main.battle.towers.size() > 4)
+	ok("The daily reward pops up on the first visit of the day", main.screen_open == "reward" and main.state == "menu" and main.battle.towers.size() > 4)
+	main.ui.reward_btn.pressed.emit()
+	await _frames(2)
+	ok("Collecting it pays day 1's coins and opens the menu", int(main.save.coins) == 20 and int(main.save.streak.count) == 1 and main.screen_open == "menu")
+	main.open_menu()
+	ok("It doesn't pop up again the same day", main.screen_open == "menu")
+	main.save.coins = 0
 
 	main.start_level(1)
 	await _frames(3)
@@ -167,6 +173,76 @@ func _run() -> void:
 	ok("Online: the guest's copy matches the host's after every update", same and checks > 100 and most > 30, "%d updates, up to %d soldiers" % [checks, most])
 	ok("Online: updates use much less data than sending everything", sent_bytes * 2 < full_bytes, "%d vs %d bytes" % [sent_bytes, full_bytes])
 	main.net.role = ""
+	main.open_menu()
+
+	# Upgrading a building: tap it, then the ⬆ button
+	main.save.level = 9
+	main.start_level(8)
+	await _frames(3)
+	for side in main.battle.ai_sides:
+		side.timer = 1e9
+	var mine: Battle.Tower = main.battle.towers[0]
+	mine.units = 40
+	var ms: Dictionary = main.world.tower_screen(mine)
+	await _drag(0, Vector2(ms.x, ms.y), Vector2(ms.x + 3, ms.y))
+	ok("Tapping your building offers an upgrade", not main.upgrade_offer.is_empty() and main.upgrade_offer.t == mine)
+	var btn: Dictionary = main.overlay.upgrade_button(mine)
+	_touch(0, btn.c, true)
+	_touch(0, btn.c, false)
+	await _frames(2)
+	ok("The ⬆ button upgrades it for 10 soldiers", mine.stars == 1 and mine.units < 31.0, "%d %.1f" % [mine.stars, mine.units])
+	var rate1: float = main.battle.prod_rate(mine)
+	mine.stars = 0
+	ok("An upgraded building trains faster", rate1 > main.battle.prod_rate(mine) * 1.25)
+
+	# Boss levels, endless levels and the daily challenge
+	main.start_level(10)
+	await _frames(3)
+	ok("Level 10 is a boss level with a castle", main.battle.towers.any(func(t): return t.type == "castle" and t.owner == 2) and main.ui.level_label.text.contains("Boss"))
+	main.save.level = 64
+	main.ui.show_screen("levels")
+	await _frames(2)
+	ok("Endless levels show up after 60", main.ui.level_grid.get_child_count() == 66, str(main.ui.level_grid.get_child_count()))
+	main.start_level(64)
+	await _frames(3)
+	ok("An endless level plays", main.state == "play" and main.battle.towers.size() >= 8)
+	var coins0 := int(main.save.coins)
+	main.start_daily()
+	await _frames(3)
+	ok("The daily challenge starts", main.daily and main.state == "play" and main.ui.level_label.text == "Daily challenge")
+	var t_first: Array = main.battle.towers.map(func(t): return [t.bx, t.by, t.type])
+	main.start_daily()
+	ok("It's the same map every time today", main.battle.towers.map(func(t): return [t.bx, t.by, t.type]) == t_first)
+	for t in main.battle.towers:
+		if t.owner >= 2:
+			t.owner = 1
+	main.battle.units.clear()
+	await _frames(5)
+	await create_timer(1.5).timeout
+	ok("Winning it pays the daily prize once", int(main.save.coins) == coins0 + Progress.DAILY_COINS and int(main.save.daily_won) == Progress.today() and not main.ui.next_btn.visible)
+
+	# Missions
+	var list := Progress.missions(main.save)
+	ok("There are 3 missions today", list.size() == 3)
+	var m0: Dictionary = list[0]
+	m0.have = 0
+	m0.claimed = false
+	Progress.add(main.save, m0.id, int(m0.goal))
+	var before := int(main.save.coins)
+	main.ui.show_screen("missions")
+	await _frames(2)
+	ok("A finished mission can be collected", Progress.claim_mission(main.save, 0) == int(m0.coins) and int(main.save.coins) == before + int(m0.coins))
+	ok("Only once", Progress.claim_mission(main.save, 0) == 0)
+
+	# Looks
+	main.save.coins = 1000
+	ok("Buying a hat", Progress.pick_look(main.save, "hat", "crown") == "" and int(main.save.coins) == 200 and main.save.looks.hat == "crown")
+	main.world.set_look(main.save.looks.hat, main.save.looks.flag)
+	ok("Your soldiers wear it", main.world.look_hat == "crown")
+	ok("Can't buy what you can't afford", Progress.pick_look(main.save, "flag", "skull") == "coins")
+	main.ui.show_screen("looks")
+	await _frames(2)
+	ok("The looks screen opens", main.screen_open == "looks" and main.ui.looks_lists.hat.get_child_count() == Progress.HATS.size())
 	main.open_menu()
 
 	# Graphics settings

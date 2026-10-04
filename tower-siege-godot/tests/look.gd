@@ -49,7 +49,29 @@ func _run() -> void:
 	elif what == "pvp":
 		main.net.open_pvp()
 		await _frames(10)
-	elif what in ["levels", "shop", "help", "settings"]:
+	elif what == "upgrade":
+		main.save.level = 12
+		main.save.looks.hat = "viking"
+		main.save.looks.flag = "star"
+		main.world.set_look("viking", "star")
+		main.start_level(15)
+		for a in main.battle.ai_sides:
+			a.timer = 1e9
+		var t: Battle.Tower = main.battle.towers[0]
+		t.units = 34
+		t.stars = 1
+		for i in 60:
+			main.battle.update(0.05)
+		main.battle.link(t, main.battle.towers[2], 1)
+		for i in 40:
+			main.battle.update(0.05)
+		main.upgrade_offer = {"t": t, "life": 2.5}
+		await _frames(20)
+	elif what == "looks":
+		main.save.coins = 500
+		main.ui.show_screen(what)
+		await _frames(40)
+	elif what in ["levels", "shop", "help", "settings", "reward", "missions"]:
 		main.ui.show_screen(what)
 		await _frames(10)
 	elif what == "win":

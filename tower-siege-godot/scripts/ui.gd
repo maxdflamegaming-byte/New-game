@@ -48,6 +48,17 @@ var next_btn: Button
 var lose_tip: Label
 var vibrate_btn: Button
 var gfx_btns := {}
+var missions_btn: Button
+var daily_btn: Button
+var reward_days: HBoxContainer
+var reward_title: Label
+var reward_btn: Button
+var mission_list: VBoxContainer
+var mission_streak: Label
+var looks_lists := {}
+var looks_coins: Label
+var look_pics := {}           # "hat:crown" -> a picture of it (made the first time Looks opens)
+var _making_pics := false
 
 
 func build() -> void:
@@ -64,6 +75,9 @@ func build() -> void:
 	_build_shop()
 	_build_help()
 	_build_settings()
+	_build_reward()
+	_build_missions()
+	_build_looks()
 	_build_paused()
 	_build_win()
 	_build_lose()
@@ -271,6 +285,12 @@ func show_screen(id: String) -> void:
 			refresh_shop()
 		"paused", "settings":
 			refresh_toggles()
+		"reward":
+			refresh_reward()
+		"missions":
+			refresh_missions()
+		"looks":
+			refresh_looks()
 
 
 # ---------- HUD ----------
@@ -486,8 +506,8 @@ func _build_menu() -> void:
 	tag.add_child(wrapped(label("Drag roads between towers, march your army and take every building on the map.", 22, INK, 0, font_m), 560))
 	tag.custom_minimum_size.x = 600
 	col.add_child(tag)
-	col.add_child(spacer(260))
-	play_btn = button("PLAY", "yellow", 52, func(): main.start_level(mini(main.save.level, Levels.MAX_LEVEL)))
+	col.add_child(spacer(110))
+	play_btn = button("PLAY", "yellow", 52, func(): main.start_level(mini(main.save.level, Levels.LAST_LEVEL)))
 	play_btn.custom_minimum_size = Vector2(440, 110)
 	play_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	col.add_child(play_btn)
@@ -495,6 +515,13 @@ func _build_menu() -> void:
 	pvp.custom_minimum_size = Vector2(440, 84)
 	pvp.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	col.add_child(pvp)
+	var row0 := hbox(10)
+	daily_btn = button("📅 Daily", "green", 24, func(): main.start_daily())
+	missions_btn = button("🎁 Missions", "blue", 24, func(): show_screen("missions"))
+	row0.add_child(daily_btn)
+	row0.add_child(missions_btn)
+	row0.add_child(button("🎨 Looks", "blue", 24, func(): show_screen("looks")))
+	col.add_child(row0)
 	var row := hbox()
 	row.add_child(button("Levels", "blue", 28, func(): show_screen("levels")))
 	row.add_child(button("Upgrades", "blue", 28, func(): show_screen("shop")))
@@ -533,6 +560,191 @@ func refresh_toggles() -> void:
 			gfx_btns[g].add_theme_color_override("font_outline_color", Color("#b06a00") if on else INK)
 
 
+# ---------- Daily reward ----------
+func _build_reward() -> void:
+	var col := screen("reward")
+	var p := panel()
+	var v := vbox(18)
+	p.add_child(v)
+	v.add_child(ribbon("Daily reward", GREEN))
+	reward_title = label("", 28)
+	v.add_child(reward_title)
+	reward_days = hbox(6)
+	v.add_child(reward_days)
+	v.add_child(wrapped(label("Come back every day: the reward grows for 7 days in a row.", 20, WHITE, 4, font_m), 540))
+	reward_btn = button("Collect", "yellow", 40, func():
+		var coins := Progress.claim_reward(main.save)
+		main.write_save()
+		if coins > 0:
+			main.play_sound("coin")
+			main.vibrate(40)
+			toast("+%d coins!" % coins)
+		main.open_menu())
+	reward_btn.custom_minimum_size = Vector2(360, 86)
+	reward_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	v.add_child(reward_btn)
+	col.add_child(p)
+
+
+func refresh_reward() -> void:
+	var next := Progress.streak_next(main.save)
+	var ready := Progress.reward_ready(main.save)
+	reward_title.text = ("Day %d" % next) if ready else "Collected today. See you tomorrow!"
+	for c in reward_days.get_children():
+		c.queue_free()
+	var got := next - 1 if ready else int(main.save.streak.count)
+	for i in Progress.STREAK_COINS.size():
+		var today_box: bool = ready and i == next - 1
+		var pc := PanelContainer.new()
+		pc.add_theme_stylebox_override("panel", box(YELLOW if today_box else GREEN if i < got else PANEL_LIGHT, INK, 14, 3, 3))
+		pc.custom_minimum_size = Vector2(74, 92)
+		var vv := vbox(0)
+		vv.add_child(label("Day %d" % (i + 1), 15, WHITE, 4))
+		vv.add_child(label("✓" if i < got else "●", 26, WHITE, 6))
+		vv.add_child(label(str(Progress.STREAK_COINS[i]), 18, WHITE, 5))
+		pc.add_child(vv)
+		reward_days.add_child(pc)
+	reward_btn.text = "Collect %d" % Progress.STREAK_COINS[next - 1] if ready else "Back"
+
+
+# ---------- Missions ----------
+func _build_missions() -> void:
+	var col := screen("missions")
+	col.add_child(ribbon("Missions"))
+	mission_streak = wrapped(label("", 22, WHITE, 5, font_m), 600)
+	col.add_child(mission_streak)
+	mission_list = vbox(12)
+	col.add_child(mission_list)
+	col.add_child(wrapped(label("New missions every day. They're the same for everyone.", 18, WHITE, 4, font_m), 600))
+	col.add_child(back_button())
+
+
+func refresh_missions() -> void:
+	for c in mission_list.get_children():
+		c.queue_free()
+	if Progress.reward_ready(main.save):
+		var rb := button("🎁 Collect your daily reward (day %d)" % Progress.streak_next(main.save), "yellow", 24, func(): show_screen("reward"))
+		mission_list.add_child(rb)
+	mission_streak.text = "Daily reward streak: %d day%s" % [int(main.save.streak.count), "" if int(main.save.streak.count) == 1 else "s"]
+	var list := Progress.missions(main.save)
+	for i in list.size():
+		var m: Dictionary = list[i]
+		var row := PanelContainer.new()
+		row.add_theme_stylebox_override("panel", box(PANEL, INK, 20, 3, 4))
+		row.custom_minimum_size.x = 620
+		var h := hbox(14)
+		h.alignment = BoxContainer.ALIGNMENT_BEGIN
+		var info := vbox(6)
+		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var name_l := wrapped(label(Progress.mission_text(m), 24), 400)
+		name_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		info.add_child(name_l)
+		var bar := ProgressBar.new()
+		bar.max_value = int(m.goal)
+		bar.value = int(m.have)
+		bar.show_percentage = false
+		bar.custom_minimum_size = Vector2(380, 22)
+		bar.add_theme_stylebox_override("background", box(Color(1, 1, 1, 0.3), INK, 10, 2, 0))
+		var fill := box(YELLOW, INK, 10, 2, 0)
+		bar.add_theme_stylebox_override("fill", fill)
+		info.add_child(bar)
+		var count := label("%d / %d" % [int(m.have), int(m.goal)], 18, WHITE, 4)
+		count.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		info.add_child(count)
+		h.add_child(info)
+		var done: bool = int(m.have) >= int(m.goal)
+		var idx := i
+		var b := button("✓" if m.claimed else "● %d" % int(m.coins), "green" if done and not m.claimed else "blue", 24, func():
+			var coins := Progress.claim_mission(main.save, idx)
+			if coins > 0:
+				main.write_save()
+				main.play_sound("coin")
+				toast("+%d coins!" % coins)
+			refresh_missions())
+		b.disabled = not done or m.claimed
+		b.custom_minimum_size.x = 130
+		h.add_child(b)
+		row.add_child(h)
+		mission_list.add_child(row)
+
+
+# ---------- Looks ----------
+func _build_looks() -> void:
+	var col := screen("looks")
+	col.add_child(ribbon("Looks"))
+	looks_coins = label("", 32)
+	col.add_child(looks_coins)
+	for kind in ["hat", "flag"]:
+		var p := panel()
+		var v := vbox(12)
+		p.add_child(v)
+		v.add_child(label("Your soldiers' hats" if kind == "hat" else "Your buildings' flags", 28))
+		var grid := GridContainer.new()
+		grid.columns = 3
+		grid.add_theme_constant_override("h_separation", 10)
+		grid.add_theme_constant_override("v_separation", 10)
+		v.add_child(grid)
+		looks_lists[kind] = grid
+		col.add_child(p)
+	col.add_child(back_button())
+
+
+func _make_pics() -> void:
+	_making_pics = true
+	var items := []
+	for kind in ["hat", "flag"]:
+		for item in Progress.catalog(kind):
+			items.append([kind, item.id])
+	look_pics = await main.world.make_previews(items)
+	if main.screen_open == "looks" and not look_pics.is_empty():
+		refresh_looks()
+
+
+func refresh_looks() -> void:
+	if not _making_pics:
+		_make_pics()
+	looks_coins.text = "● %d" % main.save.coins
+	for kind in looks_lists:
+		var grid: GridContainer = looks_lists[kind]
+		for c in grid.get_children():
+			c.queue_free()
+		for item in Progress.catalog(kind):
+			var owned := Progress.owns(main.save, item.id)
+			var worn: bool = main.save.looks[kind] == item.id
+			var state: String = ("Wearing" if worn else "Wear") if kind == "hat" else ("Flying" if worn else "Fly")
+			var b := button("", "yellow" if worn else "blue", 20)
+			b.custom_minimum_size = Vector2(176, 176)
+			var card := vbox(0)
+			card.set_anchors_preset(Control.PRESET_FULL_RECT)
+			card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			var pic: Texture2D = look_pics.get("%s:%s" % [kind, item.id])
+			if pic:
+				var tr := TextureRect.new()
+				tr.texture = pic
+				tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+				tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+				tr.custom_minimum_size = Vector2(100, 100)
+				tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				card.add_child(tr)
+			else:
+				card.add_child(label(item.icon, 52, WHITE, 0))
+			card.add_child(label(item.name, 22))
+			card.add_child(label(state if owned else "● %d" % item.cost, 20, WHITE, 6))
+			for c in card.get_children():
+				c.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			b.add_child(card)
+			b.disabled = not owned and int(main.save.coins) < int(item.cost)
+			var id: String = item.id
+			var k: String = kind
+			b.pressed.connect(func():
+				if Progress.pick_look(main.save, k, id) == "":
+					main.write_save()
+					main.world.set_look(main.save.looks.hat, main.save.looks.flag)
+					main.play_sound("coin" if not owned else "tap")
+				refresh_looks())
+			grid.add_child(b)
+
+
 # ---------- Settings ----------
 func _build_settings() -> void:
 	var col := screen("settings")
@@ -565,7 +777,11 @@ func _build_settings() -> void:
 
 func refresh_menu() -> void:
 	menu_coins.text = "● %d" % main.save.coins
-	play_btn.text = "PLAY  ·  Level %d" % mini(main.save.level, Levels.MAX_LEVEL)
+	play_btn.text = "PLAY  ·  Level %d" % mini(main.save.level, Levels.LAST_LEVEL)
+	var n := Progress.claimable(main.save) + (1 if Progress.reward_ready(main.save) else 0)
+	missions_btn.text = "🎁 Missions" + (" (%d)" % n if n > 0 else "")
+	missions_btn.add_theme_stylebox_override("normal", box(ORANGE if n > 0 else PANEL_LIGHT))
+	daily_btn.text = "📅 Daily ✓" if int(main.save.daily_won) == Progress.today() else "📅 Daily"
 	refresh_toggles()
 
 
@@ -590,13 +806,15 @@ func refresh_levels() -> void:
 		c.queue_free()
 	var total := 0
 	var colors := {"grass": Color("#4caf3c"), "desert": Color("#d99a3a"), "snow": Color("#4a9fd6"), "beach": Color("#2ec3e0")}
-	for n in range(1, Levels.MAX_LEVEL + 1):
+	# The 60 levels, then the endless levels reached so far (in full rows)
+	var shown := maxi(Levels.MAX_LEVEL, ceili((int(main.save.level) + 1) / 6.0) * 6)
+	for n in range(1, mini(shown, Levels.LAST_LEVEL) + 1):
 		var st := int(main.save.stars.get(str(n), 0))
 		total += st
 		var locked: bool = n > main.save.level
 		var b := button("%d\n%s" % [n, "🔒" if locked else "★".repeat(st) + "☆".repeat(3 - st)], "blue", 22)
 		b.custom_minimum_size = Vector2(84, 84)
-		var bg: Color = YELLOW if n == main.save.level else colors[Levels.theme_for(n)]
+		var bg: Color = YELLOW if n == main.save.level else RED if Levels.is_boss(n) else colors[Levels.theme_for(n)]
 		b.add_theme_stylebox_override("normal", box(bg))
 		b.disabled = locked
 		var level_n := n
@@ -712,12 +930,12 @@ func _build_win() -> void:
 	v.add_child(win_coins)
 	win_unlock = wrapped(label("", 22, Color("#fff3a0")), 540)
 	v.add_child(win_unlock)
-	next_btn = button("Next level", "yellow", 40, func(): main.start_level(mini(main.level + 1, Levels.MAX_LEVEL)))
+	next_btn = button("Next level", "yellow", 40, func(): main.start_level(mini(main.level + 1, Levels.LAST_LEVEL)))
 	next_btn.custom_minimum_size = Vector2(400, 90)
 	next_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	v.add_child(next_btn)
 	var row := hbox()
-	row.add_child(button("Replay", "blue", 26, func(): main.start_level(main.level)))
+	row.add_child(button("Replay", "blue", 26, func(): main.restart()))
 	row.add_child(button("Menu", "blue", 26, func(): main.open_menu()))
 	v.add_child(row)
 	col.add_child(p)
@@ -745,7 +963,7 @@ func show_win(stars: int, coins: int, unlock: String, time: float, stats: Dictio
 	win_coins.text = "● +%d" % coins
 	win_unlock.text = unlock
 	win_unlock.visible = unlock != ""
-	next_btn.visible = main.level < Levels.MAX_LEVEL
+	next_btn.visible = main.level < Levels.LAST_LEVEL and not main.daily
 	for i in 3:
 		var s := win_stars[i]
 		s.add_theme_color_override("font_color", Color(1, 1, 1, 0.35))
@@ -770,7 +988,7 @@ func _build_lose() -> void:
 	v.add_child(label("Your last building has fallen.", 26, WHITE, 6, font_m))
 	lose_tip = wrapped(label("", 22, WHITE, 5, font_m), 540)
 	v.add_child(lose_tip)
-	var r := button("Try again", "yellow", 40, func(): main.start_level(main.level))
+	var r := button("Try again", "yellow", 40, func(): main.restart())
 	r.custom_minimum_size = Vector2(400, 90)
 	r.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	v.add_child(r)

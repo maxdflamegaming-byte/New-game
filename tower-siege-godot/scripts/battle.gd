@@ -27,7 +27,14 @@ const TYPES := {
 	"fort": {"name": "Bunker", "prod": 0.8, "defense": 2.0, "intro": "New: the Bunker. Attackers only do half damage to it."},
 	"factory": {"name": "Tank Factory", "prod": 1.1, "defense": 1.0, "intro": "New: the Tank Factory. It sends tanks: each one is worth 3 soldiers."},
 	"watch": {"name": "Watchtower", "prod": 0.6, "defense": 1.0, "intro": "New: the Watchtower. It shoots enemies inside its circle."},
+	# Campaign only (the web version and PvP maps don't have these)
+	"camp": {"name": "Training Camp", "prod": 1.7, "defense": 0.7, "intro": "New: the Training Camp. It trains soldiers very fast, but it's easy to take."},
+	"castle": {"name": "Castle", "prod": 1.1, "defense": 1.6, "intro": "Boss level! The enemy Castle is tough, trains fast and shoots. Take it to win."},
 }
+const CASTLE_RANGE := 190.0
+const CASTLE_RELOAD := 1.2
+const UPGRADE_COST := [10, 20]   # soldiers for a building's 1st and 2nd star
+const STAR_BONUS := 0.3          # each star: trains 30% faster
 
 
 class Tower:
@@ -44,6 +51,7 @@ class Tower:
 	var pop := 0.0
 	var reload := 0.0
 	var aim := -PI / 2
+	var stars := 0         # upgrades bought in this battle (campaign)
 
 	func level() -> int:
 		return 4 if units >= 60 else 3 if units >= 30 else 2 if units >= 10 else 1
@@ -52,7 +60,13 @@ class Tower:
 		return mini(3, level())
 
 	func radius() -> float:
-		return (70.0 if type == "factory" else 72.0 if type == "fort" else 60.0) + level() * 3
+		return (70.0 if type == "factory" else 72.0 if type == "fort" else 84.0 if type == "castle" else 64.0 if type == "camp" else 60.0) + level() * 3
+
+	func shoots() -> bool:
+		return type == "watch" or type == "castle"
+
+	func shot_range() -> float:
+		return CASTLE_RANGE if type == "castle" else WATCH_RANGE
 
 	func has_road(b: Tower) -> bool:
 		for r in roads:
@@ -156,7 +170,7 @@ func boosted(side: int) -> bool:
 
 
 func prod_rate(t: Tower) -> float:
-	return (0.55 + 0.2 * t.level()) * TYPES[t.type].prod * (1 + 0.08 * boost.drill if boosted(t.owner) else 1.0)
+	return (0.55 + 0.2 * t.level()) * TYPES[t.type].prod * (1 + 0.08 * boost.drill if boosted(t.owner) else 1.0) * (1 + STAR_BONUS * t.stars)
 
 
 func sends_tanks(t: Tower) -> bool:
@@ -219,6 +233,27 @@ func cut(a: Tower, b: Tower) -> bool:
 	return false
 
 
+## Spend soldiers to give a building a star: it trains faster. Returns true or why not.
+func can_upgrade(t: Tower, side: int) -> Variant:
+	if t == null or t.owner != side:
+		return "not yours"
+	if t.stars >= UPGRADE_COST.size():
+		return "max"
+	if t.units < UPGRADE_COST[t.stars] + 1:
+		return "soldiers"
+	return true
+
+
+func upgrade(t: Tower, side: int) -> Variant:
+	var ok = can_upgrade(t, side)
+	if ok is String:
+		return ok
+	t.units -= UPGRADE_COST[t.stars]
+	t.stars += 1
+	t.pop = 1.5
+	return true
+
+
 func spawn_unit(from: Tower, to: Tower, power: int) -> void:
 	var u := Unit.new()
 	u.id = next_unit_id
@@ -271,7 +306,7 @@ func update(dt: float, run_ai := true) -> void:
 				r.timer = send_interval(t) * (1.0 if power > 1 else 0.8)
 			else:
 				r.timer = 0.0
-		if t.type == "watch":
+		if t.shoots():
 			_update_watch(t, dt)
 
 	# March
@@ -313,6 +348,7 @@ func capture(t: Tower, side: int) -> void:
 	var old := t.owner
 	t.owner = side
 	t.units = absf(t.units)
+	t.stars = 0
 	t.roads.clear()
 	t.pop = 1.5
 	if side == PLAYER:
@@ -364,13 +400,13 @@ func _fight() -> void:
 							break
 
 
-## Watchtowers shoot the nearest enemy inside their circle
+## Watchtowers (and a boss level's castle) shoot the nearest enemy inside their circle
 func _update_watch(t: Tower, dt: float) -> void:
 	t.reload -= dt
 	if t.owner == NEUTRAL or t.reload > 0:
 		return
 	var best: Unit = null
-	var bd := WATCH_RANGE
+	var bd := t.shot_range()
 	for u in units:
 		if u.dead or u.owner == t.owner:
 			continue
@@ -383,7 +419,7 @@ func _update_watch(t: Tower, dt: float) -> void:
 	best.power -= 1
 	if best.power <= 0:
 		best.dead = true
-	t.reload = WATCH_RELOAD
+	t.reload = CASTLE_RELOAD if t.type == "castle" else WATCH_RELOAD
 	t.aim = atan2(best.y - t.y, best.x - t.x)
 	shot.emit(t, best)
 
@@ -465,7 +501,7 @@ func ai_think(side: int, cfg: Dictionary) -> void:
 		# Watchtowers shoot some of the attackers on the way in
 		var guard := 0
 		for w in towers:
-			if w.type == "watch" and w.owner != NEUTRAL and w.owner != side and dist(w.x, w.y, tgt.x, tgt.y) < WATCH_RANGE:
+			if w.shoots() and w.owner != NEUTRAL and w.owner != side and dist(w.x, w.y, tgt.x, tgt.y) < w.shot_range():
 				guard += 4
 		var need: float = (tgt.units + grow) * TYPES[tgt.type].defense + cfg.margin + guard - already
 		var used := []
@@ -480,13 +516,20 @@ func ai_think(side: int, cfg: Dictionary) -> void:
 		var dsum := 0.0
 		for s in used:
 			dsum += dist(s.x, s.y, tgt.x, tgt.y)
-		var value: float = 1.0 + (cfg.bold if tgt.owner == PLAYER else 0.0) + (0.4 if tgt.type == "factory" else 0.0) + (0.2 if tgt.owner != NEUTRAL else 0.0)
+		var value: float = 1.0 + (cfg.bold if tgt.owner == PLAYER else 0.0) + (0.4 if tgt.type == "factory" or tgt.type == "camp" else 0.0) + (0.2 if tgt.owner != NEUTRAL else 0.0)
 		var score := value / (maxf(1, need) + dsum / used.size() / 22)
 		if best.is_empty() or score > best.score:
 			best = {"score": score, "tgt": tgt, "used": used}
 	if not best.is_empty():
 		for s in best.used:
 			link(s, best.tgt, side)
+
+	# On later levels: upgrade a safe building that has soldiers to spare
+	if cfg.get("upgrade", false) and randf() < 0.2:
+		for t in mine:
+			if t.stars < UPGRADE_COST.size() and t.units > 25 + UPGRADE_COST[t.stars] and threat_on(t) == 0:
+				upgrade(t, side)
+				break
 
 	# Reinforce buildings under attack from safe buildings nearby
 	for t in mine:

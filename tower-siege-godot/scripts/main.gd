@@ -42,6 +42,9 @@ var music
 var state := "menu"            # menu, play, paused, over
 var mode := "campaign"         # campaign, online, duo, practice
 var level := 1
+var daily := false             # playing today's daily challenge
+var upgrade_offer := {}        # {t, life}: the ⬆ button over one of your buildings
+var reward_shown_day := -1
 var screen_open := ""          # the screen showing, or "" during play
 var speed := 1
 var charges := {"strike": 0, "rally": 0}
@@ -78,6 +81,7 @@ func _ready() -> void:
 	add_child(world)
 	world.setup(SIDES)
 	world.set_plane_color(SIDES[1].color)
+	world.set_look(save.looks.hat, save.looks.flag)
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	overlay = Overlay.new()
@@ -104,9 +108,11 @@ func _ready() -> void:
 
 # ---------- Saving ----------
 func default_save() -> Dictionary:
-	return {"level": 1, "stars": {}, "coins": 0, "up": {"drill": 0, "boots": 0, "garrison": 0, "armory": 0},
+	var d := {"level": 1, "stars": {}, "coins": 0, "up": {"drill": 0, "boots": 0, "garrison": 0, "armory": 0},
 		"seen": {}, "muted": false, "music": true, "name": "", "trophies": 0, "pvp_wins": 0, "pvp_losses": 0,
 		"pid": "", "token": "", "clan": null, "gfx": "auto", "vibrate": true}
+	d.merge(Progress.defaults())
+	return d
 
 
 func load_save() -> void:
@@ -125,6 +131,9 @@ func load_save() -> void:
 	save.trophies = int(save.trophies)
 	for k in save.up:
 		save.up[k] = int(save.up[k])
+	var looks: Dictionary = default_save().looks
+	looks.merge(save.looks if save.looks is Dictionary else {}, true)
+	save.looks = looks
 
 
 func write_save() -> void:
@@ -202,6 +211,7 @@ func load_battle(data: Dictionary, n: int, theme := "") -> void:
 
 func start_level(n: int) -> void:
 	level = n
+	daily = false
 	mode = "campaign"
 	state = "play"
 	var data := Levels.data(n)
@@ -213,9 +223,33 @@ func start_level(n: int) -> void:
 	shake = 0.0
 	hand_shown = data.get("hand", false)
 	charges = {"strike": 1 + save.up.armory if n >= 3 else 0, "rally": 1 + save.up.armory if n >= 6 else 0}
+	_begin(data, "Level %d%s" % [n, "  ·  Boss" if Levels.is_boss(n) else ""], n)
+
+
+## Today's challenge: the same map for everyone, a big prize the first time you win it
+func start_daily() -> void:
+	daily = true
+	level = maxi(int(save.level), 6)
+	mode = "campaign"
+	state = "play"
+	var day := Progress.today()
+	var data := Levels.daily(day)
+	load_battle(data, 500 + day % 997, data.theme)
+	for side in [2, 3, 4]:
+		if battle.towers.any(func(t): return t.owner == side):
+			battle.ai_sides.append({"side": side, "timer": 2.5, "cfg": data.ai})
+	armed = ""
+	shake = 0.0
+	hand_shown = false
+	charges = {"strike": 1 + save.up.armory, "rally": 1 + save.up.armory}
+	_begin(data, "Daily challenge", level)
+
+
+func _begin(data: Dictionary, title: String, n: int) -> void:
+	upgrade_offer = {}
 	clear_pointers()
 	ui.show_screen("")
-	ui.start_hud("Level %d" % n, true)
+	ui.start_hud(title, true)
 	set_hint(data.get("hint", ""), 25.0 if n == 2 else 10.0)
 	# Introduce a new building the first time it shows up
 	for k in Battle.TYPES:
@@ -233,8 +267,22 @@ func set_hint(text: String, seconds := 10.0) -> void:
 	ui.set_hint(text)
 
 
+## Count progress on today's missions, and say when one is finished
+func mission(id: String, n := 1) -> void:
+	if quiet:
+		return
+	for m in Progress.add(save, id, n):
+		ui.toast("Mission done: %s! Collect %d coins in Missions." % [Progress.mission_text(m), int(m.coins)], 3.0)
+		play_sound("coin")
+	write_save()
+
+
 func _on_captured(t, side: int, old: int) -> void:
 	world.capture(t.x, t.y, side)
+	if side == Battle.PLAYER:
+		mission("capture")
+	if not upgrade_offer.is_empty() and upgrade_offer.t == t:
+		upgrade_offer = {}
 	net.event(["cap", t.id, side])
 	if mode == "duo":
 		play_sound("capture")
@@ -297,6 +345,8 @@ func check_end() -> void:
 
 func end_game(won: bool) -> void:
 	state = "over"
+	upgrade_offer = {}
+	mission("beat", battle.stats.killed)
 	clear_pointers()
 	armed = ""
 	set_hint("")
@@ -318,6 +368,19 @@ func stars_for(time: float) -> int:
 
 func show_win() -> void:
 	var stars := stars_for(battle.time)
+	mission("win")
+	if stars == 3:
+		mission("stars3")
+	if daily:
+		var first_today: bool = int(save.daily_won) != Progress.today()
+		var prize: int = Progress.DAILY_COINS if first_today else Progress.DAILY_REPLAY_COINS
+		save.coins += prize
+		save.daily_won = Progress.today()
+		if first_today:
+			mission("daily")
+		write_save()
+		ui.show_win(stars, prize, "Daily challenge won! Come back tomorrow for a new map." if first_today else "", battle.time, battle.stats)
+		return
 	var key := str(level)
 	var first: bool = level >= save.level
 	var coins := 15 + level * 2 + stars * 5
@@ -326,12 +389,16 @@ func show_win() -> void:
 	save.coins += coins
 	save.stars[key] = maxi(int(save.stars.get(key, 0)), stars)
 	var unlock := ""
-	if first and level < Levels.MAX_LEVEL:
+	if first and level < Levels.LAST_LEVEL:
 		save.level = level + 1
 		if level + 1 == 3:
 			unlock = "Airstrike unlocked! Bomb a building once per battle."
 		elif level + 1 == 6:
 			unlock = "Rally unlocked! Double your marching power for 8 seconds."
+		elif level + 1 == 8:
+			unlock = "Upgrades unlocked! Tap one of your buildings, then ⬆, to make it train faster."
+		elif level == Levels.MAX_LEVEL:
+			unlock = "You beat all 60 levels! Endless levels unlocked: they keep getting harder."
 	write_save()
 	ui.show_win(stars, coins, unlock, battle.time, battle.stats)
 
@@ -364,6 +431,7 @@ func use_ability(id: String) -> void:
 
 
 func drop_strike(t) -> void:
+	mission("strike")
 	charges.strike -= 1
 	armed = ""
 	ui.set_hint(hint_text)
@@ -432,6 +500,14 @@ func _unhandled_input(event: InputEvent) -> void:
 func pointer_down(index: int, pos: Vector2) -> void:
 	if state != "play" or screen_open != "" or net.paused():
 		return
+	# The ⬆ button over one of your buildings
+	if not upgrade_offer.is_empty():
+		var btn := overlay.upgrade_button(upgrade_offer.t)
+		var t0 = upgrade_offer.t
+		upgrade_offer = {}
+		if pos.distance_to(btn.c) < btn.r * 1.4:
+			upgrade_building(t0)
+			return
 	var p = world.ground(pos)
 	var t = tower_at(pos)
 	if armed == "strike":
@@ -441,7 +517,7 @@ func pointer_down(index: int, pos: Vector2) -> void:
 			ui.toast("Pick an enemy or gray building")
 		return
 	if t != null and controls(t.owner):
-		drags[index] = {"from": t, "side": t.owner, "pos": pos, "p": p, "over": null}
+		drags[index] = {"from": t, "side": t.owner, "pos": pos, "start": pos, "p": p, "over": null}
 	elif p != null:
 		cuts[index] = {"last": p, "side": side_at(pos)}
 
@@ -462,10 +538,16 @@ func pointer_up(index: int, pos: Vector2) -> void:
 		var d: Dictionary = drags[index]
 		drags.erase(index)
 		var t = tower_at(pos, 1.2)
-		if t != null and t != d.from and state == "play" and d.from.owner == d.side:
+		# A tap on your own building offers its upgrade (campaign, from level 8)
+		if t == d.from and pos.distance_to(d.start) < 40 and state == "play" and can_upgrade_here() and d.from.owner == Battle.PLAYER:
+			upgrade_offer = {"t": t, "life": 3.0}
+			play_sound("tap")
+		elif t != null and t != d.from and state == "play" and d.from.owner == d.side:
 			var res = request_link(d.from, t, d.side)
 			if res is bool and res:
 				play_sound("go")
+				if d.side == Battle.PLAYER:
+					mission("roads")
 				if hand_shown:
 					hand_shown = false
 					set_hint("")
@@ -476,6 +558,25 @@ func pointer_up(index: int, pos: Vector2) -> void:
 				ui.toast("A wall is in the way")
 				play_sound("beep")
 	cuts.erase(index)
+
+
+func can_upgrade_here() -> bool:
+	return mode == "campaign" and (level >= 8 or daily)
+
+
+func upgrade_building(t) -> void:
+	var res = battle.upgrade(t, Battle.PLAYER)
+	if res is bool:
+		play_sound("speed")
+		vibrate(30)
+		world.capture(t.x, t.y, Battle.PLAYER)
+		floats.append({"t": t, "text": "★ Trains faster!", "color": Color("#ffe14d"), "life": 1.4})
+		mission("upgrade")
+	elif res == "max":
+		ui.toast("This building has every upgrade")
+	elif res == "soldiers":
+		ui.toast("Needs %d soldiers to upgrade" % (Battle.UPGRADE_COST[t.stars] + 1))
+		play_sound("beep")
 
 
 ## Build a road. Online, a guest asks the host, who runs the battle.
@@ -531,6 +632,10 @@ func open_menu() -> void:
 	set_hint("")
 	ui.show_screen("menu")
 	music.play_track("menu")
+	# The daily reward pops up once a day
+	if Progress.reward_ready(save) and reward_shown_day != Progress.today():
+		reward_shown_day = Progress.today()
+		ui.show_screen("reward")
 
 
 func pause() -> void:
@@ -552,7 +657,9 @@ func resume() -> void:
 
 
 func restart() -> void:
-	if mode == "campaign":
+	if mode == "campaign" and daily:
+		start_daily()
+	elif mode == "campaign":
 		start_level(level)
 	else:
 		net.restart()
@@ -649,6 +756,10 @@ func _update_effects(dt: float) -> void:
 	for c in cut_marks:
 		c.life -= dt
 	cut_marks = cut_marks.filter(func(c): return c.life > 0)
+	if not upgrade_offer.is_empty():
+		upgrade_offer.life -= dt
+		if upgrade_offer.life <= 0 or upgrade_offer.t.owner != Battle.PLAYER or state != "play":
+			upgrade_offer = {}
 
 
 ## A battle between computer armies plays behind the menu

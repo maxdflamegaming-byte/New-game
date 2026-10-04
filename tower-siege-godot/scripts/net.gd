@@ -635,6 +635,8 @@ func check_end() -> void:
 ## winner: 1 = us online (or blue on one phone), 2 = them / red, 0 = a draw, -1 = no result
 func finish(winner: int, why: String) -> void:
 	pvp.over = true
+	main.mission("pvp")
+	main.mission("beat", main.battle.stats.killed)
 	pvp.winner = winner
 	main.state = "over"
 	main.clear_pointers()

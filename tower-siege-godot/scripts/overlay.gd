@@ -54,6 +54,42 @@ func _draw() -> void:
 			outlined(f.text, p, 26, col, Color(0.08, 0.1, 0.2, col.a))
 	_drags(w, b)
 	_hand(w, b)
+	if main.state == "play" and main.screen_open == "":
+		_upgrade_offer()
+
+
+## Where the ⬆ button over a building goes: {c: center, r: radius}
+func upgrade_button(t) -> Dictionary:
+	var w: World = main.world
+	var s := w.tower_screen(t)
+	var size := clampf(w.px_per_unit(t.x, t.y) * 46, 16, 40)
+	return {"c": Vector2(s.top_x + size * 1.6 + 26, s.top_y - size * 0.6), "r": 32.0}
+
+
+func _upgrade_offer() -> void:
+	var o: Dictionary = main.upgrade_offer
+	if o.is_empty():
+		return
+	var t = o.t
+	var btn := upgrade_button(t)
+	var maxed: bool = t.stars >= Battle.UPGRADE_COST.size()
+	var can: bool = main.battle.can_upgrade(t, Battle.PLAYER) is bool
+	var pop := minf(1.0, (3.0 - o.life) * 6)
+	var r: float = btn.r * (0.6 + 0.4 * pop)
+	var ink := Color("#b06a00") if can else Color("#66728a")
+	draw_circle(btn.c + Vector2(0, 4), r, ink)
+	draw_circle(btn.c, r, Color("#ffc928") if can else Color("#c9d3e2"))
+	draw_arc(btn.c, r, 0, TAU, 32, Color("#2160b8"), 3, true)
+	if maxed:
+		outlined("MAX", btn.c, int(r * 0.6), Color.WHITE, ink)
+	else:
+		# An up arrow, and the soldiers it costs under it
+		var a: Vector2 = btn.c + Vector2(0, -r * 0.2)
+		var s := r * 0.42
+		var arrow := PackedVector2Array([a + Vector2(0, -s), a + Vector2(s, 0), a + Vector2(s * 0.4, 0), a + Vector2(s * 0.4, s * 0.7), a + Vector2(-s * 0.4, s * 0.7), a + Vector2(-s * 0.4, 0), a + Vector2(-s, 0)])
+		draw_colored_polygon(arrow, Color.WHITE)
+		draw_polyline(arrow + PackedVector2Array([arrow[0]]), ink, 2.5, true)
+		outlined(str(Battle.UPGRADE_COST[t.stars]), btn.c + Vector2(0, r * 0.5), int(r * 0.5), Color.WHITE, ink)
 
 
 # The number on a roof, and dots for its roads (white = free, faded = in use)
@@ -67,6 +103,9 @@ func _label(t, w: World) -> void:
 	var y: float = s.top_y - size * 0.55
 	var dark: Color = main.SIDES[t.owner].dark
 	outlined(text, Vector2(s.top_x, y), size, Color.WHITE, dark)
+	# Upgrades: a gold star for each
+	if t.stars > 0:
+		outlined("★".repeat(t.stars), Vector2(s.top_x, y - size * 0.95), int(size * 0.6), Color("#ffd23f"), Color("#9a5b00"))
 	var m: int = t.max_roads()
 	var dr := maxf(3.0, size * 0.17)
 	for i in m:

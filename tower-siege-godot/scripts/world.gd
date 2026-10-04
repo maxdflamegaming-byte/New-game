@@ -35,6 +35,9 @@ var glow_shader: Shader = preload("res://shaders/glow.gdshader")
 var models := {}               # tower id -> {node, mesh_inst, mat, flag, ring, lv, type, side, top, smoke, bounce}
 var roads := {}                # key -> MeshInstance3D
 var soldiers: MultiMeshInstance3D
+var soldiers_me: MultiMeshInstance3D   # your own army, in your hat
+var look_hat := "helmet"
+var look_flag := "plain"
 var soldier_shadows: MultiMeshInstance3D
 var tanks: MultiMeshInstance3D
 var quality := 1               # 0 low, 1 medium, 2 high (see set_quality)
@@ -405,6 +408,54 @@ func _build_model(t, lv: int) -> Dictionary:
 			info.smoke.append(Vector3(x, 6 + ch + 3, -16))
 		info.flag_at = Vector3(-26, 6 + h + 7, 18)
 		info.top = 6 + h + 12
+	elif t.type == "castle":
+		# Boss castle: walls with battlements, round corner towers and a tall keep that shoots
+		var wh := 30.0
+		k.box(108, 6, 108, Vector3(0, 3, 0), SH)
+		for s in [-1, 1]:
+			k.box(84, wh, 10, Vector3(0, 6 + wh / 2, s * 40), W)
+			k.box(10, wh, 84, Vector3(s * 40, 6 + wh / 2, 0), W)
+			for i in 5:
+				var o := -32.0 + i * 16
+				k.box(8, 7, 11, Vector3(o, 6 + wh + 3.5, s * 40), MeshKit.TEAM)
+				k.box(11, 7, 8, Vector3(s * 40, 6 + wh + 3.5, o), MeshKit.TEAM)
+		var th := 44.0 + lv * 3
+		for p in [Vector2(-42, -42), Vector2(42, -42), Vector2(-42, 42), Vector2(42, 42)]:
+			k.cyl(14, 15, th, 10, Vector3(p.x, 6 + th / 2, p.y), W)
+			k.cyl(15.5, 15.5, 4, 10, Vector3(p.x, 6 + th - 4, p.y), MeshKit.DARK)
+			k.cone(18, 24, 10, Vector3(p.x, 6 + th + 12, p.y), MeshKit.TEAM)
+		var kh := 52.0 + lv * 6
+		k.box(42, kh, 42, Vector3(0, 6 + kh / 2, -4), W)
+		k.box(46, 6, 46, Vector3(0, 6 + kh - 3, -4), MeshKit.TEAM)
+		for i in 4:
+			var a := i * PI / 2
+			k.box(10, 7, 10, Vector3(sin(a) * 18, 6 + kh + 3.5, cos(a) * 18 - 4), MeshKit.TEAM)
+		for yy in [kh * 0.45, kh * 0.75]:
+			k.box(8, 9, 2, Vector3(-10, 6 + yy, 18), DK).box(8, 9, 2, Vector3(10, 6 + yy, 18), DK)
+		k.box(24, 22, 2, Vector3(0, 17, 45.5), DK)
+		k.box(28, 3, 3, Vector3(0, 29, 46), MeshKit.TEAM)
+		info.flag_at = Vector3(0, 6 + kh + 7, -4)
+		info.top = 6 + kh + 12
+		info.muzzle = Vector3(0, 6 + kh, 10)
+		info.range = true
+	elif t.type == "camp":
+		# Training camp: a big striped tent, a small one, and targets for practice
+		var h := 34.0 + lv * 3
+		k.box(80, 4, 70, Vector3(0, 2, 0), SH)
+		k.cone(36, h, 4, Vector3(0, 4 + h / 2, -4), MeshKit.TEAM, Basis(Vector3.UP, PI / 4))
+		k.cone(26, h * 0.62, 4, Vector3(0, 4 + h * 0.5, -4), W, Basis(Vector3.UP, PI / 4))
+		k.box(12, 15, 2, Vector3(0, 11.5, 20), DK)
+		k.cone(18, 22, 4, Vector3(26, 15, -24), MeshKit.LIGHT, Basis(Vector3.UP, PI / 4))
+		for x in [-30.0, -14.0]:
+			k.box(2, 14, 2, Vector3(x, 11, 28), METAL)
+			k.cyl(7, 7, 2, 10, Vector3(x, 20, 28), W, Basis(Vector3.RIGHT, PI / 2))
+			k.cyl(4.5, 4.5, 2.2, 10, Vector3(x, 20, 28.2), MeshKit.TEAM, Basis(Vector3.RIGHT, PI / 2))
+			k.cyl(1.8, 1.8, 2.4, 8, Vector3(x, 20, 28.4), W, Basis(Vector3.RIGHT, PI / 2))
+		for i in 6:
+			k.box(2, 9, 2, Vector3(16 + i * 4.5, 8.5, 30), SH)
+		k.box(26, 2, 2, Vector3(27, 10, 30), SH)
+		info.flag_at = Vector3(0, 4 + h, -4)
+		info.top = 4 + h + 8
 	else:
 		# Watchtower: a lookout on four legs with a pointed roof; it shoots enemies in its circle
 		var leg_h := 34.0 + lv * 4
@@ -428,8 +479,38 @@ func _build_model(t, lv: int) -> Dictionary:
 	return info
 
 
-func _flag_mesh() -> ArrayMesh:
-	return MeshKit.new().box(14, 9, 0.8, Vector3(7.4, 0, 0), MeshKit.TEAM).mesh()
+## The flag on your buildings can be decorated (bought under Looks)
+func _flag_mesh(style := "plain") -> ArrayMesh:
+	var k := MeshKit.new().box(14, 9, 0.8, Vector3(7.4, 0, 0), MeshKit.TEAM)
+	var W := Color.WHITE
+	match style:
+		"stripe":
+			k.box(14.2, 2.6, 1.0, Vector3(7.4, 0, 0), W)
+		"cross":
+			k.box(2.4, 9.2, 1.0, Vector3(5.2, 0, 0), W).box(14.2, 2.4, 1.0, Vector3(7.4, 0, 0), W)
+		"star":
+			var d := BoxMesh.new()
+			d.size = Vector3(4.2, 4.2, 1.0)
+			k.add(d, Transform3D(Basis(Vector3.BACK, PI / 4), Vector3(7.4, 0, 0)), Color("#ffd23f"))
+			k.add(d, Transform3D(Basis(), Vector3(7.4, 0, 0)), Color("#ffd23f"))
+		"checks":
+			for i in 4:
+				k.box(3.5, 4.5, 1.0, Vector3(1.75 + i * 3.5 + 0.4, 2.25 if i % 2 == 0 else -2.25, 0), W)
+		"skull":
+			k.sphere(2.8, Vector3(7.4, 0.8, 0), W, Vector3(1, 1, 0.3), false, 8, 4)
+			k.box(2.6, 1.8, 1.0, Vector3(7.4, -2.2, 0), W)
+			k.box(1, 1, 1.4, Vector3(6.3, 0.9, 0), Color("#27304a")).box(1, 1, 1.4, Vector3(8.5, 0.9, 0), Color("#27304a"))
+	return k.mesh()
+
+
+func _flag_for(side: int) -> ArrayMesh:
+	if side == Battle.PLAYER:
+		if _flag_me == null:
+			_flag_me = _flag_mesh(look_flag)
+		return _flag_me
+	if _flag_m == null:
+		_flag_m = _flag_mesh()
+	return _flag_m
 
 
 func _pole_mesh() -> ArrayMesh:
@@ -437,6 +518,7 @@ func _pole_mesh() -> ArrayMesh:
 
 
 var _flag_m: ArrayMesh
+var _flag_me: ArrayMesh
 var _pole_m: ArrayMesh
 var _ring_m: Mesh
 
@@ -468,8 +550,7 @@ func _sync_tower(t) -> Dictionary:
 		var mat := paint_material(_team_lin(t.owner))
 		mi.material_override = mat
 		holder.add_child(mi)
-		if _flag_m == null:
-			_flag_m = _flag_mesh()
+		if _pole_m == null:
 			_pole_m = _pole_mesh()
 		var pole := MeshInstance3D.new()
 		pole.mesh = _pole_m
@@ -477,7 +558,7 @@ func _sync_tower(t) -> Dictionary:
 		pole.position = built.flag_at
 		holder.add_child(pole)
 		var flag := MeshInstance3D.new()
-		flag.mesh = _flag_m
+		flag.mesh = _flag_for(t.owner)
 		flag.material_override = mat
 		flag.position = built.flag_at + Vector3(0, 18, 0)
 		holder.add_child(flag)
@@ -507,6 +588,7 @@ func _sync_tower(t) -> Dictionary:
 			sparkle(t.x, t.y, sides[t.owner].light)
 	if info.side != t.owner:
 		info.mat.set_shader_parameter("team_color", _team_lin(t.owner))
+		info.flag.mesh = _flag_for(t.owner)
 		info.side = t.owner
 	info.node.position = Vector3(t.x, 0, t.y)
 	return info
@@ -519,20 +601,11 @@ func _team_lin(side: int) -> Color:
 # ---------- Soldiers and tanks ----------
 func _make_units() -> void:
 	var T := MeshKit.TEAM
-	# Chibi soldier: a big head, a big helmet in the army's color, a small body, marching legs
-	var k := MeshKit.new()
-	k.box(9, 9, 6.5, Vector3(0, 11.5, 0), T)
-	k.box(9.4, 1.8, 6.9, Vector3(0, 9, 0), Color.WHITE)
-	k.sphere(5.6, Vector3(0, 21, 0.4), Color("#ffd3a8"), Vector3.ONE, false, 8, 4)
-	k.sphere(6.4, Vector3(0, 22.2, 0), MeshKit.LIGHT, Vector3(1, 0.85, 1), true, 8, 3)
-	k.cyl(7.2, 7.2, 1.4, 8, Vector3(0, 22.4, 0), MeshKit.DARK, Basis(Vector3.UP, PI / 8))
-	k.box(1.6, 1.8, 0.6, Vector3(-2, 20.6, 5.7), Color("#27304a"))
-	k.box(1.6, 1.8, 0.6, Vector3(2, 20.6, 5.7), Color("#27304a"))
-	k.box(2, 2.4, 15, Vector3(5.8, 12, 3), Color("#46506b"))
-	k.box(3.4, 7, 3.4, Vector3(-2.4, 3.5, 0), Color("#5a6278"), 0.0, Vector2(1, 7))
-	k.box(3.4, 7, 3.4, Vector3(2.4, 3.5, 0), Color("#5a6278"), 0.0, Vector2(2, 7))
-	soldiers = _unit_mm(k.mesh(), MAX_SOLDIERS, true)
+	soldiers = _unit_mm(_soldier_mesh("helmet"), MAX_SOLDIERS, true)
 	soldiers.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# Your own army wears the hat you picked under Looks
+	soldiers_me = _unit_mm(_soldier_mesh(look_hat), MAX_SOLDIERS, true)
+	soldiers_me.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	# Soldiers' shadows come from a few plain boxes in the same places, which is much cheaper
 	var sh := MeshKit.new()
 	sh.box(9, 16, 6.5, Vector3(0, 12, 0), Color.WHITE)
@@ -548,6 +621,121 @@ func _make_units() -> void:
 	tk.box(14, 7, 14, Vector3(0, 15.5, -2), MeshKit.LIGHT)
 	tk.cyl(1.8, 2, 20, 8, Vector3(0, 15.5, 14), Color("#b4bdcc"), Basis(Vector3.RIGHT, PI / 2))
 	tanks = _unit_mm(tk.mesh(), MAX_TANKS, false)
+
+
+## Chibi soldier: a big head, a hat, a small body in the army's color, marching legs
+func _soldier_mesh(hat: String) -> ArrayMesh:
+	var T := MeshKit.TEAM
+	var k := MeshKit.new()
+	k.box(9, 9, 6.5, Vector3(0, 11.5, 0), T)
+	k.box(9.4, 1.8, 6.9, Vector3(0, 9, 0), Color.WHITE)
+	k.sphere(5.6, Vector3(0, 21, 0.4), Color("#ffd3a8"), Vector3.ONE, false, 8, 4)
+	k.box(1.6, 1.8, 0.6, Vector3(-2, 20.6, 5.7), Color("#27304a"))
+	k.box(1.6, 1.8, 0.6, Vector3(2, 20.6, 5.7), Color("#27304a"))
+	k.box(2, 2.4, 15, Vector3(5.8, 12, 3), Color("#46506b"))
+	k.box(3.4, 7, 3.4, Vector3(-2.4, 3.5, 0), Color("#5a6278"), 0.0, Vector2(1, 7))
+	k.box(3.4, 7, 3.4, Vector3(2.4, 3.5, 0), Color("#5a6278"), 0.0, Vector2(2, 7))
+	var gold := Color("#ffd23f")
+	match hat:
+		"beret":
+			k.sphere(6.6, Vector3(0.8, 25.2, -0.4), MeshKit.DARK, Vector3(1, 0.32, 1), false, 8, 3)
+			k.box(1.4, 1.6, 1.4, Vector3(0.8, 27.4, -0.4), MeshKit.DARK)
+		"cap":
+			k.sphere(6.1, Vector3(0, 22.6, 0), T, Vector3(1, 0.8, 1), true, 8, 3)
+			k.box(9, 1, 6, Vector3(0, 23, 6.4), MeshKit.LIGHT)
+		"viking":
+			k.sphere(6.3, Vector3(0, 22.4, 0), Color("#b4bdcc"), Vector3(1, 0.85, 1), true, 8, 3)
+			k.box(13, 1.6, 1.6, Vector3(0, 23, 0), gold)
+			for s in [-1, 1]:
+				k.cone(1.8, 9, 6, Vector3(s * 8.6, 27, 0), Color("#fff4dc"), Basis(Vector3.BACK, -s * 0.9))
+		"crown":
+			k.sphere(6.3, Vector3(0, 22.2, 0), MeshKit.LIGHT, Vector3(1, 0.7, 1), true, 8, 3)
+			k.cyl(4.6, 4.6, 3, 8, Vector3(0, 27.4, 0), gold)
+			for i in 5:
+				var a := i * TAU / 5
+				k.cone(1.4, 3.6, 4, Vector3(sin(a) * 4, 30.6, cos(a) * 4), gold)
+			k.sphere(1.2, Vector3(0, 27.4, 4.7), Color("#ff5257"), Vector3.ONE, false, 6, 3)
+		"party":
+			k.cone(5, 13, 8, Vector3(0, 30.5, 0), T)
+			k.cyl(5.2, 5.2, 1.4, 8, Vector3(0, 24.4, 0), gold)
+			k.sphere(1.8, Vector3(0, 37.6, 0), gold, Vector3.ONE, false, 6, 3)
+		_:
+			# The standard helmet
+			k.sphere(6.4, Vector3(0, 22.2, 0), MeshKit.LIGHT, Vector3(1, 0.85, 1), true, 8, 3)
+			k.cyl(7.2, 7.2, 1.4, 8, Vector3(0, 22.4, 0), MeshKit.DARK, Basis(Vector3.UP, PI / 8))
+	return k.mesh()
+
+
+## Your soldiers' hat and your buildings' flag (from Looks)
+func set_look(hat: String, flag: String) -> void:
+	if hat != look_hat:
+		look_hat = hat
+		if soldiers_me:
+			soldiers_me.multimesh.mesh = _soldier_mesh(hat)
+	if flag != look_flag:
+		look_flag = flag
+		_flag_me = null
+		for id in models:
+			if models[id].side == Battle.PLAYER:
+				models[id].flag.mesh = _flag_for(Battle.PLAYER)
+
+
+## Pictures of every hat and flag for the Looks screen, drawn once in a small separate scene:
+## {"hat:crown": Texture2D, ...}. Empty where nothing can be drawn (no screen).
+func make_previews(items: Array) -> Dictionary:
+	var out := {}
+	var vp := SubViewport.new()
+	vp.size = Vector2i(180, 180)
+	vp.own_world_3d = true
+	vp.transparent_bg = true
+	vp.msaa_3d = Viewport.MSAA_4X
+	vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	add_child(vp)
+	var we := WorldEnvironment.new()
+	var e := Environment.new()
+	e.background_mode = Environment.BG_CLEAR_COLOR
+	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	e.ambient_light_color = Color("#eef6ff")
+	e.ambient_light_energy = 0.55
+	we.environment = e
+	vp.add_child(we)
+	var light := DirectionalLight3D.new()
+	light.light_color = Color("#fff4e0")
+	light.rotation = Vector3(-0.8, 0.6, 0)
+	vp.add_child(light)
+	var cam := Camera3D.new()
+	cam.fov = 30
+	vp.add_child(cam)
+	var holder := Node3D.new()
+	vp.add_child(holder)
+	var mat := paint_material(_team_lin(Battle.PLAYER))
+	for item in items:
+		for c in holder.get_children():
+			c.queue_free()
+		var mi := MeshInstance3D.new()
+		mi.material_override = mat
+		holder.add_child(mi)
+		if item[0] == "hat":
+			mi.mesh = _soldier_mesh(item[1])
+			mi.rotation.y = 0.45
+			cam.position = Vector3(0, 26, 82)
+			cam.look_at(Vector3(0, 20, 0))
+		else:
+			mi.mesh = _flag_mesh(item[1])
+			mi.position = Vector3(0, 18, 0)
+			var pole := MeshInstance3D.new()
+			pole.mesh = _pole_mesh()
+			pole.material_override = mat
+			holder.add_child(pole)
+			cam.position = Vector3(6, 16, 46)
+			cam.look_at(Vector3(6, 16, 0))
+		vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+		await RenderingServer.frame_post_draw
+		var img := vp.get_texture().get_image()
+		if img != null and not img.is_empty():
+			out["%s:%s" % item] = ImageTexture.create_from_image(img)
+	vp.queue_free()
+	return out
 
 
 func _unit_mm(m: Mesh, count: int, walk: bool) -> MultiMeshInstance3D:
@@ -567,10 +755,12 @@ func _unit_mm(m: Mesh, count: int, walk: bool) -> MultiMeshInstance3D:
 
 func _draw_units(units: Array) -> void:
 	var smm := soldiers.multimesh
+	var mmm := soldiers_me.multimesh
 	var shm := soldier_shadows.multimesh
 	var shadows := soldier_shadows.visible
 	var tmm := tanks.multimesh
 	var s := 0
+	var me := 0
 	var k := 0
 	for u in units:
 		var dx: float = u.to.x - u.from.x
@@ -584,16 +774,23 @@ func _draw_units(units: Array) -> void:
 			tmm.set_instance_custom_data(k, Color(team.r, team.g, team.b, 0))
 			k += 1
 		else:
-			if s >= MAX_SOLDIERS:
+			if s + me >= MAX_SOLDIERS:
 				continue
 			var xf := Transform3D(Basis(Vector3.UP, ang).scaled(Vector3.ONE * 1.75 * S), Vector3(u.x, 0, u.y))
-			smm.set_instance_transform(s, xf)
+			var cd := Color(team.r, team.g, team.b, fmod(u.id * 0.137, 1.0))
 			if shadows:
-				shm.set_instance_transform(s, xf)
-			smm.set_instance_custom_data(s, Color(team.r, team.g, team.b, fmod(u.id * 0.137, 1.0)))
-			s += 1
+				shm.set_instance_transform(s + me, xf)
+			if u.owner == Battle.PLAYER:
+				mmm.set_instance_transform(me, xf)
+				mmm.set_instance_custom_data(me, cd)
+				me += 1
+			else:
+				smm.set_instance_transform(s, xf)
+				smm.set_instance_custom_data(s, cd)
+				s += 1
 	smm.visible_instance_count = s
-	shm.visible_instance_count = s if shadows else 0
+	mmm.visible_instance_count = me
+	shm.visible_instance_count = s + me if shadows else 0
 	tmm.visible_instance_count = k
 
 

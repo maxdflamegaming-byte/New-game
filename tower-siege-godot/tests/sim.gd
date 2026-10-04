@@ -174,6 +174,64 @@ func _initialize() -> void:
 	b.place()
 	ok("An online guest sees the map turned around", b.towers[0].y < b.towers[3].y)
 
+	# This version's extras: castles, camps, upgrades, endless levels and the daily challenge
+	b = level1()
+	foe = b.towers[3]
+	foe.type = "castle"
+	var target := Battle.Unit.new()
+	target.owner = 1
+	target.from = b.towers[0]
+	target.to = foe
+	target.x = foe.x
+	target.y = foe.y + 150
+	b.units = [target]
+	var fired := [0]
+	b.shot.connect(func(_t, _u): fired[0] += 1)
+	b._update_watch(foe, 0.1)
+	ok("A boss castle shoots soldiers in its circle", fired[0] == 1 and target.dead)
+	ok("Castles are tough", Battle.TYPES.castle.defense > Battle.TYPES.barracks.defense)
+	var camp := Battle.Tower.new()
+	camp.type = "camp"
+	camp.units = 20
+	camp.owner = 2
+	var plain := Battle.Tower.new()
+	plain.units = 20
+	plain.owner = 2
+	ok("Training camps train faster and are easier to take", b.prod_rate(camp) > b.prod_rate(plain) * 1.5 and Battle.TYPES.camp.defense < 1.0)
+	me = b.towers[0]
+	me.units = 9
+	ok("An upgrade needs spare soldiers", b.upgrade(me, 1) == "soldiers")
+	me.units = 50
+	ok("Upgrades cost 10 then 20 soldiers, two at most", b.upgrade(me, 1) == true and b.upgrade(me, 1) == true and b.upgrade(me, 1) == "max" and is_equal_approx(me.units, 20.0))
+	ok("You can't upgrade someone else's building", b.upgrade(b.towers[3], 1) == "not yours")
+	b.capture(me, 2)
+	ok("A captured building loses its upgrades", me.stars == 0)
+	ok("Boss castles every 10th level", [10, 20, 50, 70].all(func(n): return Levels.data(n).towers[1][4] == "castle") and Levels.data(11).towers[1][4] != "castle")
+	ok("Levels 1-60 are still made the same way as the web version (only types and soldiers change)", Levels.data(20).towers.map(func(t): return [t[0], t[1]]) == Levels.gen(20).towers.map(func(t): return [t[0], t[1]]))
+	var endless_ok := true
+	for n in range(61, 160, 7):
+		var d := Levels.data(n)
+		if d.towers.size() < 8 or not Levels.connected(d.towers, d.rocks):
+			endless_ok = false
+	ok("Endless levels after 60 are all playable", endless_ok)
+	ok("Endless levels get harder", Levels.data(120).towers[1][3] > Levels.data(61).towers[1][3])
+	var day := 20000
+	ok("The daily challenge is the same all day and different each day", Levels.daily(day).towers == Levels.daily(day).towers and Levels.daily(day).towers != Levels.daily(day + 1).towers)
+	ok("The daily challenge can be played", Levels.connected(Levels.daily(day).towers, Levels.daily(day).rocks))
+
+	# Daily reward and missions
+	var sv := {"coins": 0, "level": 20}
+	sv.merge(Progress.defaults())
+	ok("Day 1 of the reward", Progress.claim_reward(sv, 100) == 20 and Progress.claim_reward(sv, 100) == 0)
+	Progress.claim_reward(sv, 101)
+	ok("The next day pays more", int(sv.streak.count) == 2 and int(sv.coins) == 50)
+	ok("Missing a day starts the streak again", Progress.claim_reward(sv, 105) == 20)
+	var mlist := Progress.missions(sv, 300)
+	ok("3 different missions a day, the same for everyone", mlist.size() == 3 and mlist[0].id != mlist[1].id and mlist[1].id != mlist[2].id and Progress.missions(sv.duplicate(true), 300).map(func(m): return m.id) == mlist.map(func(m): return m.id))
+	var sv2 := {"coins": 0, "level": 1}
+	sv2.merge(Progress.defaults())
+	ok("New players don't get missions for things they haven't unlocked", Progress.missions(sv2, 300).all(func(m): return m.id not in ["strike", "upgrade", "daily"]))
+
 	# Whole games between computer players finish, and both sides win sometimes
 	var wins := {1: 0, 2: 0}
 	var started := Time.get_ticks_msec()
