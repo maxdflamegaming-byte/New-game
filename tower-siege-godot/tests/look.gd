@@ -2,7 +2,7 @@ extends SceneTree
 ## Screenshots for checking by eye (run under xvfb-run, opengl3):
 ##   xvfb-run godot --path tower-siege-godot --rendering-driver opengl3 -s tests/look.gd -- OUT_DIR WHAT [W H]
 ## WHAT: menu, level:N (a battle with both sides played by the computer for a few seconds),
-## or a screen name (levels, shop, help, win, lose).
+## or a screen name (levels, shop, help, win, lose, pvp).
 
 var main
 var out := "/tmp"
@@ -43,6 +43,9 @@ func _run() -> void:
 		for i in 200:
 			main.battle.update(0.05)
 		await _frames(40)
+	elif what == "pvp":
+		main.net.open_pvp()
+		await _frames(10)
 	elif what in ["levels", "shop", "help"]:
 		main.ui.show_screen(what)
 		await _frames(10)

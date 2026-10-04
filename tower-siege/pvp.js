@@ -27,6 +27,7 @@ function isGuest() { return mode === 'online' && Net.role === 'guest'; }
 const Net = {
   ws: null,
   role: null,       // 'host' or 'guest' during a match
+  early: [],        // the guest's moves that arrived before our match started
   opp: null,        // { name, trophies }
   ready: false,
 
@@ -132,6 +133,7 @@ function onNet(msg) {
       break;
     case 'match':
       clearInterval(waitTimer);
+      Net.early = [];
       Net.role = msg.role;
       Net.opp = msg.opp;
       showVs(() => startPvP('online', msg.seed));
@@ -140,7 +142,9 @@ function onNet(msg) {
       if (isGuest() && pvp && !pvp.over) applySnap(msg);
       break;
     case 'cmd':
-      if (mode === 'online' && Net.role === 'host' && pvp && !pvp.over) applyCmd(msg);
+      // A move can arrive while our VS card is still up: keep it for when the match starts
+      if (Net.role === 'host' && mode !== 'online') Net.early.push(msg);
+      else if (mode === 'online' && Net.role === 'host' && pvp && !pvp.over) applyCmd(msg);
       break;
     case 'end':
       if (isGuest() && pvp && !pvp.over) finishPvp(swapSide(msg.w), msg.why);
@@ -253,6 +257,7 @@ function startPvP(kind, seed) {
   linksMade = 0; cutsMade = 0; handShown = false;
   charges = { strike: 0, rally: 0 };
   pvp = { kind, seed, snapT: 0, events: [], over: false, unitsById: new Map() };
+  if (kind === 'online' && Net.role === 'host') for (const m of Net.early.splice(0)) applyCmd(m);
   clearPointers();
   showScreen(null);
   $('hud').classList.remove('hidden');
