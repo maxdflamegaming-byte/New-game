@@ -71,7 +71,7 @@ func _run() -> void:
 		main.save.coins = 500
 		main.ui.show_screen(what)
 		await _frames(40)
-	elif what in ["levels", "shop", "help", "settings", "reward", "missions"]:
+	elif what in ["levels", "shop", "help", "settings", "reward", "missions", "pvp-help"]:
 		main.ui.show_screen(what)
 		await _frames(10)
 	elif what == "win":

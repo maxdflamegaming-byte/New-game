@@ -200,7 +200,39 @@ func _build_pvp() -> void:
 	v.add_child(pvp_status)
 	v.add_child(ui.wrapped(ui.label("Online: win +30 🏆, lose −15 🏆. No upgrades or abilities in PvP, everyone starts equal. Matches last up to 3 minutes.", 17, Color.WHITE, 4, ui.font_m), 540))
 	col.add_child(p)
-	col.add_child(ui.back_button())
+	var bottom: HBoxContainer = ui.hbox(12)
+	bottom.add_child(ui.back_button())
+	bottom.add_child(ui.button("? How PvP works", "blue", 24, func(): ui.show_screen("pvp-help")))
+	col.add_child(bottom)
+	_build_help()
+
+
+## The first time you open PvP: how it works, in a few cards
+func _build_help() -> void:
+	var col: VBoxContainer = ui.screen("pvp-help")
+	col.add_child(ui.ribbon("How PvP works", UI.RED))
+	for card in [
+		["🔵", "You're always blue, at the bottom. Your opponent is red, at the top: their phone shows it the other way round."],
+		["⚔", "Take every enemy building, or have the bigger army when the 3 minutes are up."],
+		["⚖", "Everyone starts equal: no upgrades, abilities or bosses in PvP."],
+		["🏆", "Win +30 trophies and 20 coins, lose −15 trophies. Climb from Bronze to Diamond league."],
+		["📶", "If a connection drops, the match waits up to 15 seconds for that player to come back."],
+		["🤖", "Nobody online? Practice against a bot, or play with a friend on one phone."],
+	]:
+		var pc := PanelContainer.new()
+		pc.add_theme_stylebox_override("panel", ui.box(Color.WHITE, UI.INK, 16, 3, 0))
+		var h: HBoxContainer = ui.hbox(14)
+		h.alignment = BoxContainer.ALIGNMENT_BEGIN
+		h.add_child(ui.label(card[0], 40, UI.INK, 0))
+		var l: Label = ui.wrapped(ui.label(card[1], 21, UI.INK, 0, ui.font_m), 500)
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		h.add_child(l)
+		pc.add_child(h)
+		col.add_child(pc)
+	var go: Button = ui.button("Got it!", "yellow", 34, func(): open_pvp(""))
+	go.custom_minimum_size = Vector2(320, 80)
+	go.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	col.add_child(go)
 
 
 func _rename() -> void:

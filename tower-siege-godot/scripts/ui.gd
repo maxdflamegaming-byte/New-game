@@ -45,6 +45,8 @@ var win_stats: HBoxContainer
 var win_coins: Label
 var win_unlock: Label
 var next_btn: Button
+var ad_btn: Button
+var _win_coins := 0
 var lose_tip: Label
 var vibrate_btn: Button
 var gfx_btns := {}
@@ -831,6 +833,18 @@ func _build_shop() -> void:
 	col.add_child(shop_coins)
 	shop_list = vbox(12)
 	col.add_child(shop_list)
+	# Coin packs (only shown once purchases are switched on, see Services)
+	if Services.purchases_ready():
+		var packs := hbox(12)
+		for product in Services.COIN_PACKS:
+			var pk: String = product
+			packs.add_child(button("● %d" % Services.COIN_PACKS[pk], "yellow", 24, func():
+				Services.buy(pk, func(ok: bool):
+					if ok:
+						main.save.coins += Services.COIN_PACKS[pk]
+						main.write_save()
+						refresh_shop())))
+		col.add_child(packs)
 	col.add_child(back_button())
 
 
@@ -930,6 +944,18 @@ func _build_win() -> void:
 	v.add_child(win_coins)
 	win_unlock = wrapped(label("", 22, Color("#fff3a0")), 540)
 	v.add_child(win_unlock)
+	# Double coins for watching an ad (only shown once ads are switched on, see Services)
+	ad_btn = button("📺 Watch an ad: double coins", "green", 24, func():
+		ad_btn.disabled = true
+		Services.show_rewarded(func(watched: bool):
+			if watched:
+				main.save.coins += _win_coins
+				main.write_save()
+				win_coins.text = "● +%d" % (_win_coins * 2)
+				main.play_sound("coin")
+			ad_btn.visible = false))
+	ad_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	v.add_child(ad_btn)
 	next_btn = button("Next level", "yellow", 40, func(): main.start_level(mini(main.level + 1, Levels.LAST_LEVEL)))
 	next_btn.custom_minimum_size = Vector2(400, 90)
 	next_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -961,6 +987,9 @@ func show_win(stars: int, coins: int, unlock: String, time: float, stats: Dictio
 	win_stats.add_child(_stat(str(stats.captured), "Captured"))
 	win_stats.add_child(_stat(str(stats.killed), "Beaten"))
 	win_coins.text = "● +%d" % coins
+	_win_coins = coins
+	ad_btn.visible = coins > 0 and Services.rewarded_ready()
+	ad_btn.disabled = false
 	win_unlock.text = unlock
 	win_unlock.visible = unlock != ""
 	next_btn.visible = main.level < Levels.LAST_LEVEL and not main.daily

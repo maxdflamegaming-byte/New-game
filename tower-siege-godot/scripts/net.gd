@@ -329,6 +329,12 @@ func leave() -> void:
 
 
 func open_pvp() -> void:
+	# The first time: how PvP works
+	if not main.save.seen.has("pvp"):
+		main.save.seen["pvp"] = true
+		main.write_save()
+		main.ui.show_screen("pvp-help")
+		return
 	screens.open_pvp("")
 
 
