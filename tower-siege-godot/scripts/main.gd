@@ -430,7 +430,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func pointer_down(index: int, pos: Vector2) -> void:
-	if state != "play" or screen_open != "":
+	if state != "play" or screen_open != "" or net.paused():
 		return
 	var p = world.ground(pos)
 	var t = tower_at(pos)
@@ -624,6 +624,8 @@ func _process(delta: float) -> void:
 
 
 func step(dt: float) -> void:
+	if net.pause_tick(dt):
+		return
 	if net.is_guest():
 		net.guest_update(dt)
 		return

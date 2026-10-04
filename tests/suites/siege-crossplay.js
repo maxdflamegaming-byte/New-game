@@ -1,6 +1,8 @@
 // Tower Siege cross-play: a web player and a Godot player (tower-siege-godot) on the same
 // server. They're matched, see the same map, the guest's road reaches the host (whichever
 // side Godot is on), both get the result and trophies, and a clan made in Godot shows on the web.
+// Each round also drops a connection mid-match: the web guest's in round 1, the Godot guest's in
+// round 2; the match must pause on both and carry on.
 // Needs Godot 4.7: set GODOT to its path (otherwise this suite is skipped).
 const path = require('path');
 const fs = require('fs');
@@ -31,7 +33,7 @@ const { chromium, ROOT, OUT } = require('../lib');
     // the web player is waiting
     let gd = null;
     const startGodot = () => {
-      gd = spawn(GODOT, ['--headless', '--path', project, '-s', 'tests/online.gd', '--', `--server=ws://127.0.0.1:${PORT}`, `--name=Godo${round}`, `--clan=GD${round}`]);
+      gd = spawn(GODOT, ['--headless', '--path', project, '-s', 'tests/online.gd', '--', `--server=ws://127.0.0.1:${PORT}`, `--name=Godo${round}`, `--clan=GD${round}`, godotFirst ? '--peer-drops' : '--drop']);
       gd.stdout.on('data', d => {
         gdLog += d;
         for (const l of String(d).split('\n')) if (l.startsWith('GD ')) lines.push(l.slice(3));
@@ -76,6 +78,13 @@ const { chromium, ROOT, OUT } = require('../lib');
     ok('Web and Godot see the same map', map && JSON.stringify(JSON.parse(map.slice(4))) === JSON.stringify(web.map));
 
     if (web.role === 'guest') {
+      // The web guest's connection drops: it reconnects and the match carries on
+      await page.waitForTimeout(500);
+      await page.evaluate(() => Net.ws.close());
+      const paused = await page.waitForFunction(() => pvp.paused === 'self' && $('hint').textContent.includes('Reconnecting'), null, { timeout: 5000 }).then(() => true, () => false);
+      const back = await page.waitForFunction(() => pvp.paused === null && !pvp.over && Net.ready, null, { timeout: 25000 }).then(() => true, () => false);
+      const waited = await gdLine('WAITED');
+      ok('The web guest drops, says it is reconnecting, and gets back into the match; the Godot host waits for it', paused && back && waited === 'WAITED true' && (await gdLine('PEER_BACK')) === 'PEER_BACK true', `${paused} ${back} ${waited}`);
       // The web player builds a road; the Godot host must see it
       const pts = await page.evaluate(() => {
         const me = towers.find(t => t.owner === PLAYER);
@@ -89,7 +98,10 @@ const { chromium, ROOT, OUT } = require('../lib');
       const saw = await gdLine('HOST_SAW_ROAD');
       ok("The web guest's road reaches the Godot host", saw === 'HOST_SAW_ROAD true', saw);
     } else {
-      // The Godot guest builds a road; the web host must see it, then the web host wins
+      // The Godot guest's connection drops: the web host waits for it, then it builds a road;
+      // the web host must see it, then the web host wins
+      const resumed = await gdLine('RESUMED');
+      ok('The Godot guest drops and gets back in; the web host waited for it', resumed === 'RESUMED true role=guest' && await page.evaluate(() => pvp.waits > 0 && pvp.paused === null), resumed);
       const road = await gdLine('GUEST_ROAD');
       const hostSees = await page.evaluate(() => towers.some(t => t.owner === 2 && t.roads.length > 0));
       ok("The Godot guest's road reaches the web host, and its soldiers show up on Godot", road === 'GUEST_ROAD true' && hostSees, road);

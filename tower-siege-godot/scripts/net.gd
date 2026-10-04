@@ -7,11 +7,17 @@ extends Node
 ## Online, one phone (the host) runs the battle and sends what's happening about 10 times a
 ## second; the other (the guest) sends its moves. Each player sees their own army in blue at
 ## the bottom: the guest's copy swaps blue and red and turns the field around.
+## To save data, the host sends every soldier and building only once a second; in between it
+## sends just the soldiers that appeared, the ones that are gone and the ones that changed
+## strength (the guest moves the rest along their roads itself), and the buildings that changed. If either connection drops, the match pauses for up
+## to 15 seconds while that phone reconnects.
 
-const PROTOCOL := 2
+const PROTOCOL := 3
 const SERVER := "wss://tower-siege-server.onrender.com"
 const PVP_TIME := 180.0          # a match lasts at most 3 minutes; then the bigger army wins
 const SNAP_EVERY := 0.1
+const KEY_EVERY := 10            # every 10th update has every soldier in it
+const RECONNECT_TIME := 15.0     # seconds a match waits for a dropped connection
 const LEAGUES := [
 	{"name": "Bronze", "min": 0, "color": Color("#e0965a")},
 	{"name": "Silver", "min": 150, "color": Color("#c3cede")},
@@ -31,6 +37,7 @@ var _was_open := false
 var _waiters: Array = []         # [{types, reply}]
 var _searching := false
 var _early: Array = []           # the guest's moves that arrived before our match started
+var _back := false               # reconnecting to a match we were in
 
 
 static func league_of(trophies: int) -> Dictionary:
@@ -73,7 +80,10 @@ func _process(_dt: float) -> void:
 	if st == WebSocketPeer.STATE_OPEN:
 		if not _was_open:
 			_was_open = true
-			send_raw({"t": "hello", "v": PROTOCOL, "id": main.save.pid, "token": main.save.token, "name": main.save.name, "trophies": main.save.trophies})
+			var hello := {"t": "hello", "v": PROTOCOL, "id": main.save.pid, "token": main.save.token, "name": main.save.name, "trophies": main.save.trophies}
+			if _back:
+				hello.back = true
+			send_raw(hello)
 		while ws.get_available_packet_count() > 0:
 			var data = JSON.parse_string(ws.get_packet().get_string_from_utf8())
 			if data is Dictionary:
@@ -89,7 +99,7 @@ func _process(_dt: float) -> void:
 
 ## Connect and say hello. A free server may be asleep, so keep trying for up to a minute.
 ## Returns "" when connected, or why not ("down", "old").
-func go_online(status: Callable = Callable()) -> String:
+func go_online(status: Callable = Callable(), max_ms := 60000) -> String:
 	if main.save.name == "":
 		main.save.name = "Commander%d" % (100 + randi() % 900)
 		main.write_save()
@@ -103,21 +113,21 @@ func go_online(status: Callable = Callable()) -> String:
 			if ws.connect_to_url(server_url()) != OK:
 				ws = null
 		var t0 := Time.get_ticks_msec()
-		while ws != null and not online and Time.get_ticks_msec() - t0 < 8000:
+		while ws != null and not online and Time.get_ticks_msec() - t0 < mini(8000, max_ms):
 			await get_tree().process_frame
 			if _old:
 				_old = false
 				return "old"
 		if online:
 			return ""
-		if Time.get_ticks_msec() - started > 60000:
+		if Time.get_ticks_msec() - started > max_ms:
 			return "down"
 		if status.is_valid():
 			status.call("Waking up the server… (this can take up to a minute)")
 		if ws != null:
 			ws.close()
 			ws = null
-		await get_tree().create_timer(3.0).timeout
+		await get_tree().create_timer(3.0 if max_ms >= 60000 else 1.0).timeout
 	return "down"
 
 
@@ -129,7 +139,12 @@ func send_raw(msg: Dictionary) -> void:
 		ws.send_text(JSON.stringify(msg))
 
 
+var tap := Callable()             # tests: sees every message we send
+
+
 func send(msg: Dictionary) -> void:
+	if tap.is_valid():
+		tap.call(msg)
 	send_raw(msg)
 
 
@@ -216,6 +231,28 @@ func _on_message(m: Dictionary) -> void:
 		"end":
 			if is_guest() and not pvp.is_empty() and not pvp.over:
 				finish(swap_side(int(m.w)), m.get("why", ""))
+		"wait":
+			# The other player's connection dropped: the match waits for them
+			if main.mode == "online" and not pvp.is_empty() and not pvp.over:
+				pvp.paused = "opp"
+				pvp.wait_left = float(m.get("secs", RECONNECT_TIME))
+				pvp.waits += 1
+		"back":
+			if main.mode == "online" and not pvp.is_empty() and not pvp.over and pvp.paused == "opp":
+				pvp.paused = ""
+				pvp.need_key = true
+				main.set_hint("")
+		"resume":
+			# We're back after our own connection dropped
+			if main.mode == "online" and not pvp.is_empty() and not pvp.over and pvp.paused == "self":
+				if m.get("ok", false):
+					pvp.paused = ""
+					role = m.role
+					pvp.need_key = true
+					main.set_hint("")
+					main.play_sound("go")
+				else:
+					finish(-1, "lost")
 		"gone":
 			if main.mode == "online" and not pvp.is_empty() and not pvp.over:
 				finish(1, "left")
@@ -223,12 +260,41 @@ func _on_message(m: Dictionary) -> void:
 				screens.open_pvp("Your opponent left before the match started.")
 
 
-## Our own connection dropped
+## Our own connection dropped: in a match, pause and try to get back in
 func _on_lost() -> void:
 	if main.mode == "online" and not pvp.is_empty() and not pvp.over:
-		finish(-1, "lost")
+		_reconnect()
 	elif main.screen_open == "pvp-wait":
 		screens.open_pvp("Lost the connection to the server.")
+
+
+func _reconnect() -> void:
+	pvp.paused = "self"
+	pvp.wait_left = RECONNECT_TIME
+	main.clear_pointers()
+	_back = true
+	var err: String = await go_online(Callable(), int(RECONNECT_TIME * 1000))
+	_back = false
+	if err != "" and not pvp.is_empty() and not pvp.over and pvp.paused == "self":
+		finish(-1, "lost")
+
+
+func paused() -> bool:
+	return main.mode == "online" and not pvp.is_empty() and not pvp.over and pvp.paused != ""
+
+
+## While a match waits for a dropped connection, nothing moves. Returns true while paused.
+func pause_tick(dt: float) -> bool:
+	if not paused():
+		return false
+	pvp.wait_left -= dt
+	var secs := maxi(0, ceili(pvp.wait_left))
+	var text: String = ("Connection lost. Reconnecting… %d" if pvp.paused == "self" else "Your opponent's connection dropped. Waiting for them… %d") % secs
+	if main.hint_text != text:
+		main.set_hint(text, 99.0)
+	if pvp.paused == "self" and pvp.wait_left < -3:
+		finish(-1, "lost")
+	return true
 
 
 # ---------- Finding a match ----------
@@ -293,7 +359,8 @@ func start_pvp(kind: String, seed_value: int) -> void:
 	main.hand_shown = false
 	main.charges = {"strike": 0, "rally": 0}
 	main.speed = 1
-	pvp = {"kind": kind, "seed": seed_value, "snap_t": 0.0, "events": [], "over": false, "units": {}, "result": null, "winner": null}
+	pvp = {"kind": kind, "seed": seed_value, "snap_t": 0.0, "snap_n": 0, "sent": {}, "sent_tw": {}, "need_key": false, "paused": "", "wait_left": 0.0, "waits": 0,
+		"events": [], "over": false, "units": {}, "result": null, "winner": null}
 	if kind == "online" and role == "host":
 		for m in _early:
 			_apply_cmd(m)
@@ -333,14 +400,61 @@ func host_tick(dt: float) -> void:
 		return
 	pvp.snap_t = SNAP_EVERY
 	var b: Battle = main.battle
+	var msg := {"t": "snap", "tm": snappedf(b.time, 0.01), "ev": pvp.events}
+	var sent: Dictionary = pvp.sent
 	var tw := []
+	var tc := []
+	var key: bool = pvp.need_key or pvp.snap_n % KEY_EVERY == 0
 	for t in b.towers:
-		tw.append([roundi(t.units * 10), t.owner, t.roads.map(func(r): return r.to.id)])
-	var us := []
+		var row := [roundi(t.units * 10), t.owner, t.roads.map(func(r): return r.to.id)]
+		var sig := str([floori(t.units), t.owner, row[2]])
+		tw.append(row)
+		if pvp.sent_tw.get(t.id) != sig:
+			tc.append([t.id] + row)
+		pvp.sent_tw[t.id] = sig
+	if key:
+		var us := []
+		for u in b.units:
+			us.append(_row(u))
+		msg.k = 1
+		msg.tw = tw
+		msg.u = us
+	else:
+		# Only what changed since the last update: buildings whose soldier count, owner or
+		# roads changed, and soldiers that appeared, are gone or changed strength
+		if not tc.is_empty():
+			msg.tc = tc
+		var nu := []
+		var pw := []
+		var x := []
+		var seen := {}
+		for u in b.units:
+			seen[u.id] = true
+			if not sent.has(u.id):
+				nu.append(_row(u))
+			elif sent[u.id] != u.power:
+				pw.append([u.id, u.power])
+		for id in sent:
+			if not seen.has(id):
+				x.append(id)
+		if not nu.is_empty():
+			msg.nu = nu
+		if not pw.is_empty():
+			msg.pw = pw
+		if not x.is_empty():
+			msg.x = x
+	pvp.snap_n += 1
+	pvp.need_key = false
+	var now := {}
 	for u in b.units:
-		us.append([u.id, u.from.id, u.to.id, roundi(u.d), u.power, u.owner, roundi(u.lane)])
-	send({"t": "snap", "tm": snappedf(b.time, 0.01), "tw": tw, "u": us, "ev": pvp.events})
+		now[u.id] = u.power
+	pvp.sent = now
+	send(msg)
 	pvp.events = []
+
+
+func _row(u: Battle.Unit) -> Array:
+	return [u.id, u.from.id, u.to.id, roundi(u.d), u.power, u.owner, roundi(u.lane)]
 
 
 func _apply_cmd(m: Dictionary) -> void:
@@ -367,52 +481,82 @@ func _apply_snap(m: Dictionary) -> void:
 	for e in m.get("ev", []):
 		_guest_event(e, old)
 	b.time = float(m.tm)
-	var tw: Array = m.tw
+	var tw: Array = m.get("tw", [])
 	for i in mini(tw.size(), b.towers.size()):
-		var t := b.towers[i]
-		var side := swap_side(int(tw[i][1]))
-		var n := float(tw[i][0]) / 10.0
-		if side == t.owner and n > t.units + 0.5:
-			t.pop = 1.0
-		if side == t.owner and n < t.units - 0.5:
-			t.flash = 1.0
-		t.owner = side
-		t.units = n
-		var roads := []
-		for id in tw[i][2]:
-			var keep = null
-			for r in t.roads:
-				if r.to.id == int(id):
-					keep = r
-			if keep == null and int(id) < b.towers.size():
-				keep = {"to": b.towers[int(id)], "timer": 0.0, "born": b.time}
-			if keep != null:
-				roads.append(keep)
-		t.roads = roads
-	var next := {}
+		_guest_tower(b.towers[i], tw[i])
+	for row in m.get("tc", []):
+		if int(row[0]) < b.towers.size():
+			_guest_tower(b.towers[int(row[0])], row.slice(1))
+	var next: Dictionary
+	if m.get("k", 0):
+		# Every soldier
+		next = {}
+		for row in m.u:
+			var u := _guest_unit(row, old.get(int(row[0])))
+			if u != null:
+				next[u.id] = u
+	else:
+		# Only what changed: the rest keep marching here
+		next = old
+		for id in m.get("x", []):
+			next.erase(int(id))
+		for p in m.get("pw", []):
+			var u = next.get(int(p[0]))
+			if u != null:
+				u.power = int(p[1])
+		for row in m.get("nu", []):
+			var u := _guest_unit(row, next.get(int(row[0])))
+			if u != null:
+				next[u.id] = u
 	var list: Array[Battle.Unit] = []
-	for row in m.u:
-		var id := int(row[0])
-		var u: Battle.Unit = old.get(id)
-		if u == null:
-			if int(row[1]) >= b.towers.size() or int(row[2]) >= b.towers.size():
-				continue
-			u = Battle.Unit.new()
-			u.id = id
-			u.from = b.towers[int(row[1])]
-			u.to = b.towers[int(row[2])]
-			u.lane = -float(row[6])
-			u.d = float(row[3])
-		# Keep the smooth local position unless it has drifted
-		var d := float(row[3])
-		u.d = d if absf(u.d - d) > 40 else u.d + (d - u.d) * 0.5
-		u.power = int(row[4])
-		u.owner = swap_side(int(row[5]))
-		b.place_unit(u)
-		next[id] = u
+	for u in next.values():
 		list.append(u)
 	b.units = list
 	pvp.units = next
+
+
+## row: [soldiers * 10, owner, [road target ids]]
+func _guest_tower(t: Battle.Tower, row: Array) -> void:
+	var b: Battle = main.battle
+	var side := swap_side(int(row[1]))
+	var n := float(row[0]) / 10.0
+	if side == t.owner and n > t.units + 0.5:
+		t.pop = 1.0
+	if side == t.owner and n < t.units - 0.5:
+		t.flash = 1.0
+	t.owner = side
+	t.units = n
+	var roads := []
+	for id in row[2]:
+		var keep = null
+		for r in t.roads:
+			if r.to.id == int(id):
+				keep = r
+		if keep == null and int(id) < b.towers.size():
+			keep = {"to": b.towers[int(id)], "timer": 0.0, "born": b.time}
+		if keep != null:
+			roads.append(keep)
+	t.roads = roads
+
+
+func _guest_unit(row: Array, u: Battle.Unit) -> Battle.Unit:
+	var b: Battle = main.battle
+	if u == null:
+		if int(row[1]) >= b.towers.size() or int(row[2]) >= b.towers.size():
+			return null
+		u = Battle.Unit.new()
+		u.id = int(row[0])
+		u.from = b.towers[int(row[1])]
+		u.to = b.towers[int(row[2])]
+		u.lane = -float(row[6])
+		u.d = float(row[3])
+	# Keep the smooth local position unless it has drifted
+	var d := float(row[3])
+	u.d = d if absf(u.d - d) > 40 else u.d + (d - u.d) * 0.5
+	u.power = int(row[4])
+	u.owner = swap_side(int(row[5]))
+	b.place_unit(u)
+	return u
 
 
 func _guest_event(e: Array, old: Dictionary) -> void:

@@ -76,7 +76,7 @@ func _timer_tick() -> void:
 		var s := (Time.get_ticks_msec() - _wait_started) / 1000
 		wait_time.text = "%d:%02d" % [s / 60, s % 60]
 		# Nobody around? Offer a practice match (it's a bot, and it says so)
-		if s >= 20 and not _wait_room:
+		if s >= 10 and not _wait_room:
 			wait_practice.visible = true
 		await main.get_tree().create_timer(0.5).timeout
 

@@ -5,11 +5,17 @@
 // guest) about 10 times a second; the guest sends its moves. The server (server/server.js)
 // pairs players, passes messages and keeps the trophies (see social.js for the leaderboard and clans). Each player sees their own army in blue at the bottom:
 // the guest's copy swaps blue and red and turns the field around.
+// To save data, the host sends every soldier and building only once a second; in between it
+// sends just the soldiers that appeared, the ones that are gone and the ones that changed
+// strength (the guest moves the rest along their roads itself), and the buildings that changed. If either connection drops, the match pauses for up
+// to 15 seconds while that phone reconnects.
 
-const PVP_PROTOCOL = 2;
+const PVP_PROTOCOL = 3;
 const PVP_SERVER = new URLSearchParams(location.search).get('server') || 'wss://tower-siege-server.onrender.com';
 const PVP_TIME = 180;            // a match lasts at most 3 minutes; then the bigger army wins
 const SNAP_EVERY = 0.1;          // seconds between the host's updates
+const KEY_EVERY = 10;            // every 10th update has every soldier in it
+const RECONNECT_TIME = 15;       // seconds a match waits for a dropped connection
 const LEAGUES = [
   { name: 'Bronze', min: 0, color: '#e0965a' },
   { name: 'Silver', min: 150, color: '#c3cede' },
@@ -30,9 +36,10 @@ const Net = {
   early: [],        // the guest's moves that arrived before our match started
   opp: null,        // { name, trophies }
   ready: false,
+  back: false,      // reconnecting to a match we were in
 
   // Connect and say hello. A free server may be asleep, so keep trying for up to a minute.
-  connect(status) {
+  connect(status, maxMs = 60000) {
     if (this.ready && this.ws?.readyState === WebSocket.OPEN) return Promise.resolve();
     const started = Date.now();
     return new Promise((resolve, reject) => {
@@ -41,7 +48,7 @@ const Net = {
         try { ws = new WebSocket(PVP_SERVER); } catch { reject(new Error('down')); return; }
         let welcomed = false;
         // The account: an id and a secret token the server gave this phone the first time
-        ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', v: PVP_PROTOCOL, id: save.pid, token: save.token, name: save.name, trophies: save.trophies }));
+        ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', v: PVP_PROTOCOL, id: save.pid, token: save.token, name: save.name, trophies: save.trophies, back: this.back || undefined }));
         ws.onmessage = ev => {
           let msg;
           try { msg = JSON.parse(ev.data); } catch { return; }
@@ -59,9 +66,9 @@ const Net = {
         };
         ws.onclose = () => {
           if (welcomed) { if (this.ws === ws) { this.ready = false; this.ws = null; onNetLost(); } return; }
-          if (Date.now() - started > 60000) { reject(new Error('down')); return; }
+          if (Date.now() - started > maxMs) { reject(new Error('down')); return; }
           status?.('Waking up the server… (this can take up to a minute)');
-          setTimeout(attempt, 3000);
+          setTimeout(attempt, maxMs < 60000 ? 1000 : 3000);
         };
       };
       attempt();
@@ -149,6 +156,20 @@ function onNet(msg) {
     case 'end':
       if (isGuest() && pvp && !pvp.over) finishPvp(swapSide(msg.w), msg.why);
       break;
+    case 'wait':
+      // The other player's connection dropped: the match waits for them
+      if (mode === 'online' && pvp && !pvp.over) { pvp.paused = 'opp'; pvp.waitLeft = msg.secs || RECONNECT_TIME; pvp.waits++; }
+      break;
+    case 'back':
+      if (mode === 'online' && pvp && !pvp.over && pvp.paused === 'opp') { pvp.paused = null; pvp.needKey = true; setHint(null); }
+      break;
+    case 'resume':
+      // We're back after our own connection dropped
+      if (mode === 'online' && pvp && !pvp.over && pvp.paused === 'self') {
+        if (msg.ok) { pvp.paused = null; Net.role = msg.role; pvp.needKey = true; setHint(null); sfx('go'); }
+        else finishPvp(null, 'lost');
+      }
+      break;
     case 'gone':
       if (mode === 'online' && pvp && !pvp.over) {
         finishPvp(PLAYER, 'left');
@@ -159,10 +180,32 @@ function onNet(msg) {
       break;
   }
 }
-// Our own connection dropped
+// Our own connection dropped: in a match, pause and try to get back in
 function onNetLost() {
-  if (mode === 'online' && pvp && !pvp.over) finishPvp(null, 'lost');
+  if (mode === 'online' && pvp && !pvp.over) reconnect();
   else if (screenOpen === 'pvp-wait') { showScreen('pvp'); pvpStatus('Lost the connection to the server.'); }
+}
+
+async function reconnect() {
+  pvp.paused = 'self';
+  pvp.waitLeft = RECONNECT_TIME;
+  clearPointers();
+  Net.back = true;
+  try { await Net.connect(null, RECONNECT_TIME * 1000); }
+  catch { if (pvp && !pvp.over && pvp.paused === 'self') finishPvp(null, 'lost'); }
+  Net.back = false;
+}
+
+// While a match waits for a dropped connection, nothing moves. Returns true while paused.
+function pvpPaused(dt) {
+  if (!pvp || pvp.over || !pvp.paused) return false;
+  pvp.waitLeft -= dt;
+  const secs = Math.max(0, Math.ceil(pvp.waitLeft));
+  const text = pvp.paused === 'self' ? `Connection lost. Reconnecting… ${secs}` : `Your opponent's connection dropped. Waiting for them… ${secs}`;
+  if ($('hint').textContent !== text) setHint(text);
+  if (pvp.paused === 'self' && pvp.waitLeft < -3) finishPvp(null, 'lost');
+  updateEffects(dt);
+  return true;
 }
 
 // ---------- Screens ----------
@@ -205,7 +248,7 @@ async function findMatch(room = null) {
     const s = Math.floor((Date.now() - t0) / 1000);
     $('wait-time').textContent = fmtTime(s);
     // Nobody around? Offer a practice match (it's a bot, and it says so)
-    if (s >= 20 && !room) $('wait-practice').classList.remove('hidden');
+    if (s >= 10 && !room) $('wait-practice').classList.remove('hidden');
   }, 500);
   try {
     await Net.connect(text => { $('wait-text').textContent = text; });
@@ -256,7 +299,7 @@ function startPvP(kind, seed) {
   stats = { captured: 0, lost: 0, killed: 0 };
   linksMade = 0; cutsMade = 0; handShown = false;
   charges = { strike: 0, rally: 0 };
-  pvp = { kind, seed, snapT: 0, events: [], over: false, unitsById: new Map() };
+  pvp = { kind, seed, snapT: 0, snapN: 0, sent: new Map(), sentTw: new Map(), needKey: false, paused: null, waitLeft: 0, waits: 0, events: [], over: false, unitsById: new Map() };
   if (kind === 'online' && Net.role === 'host') for (const m of Net.early.splice(0)) applyCmd(m);
   clearPointers();
   showScreen(null);
@@ -289,13 +332,40 @@ function hostTick(dt) {
   pvp.snapT -= dt;
   if (pvp.snapT > 0) return;
   pvp.snapT = SNAP_EVERY;
-  Net.send({
-    t: 'snap',
-    tm: Math.round(gameTime * 100) / 100,
-    tw: towers.map(t => [Math.round(t.units * 10), t.owner, t.roads.map(r => r.to.id)]),
-    u: units.map(u => [u.id, u.from.id, u.to.id, Math.round(u.d), u.power, u.owner, Math.round(u.lane)]),
-    ev: pvp.events.splice(0),
-  });
+  const row = u => [u.id, u.from.id, u.to.id, Math.round(u.d), u.power, u.owner, Math.round(u.lane)];
+  const msg = { t: 'snap', tm: Math.round(gameTime * 100) / 100, ev: pvp.events.splice(0) };
+  const tw = [], tc = [];
+  for (const t of towers) {
+    const r = [Math.round(t.units * 10), t.owner, t.roads.map(x => x.to.id)];
+    const sig = JSON.stringify([Math.floor(t.units), t.owner, r[2]]);
+    tw.push(r);
+    if (pvp.sentTw.get(t.id) !== sig) tc.push([t.id, ...r]);
+    pvp.sentTw.set(t.id, sig);
+  }
+  if (pvp.needKey || pvp.snapN % KEY_EVERY === 0) {
+    msg.k = 1;
+    msg.tw = tw;
+    msg.u = units.map(row);
+  } else {
+    // Only what changed since the last update: buildings whose soldier count, owner or roads
+    // changed, and soldiers that appeared, are gone or changed strength
+    if (tc.length) msg.tc = tc;
+    const nu = [], pw = [], x = [], seen = new Set();
+    for (const u of units) {
+      seen.add(u.id);
+      const p = pvp.sent.get(u.id);
+      if (p === undefined) nu.push(row(u));
+      else if (p !== u.power) pw.push([u.id, u.power]);
+    }
+    for (const id of pvp.sent.keys()) if (!seen.has(id)) x.push(id);
+    if (nu.length) msg.nu = nu;
+    if (pw.length) msg.pw = pw;
+    if (x.length) msg.x = x;
+  }
+  pvp.snapN++;
+  pvp.needKey = false;
+  pvp.sent = new Map(units.map(u => [u.id, u.power]));
+  Net.send(msg);
 }
 function applyCmd(m) {
   const a = towers[m.a], b = towers[m.b];
@@ -313,31 +383,47 @@ function applySnap(m) {
   // Effects first, while the soldiers they mention still exist here
   for (const e of m.ev || []) guestEvent(e, old);
   gameTime = m.tm;
-  m.tw.forEach(([u10, owner, roadIds], i) => {
-    const t = towers[i];
+  const tower = (t, [u10, owner, roadIds]) => {
     if (!t) return;
     const side = swapSide(owner), n = u10 / 10;
     if (side === t.owner && n > t.units + 0.5) t.pop = 1;
     if (side === t.owner && n < t.units - 0.5) t.flash = 1;
     t.owner = side;
     t.units = n;
-    t.roads = roadIds.map(id => t.roads.find(r => r.to.id === id) || { to: towers[id], timer: 0, born: gameTime });
-  });
-  const next = new Map();
-  units = [];
-  for (const [id, from, to, d, power, owner, lane] of m.u) {
-    let u = old.get(id);
+    t.roads = roadIds.filter(id => towers[id]).map(id => t.roads.find(r => r.to.id === id) || { to: towers[id], timer: 0, born: gameTime });
+  };
+  (m.tw || []).forEach((r, i) => tower(towers[i], r));
+  for (const [i, ...r] of m.tc || []) tower(towers[i], r);
+  const newUnit = ([id, from, to, d, power, owner, lane], u) => {
     if (!u) u = { id, from: towers[from], to: towers[to], lane: -lane, d };
-    if (!u.from || !u.to) continue;
+    if (!u.from || !u.to) return null;
     // Keep the smooth local position unless it has drifted
     u.d = Math.abs(u.d - d) > 40 ? d : u.d + (d - u.d) * 0.5;
     u.power = power;
     u.owner = swapSide(owner);
     placeUnit(u);
-    next.set(id, u);
-    units.push(u);
+    return u;
+  };
+  let next;
+  if (m.k) {
+    // Every soldier
+    next = new Map();
+    for (const r of m.u) {
+      const u = newUnit(r, old.get(r[0]));
+      if (u) next.set(u.id, u);
+    }
+  } else {
+    // Only what changed: the rest keep marching here
+    next = old;
+    for (const id of m.x || []) next.delete(id);
+    for (const [id, power] of m.pw || []) { const u = next.get(id); if (u) u.power = power; }
+    for (const r of m.nu || []) {
+      const u = newUnit(r, next.get(r[0]));
+      if (u) next.set(u.id, u);
+    }
   }
   pvp.unitsById = next;
+  units = [...next.values()];
 }
 function guestEvent(e, old) {
   if (e[0] === 'cap') {

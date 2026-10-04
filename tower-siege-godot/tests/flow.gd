@@ -116,6 +116,59 @@ func _run() -> void:
 	main.net.start_pvp("practice", 777)
 	ok("Practice has a bot", main.mode == "practice" and main.battle.ai_sides.size() == 1)
 
+	# Online updates: a guest's copy, rebuilt only from what the host sends, matches the host
+	main.net.role = "host"
+	main.net.start_pvp("online", 4242)
+	var host_b: Battle = main.battle
+	for t in host_b.towers:
+		if t.owner != 0:
+			t.units += 60
+	host_b.ai_sides = [{"side": 1, "timer": 0.5, "cfg": {"think": 0.8, "margin": 1.5, "bold": 0.8}}, {"side": 2, "timer": 0.5, "cfg": {"think": 0.8, "margin": 1.5, "bold": 0.8}}]
+	var copy := Battle.new()
+	copy.load_map(Levels.gen(14, true, 4242))
+	var msgs := []
+	var full_bytes := 0
+	var sent_bytes := 0
+	main.net.tap = func(m): msgs.append(m)
+	var same := true
+	var most := 0
+	var checks := 0
+	for i in 1200:
+		host_b.update(1.0 / 60)
+		main.net.host_tick(1.0 / 60)
+		for m in msgs:
+			if m.t != "snap":
+				continue
+			sent_bytes += JSON.stringify(m).length()
+			var us := []
+			for u in host_b.units:
+				us.append(main.net._row(u))
+			full_bytes += JSON.stringify({"t": "snap", "tm": m.tm, "u": us, "ev": m.ev}).length() + 200
+			main.battle = copy
+			main.net._apply_snap(m)
+			main.battle = host_b
+			var want := {}
+			for u in host_b.units:
+				want[u.id] = [u.power, Net.swap_side(u.owner)]
+			var got := {}
+			for u in copy.units:
+				got[u.id] = [u.power, u.owner]
+			var towers_same := true
+			for k in host_b.towers.size():
+				var h := host_b.towers[k]
+				var c := copy.towers[k]
+				towers_same = towers_same and c.owner == Net.swap_side(h.owner) and absi(floori(c.units) - floori(h.units)) <= 1 and c.roads.size() == h.roads.size()
+			if want != got or not towers_same:
+				same = false
+			checks += 1
+			most = maxi(most, host_b.units.size())
+		msgs.clear()
+	main.net.tap = Callable()
+	ok("Online: the guest's copy matches the host's after every update", same and checks > 100 and most > 30, "%d updates, up to %d soldiers" % [checks, most])
+	ok("Online: updates use much less data than sending everything", sent_bytes * 2 < full_bytes, "%d vs %d bytes" % [sent_bytes, full_bytes])
+	main.net.role = ""
+	main.open_menu()
+
 	# Graphics settings
 	main.set_gfx("low")
 	ok("Low graphics: no smoothing, no soldier shadows", main.world.quality == 0 and not main.world.soldier_shadows.visible and get_root().msaa_3d == Viewport.MSAA_DISABLED)

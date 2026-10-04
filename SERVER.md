@@ -79,7 +79,7 @@ When you send the address, I'll:
 # Tower Siege server (PvP, leaderboard and clans)
 
 Tower Siege has its own small server, `tower-siege/server/server.js` (Node.js; packages `ws` and `pg`). It:
-- **pairs players** for PvP (quick match by trophies, or a 4-letter friend code) and passes messages between the two. One phone runs the battle and sends what's happening about 10 times a second (a few KB each); the other sends its moves;
+- **pairs players** for PvP (quick match by trophies, or a 4-letter friend code) and passes messages between the two. One phone runs the battle and sends what's happening about 10 times a second (only the changes, about 1–2 KB a second in all); the other sends its moves. If a player's connection drops mid-match, the match waits up to 15 seconds for them to come back (`RECONNECT_MS` changes this); if they don't, the other player wins;
 - keeps an **account** for each phone (an id and a secret key the game stores; no sign-up, no email), with its name, **trophies**, wins and losses. The server records every online result itself, so trophies can't simply be typed in;
 - runs the **leaderboard** (top 50 players and top 50 clans) and the **clans** (create, search, join, leave; the leader can remove members; up to 25 members; a clan's trophies are its members' trophies added up).
 
@@ -111,7 +111,7 @@ The server makes its one table (`tower_siege`) by itself. Without `DATABASE_URL`
    - **Instance Type:** Free
    - **Environment Variables:** add `DATABASE_URL` with the Neon connection string from above
 4. Click **Create Web Service**. After a minute or two the logs end with
-   `[server] Tower Siege server on port 10000, protocol 2, postgres storage, 0 players, 0 clans`.
+   `[server] Tower Siege server on port 10000, protocol 3, postgres storage, 0 players, 0 clans`.
    If it says `file storage`, `DATABASE_URL` isn't set, and everything will be lost when the server sleeps.
 5. The address at the top should be `https://tower-siege-server.onrender.com`. The game already connects to `wss://tower-siege-server.onrender.com`. **If Render gave it a different address, send it to me** and I'll change `PVP_SERVER` in `tower-siege/pvp.js` and `SERVER` in `tower-siege-godot/scripts/net.gd` (the Android app uses the same server, so phones and browsers play each other).
 
@@ -130,4 +130,4 @@ cd tower-siege/server
 npm install
 node server.js            # listens on port 8090, saves to data.json
 ```
-Then open `tower-siege/index.html?server=ws://localhost:8090` in two browser windows. The browser tests do the same with two players (`node tests/run.js siege-pvp`), and `node tests/run.js siege-store` checks the Postgres and file storage. `tower-siege-godot/tests/online_match.sh` does it with two Godot players.
+Then open `tower-siege/index.html?server=ws://localhost:8090` in two browser windows. The browser tests do the same with two players (`node tests/run.js siege-pvp`), `node tests/run.js siege-server` checks matching and dropped connections without a browser, and `node tests/run.js siege-store` checks the Postgres and file storage. `tower-siege-godot/tests/online_match.sh` does it with two Godot players.

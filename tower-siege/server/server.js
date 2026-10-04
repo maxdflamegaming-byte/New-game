@@ -6,6 +6,8 @@
 // - PvP: pairs players (quick match by trophies, or a 4-letter friend code) and passes messages
 //   between the two. One player, the host, runs the battle and sends what's happening; the other,
 //   the guest, sends its moves. When the host reports the result, the server updates trophies.
+//   If a player's connection drops mid-match, the match waits up to 15 seconds for them to
+//   come back (the other player is told to wait); after that, the one who stayed wins.
 // - Leaderboard: the top players and clans. Clans: create, search, join, leave, and the leader
 //   can remove members. A clan's trophies are its members' trophies added up.
 // Players and clans are saved with store.js (Postgres when DATABASE_URL is set, else a file).
@@ -15,8 +17,9 @@ const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 const { openStore } = require('./store');
 
-const PROTOCOL = 2;
+const PROTOCOL = 3;
 const PORT = Number(process.env.PORT) || 8090;
+const GRACE_MS = Number(process.env.RECONNECT_MS) || 15000; // how long a match waits for a dropped player
 const WIN = 30, LOSS = 15, MAX_START_TROPHIES = 300;
 const CLAN_SIZE = 25, TOP = 50;
 const EMBLEMS = ['🦁', '🐺', '🦅', '🐉', '🦈', '🐻', '⚡', '🔥', '❄️', '🌟', '🚀', '🛡️', '⚔️', '👑', '🍀', '💎'];
@@ -104,6 +107,7 @@ const wss = new WebSocketServer({ server, maxPayload: 256 * 1024 });
 let queue = [];              // players looking for a quick match
 const rooms = new Map();     // friend code -> the player who made it
 let matches = 0;
+const away = new Map();      // player id -> { match, role } for players whose connection dropped mid-match
 
 const send = (ws, msg) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg)); };
 const info = ws => ({ name: ws.player.name, trophies: ws.player.trophies, tag: tagOf(ws.player) });
@@ -116,10 +120,10 @@ function unqueue(ws) {
 function pair(host, guest) {
   unqueue(host);
   unqueue(guest);
-  const match = { host, guest, done: false };
+  const seed = Math.floor(Math.random() * 1e9);
+  const match = { host, guest, done: false, seed, timers: {} };
   host.peer = guest; guest.peer = host;
   host.match = guest.match = match;
-  const seed = Math.floor(Math.random() * 1e9);
   send(host, { t: 'match', role: 'host', seed, opp: info(guest) });
   send(guest, { t: 'match', role: 'guest', seed, opp: info(host) });
   matches++;
@@ -129,6 +133,10 @@ function pair(host, guest) {
 function settle(match, winner, why) {
   if (match.done) return;
   match.done = true;
+  for (const role of Object.keys(match.timers)) {
+    clearTimeout(match.timers[role]);
+    if (away.get(match[role].player.id)?.match === match) away.delete(match[role].player.id);
+  }
   const sides = { host: match.host, guest: match.guest };
   for (const [role, ws] of Object.entries(sides)) {
     const p = ws.player;
@@ -151,6 +159,46 @@ function unpair(ws) {
     if (match && !match.done) send(peer, { t: 'gone' });
   }
   if (match && !match.done) settle(match, match.host === ws ? 'guest' : 'host', 'left');
+}
+
+// The connection dropped mid-match: keep the match for a while, and tell the other player to wait
+function hold(ws) {
+  const match = ws.match, peer = ws.peer;
+  const role = match.host === ws ? 'host' : 'guest';
+  ws.peer = null; ws.match = null;
+  away.set(ws.player.id, { match, role });
+  send(peer, { t: 'wait', secs: Math.round(GRACE_MS / 1000) });
+  match.timers[role] = setTimeout(() => forfeit(match, role), GRACE_MS);
+}
+
+// They didn't come back in time (or came back without the match): the other player wins
+function forfeit(match, role) {
+  if (match.done) return;
+  const other = match[role === 'host' ? 'guest' : 'host'];
+  if (other.match === match) {
+    other.peer = null; other.match = null;
+    send(other, { t: 'gone' });
+  }
+  settle(match, role === 'host' ? 'guest' : 'host', 'left');
+}
+
+// A player who dropped out of a match is back: put them back in it
+function rejoin(ws) {
+  const a = away.get(ws.player.id);
+  if (!a || a.match.done) { send(ws, { t: 'resume', ok: false }); return; }
+  away.delete(ws.player.id);
+  const { match, role } = a;
+  clearTimeout(match.timers[role]);
+  delete match.timers[role];
+  match[role] = ws;
+  ws.match = match;
+  const peer = match[role === 'host' ? 'guest' : 'host'];
+  ws.peer = peer;
+  if (peer.match === match) {
+    peer.peer = ws;
+    send(peer, { t: 'back' });
+  }
+  send(ws, { t: 'resume', ok: true, role, seed: match.seed, opp: info(peer) });
 }
 
 function newCode() {
@@ -322,7 +370,8 @@ wss.on('connection', ws => {
 
   ws.on('close', () => {
     unqueue(ws);
-    unpair(ws);
+    if (ws.match && !ws.match.done && ws.player) hold(ws);
+    else unpair(ws);
   });
 });
 
@@ -335,6 +384,8 @@ function hello(ws, msg) {
   if (name && name !== p.name) { p.name = name; savePlayer(p); }
   ws.player = p;
   send(ws, { t: 'welcome', online: wss.clients.size, you: publicPlayer(p), token });
+  if (msg.back) rejoin(ws);
+  else if (away.has(p.id)) forfeit(away.get(p.id).match, away.get(p.id).role); // a fresh start: that match is lost
 }
 
 // Drop connections that stopped answering

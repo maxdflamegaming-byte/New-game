@@ -1,6 +1,7 @@
 # Checks the Godot version of Tower Siege (tower-siege-godot/) on every push that changes it:
-# the battle rules, the game flow (touch input, winning, saving), and an online match between
-# two Godot players on the real server (tower-siege/server).
+# the battle rules, the game flow (touch input, winning, saving), the server on its own, and
+# online matches between Godot players on the real server (tower-siege/server), including
+# dropped connections.
 # When the workflow is run by hand from the Actions tab ("Run workflow"), it also builds the
 # game and puts it on the Releases page:
 #   - TowerSiege-1.0.N.apk  to install on a phone directly
@@ -16,6 +17,7 @@ on:
     paths:
       - 'tower-siege-godot/**'
       - 'tower-siege/server/**'
+      - 'tests/suites/siege-server.js'
       - '.github/workflows/tower-siege-godot.yml'
   workflow_dispatch:
 
@@ -61,10 +63,13 @@ jobs:
           grep -q "FLOW DONE 0 failed" flow.log
           ! grep -q "SCRIPT ERROR" sim.log flow.log
 
-      - name: An online match between two Godot players on the server
+      - name: Online matches between Godot players on the server, with dropped connections
         run: |
           (cd tower-siege/server && npm ci --omit=dev)
-          tower-siege-godot/tests/online_match.sh "$HOME/godot"
+          node tests/suites/siege-server.js | tee server-test.log
+          ! grep -q "^FAIL" server-test.log
+          tower-siege-godot/tests/online_match.sh "$HOME/godot" | tee match.log
+          ! grep -q "^FAIL" match.log
 
       # Everything below only runs when the workflow is started by hand
       - name: Get the Android export templates

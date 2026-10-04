@@ -2,12 +2,17 @@ extends SceneTree
 ## A Godot player for the cross-play test (tests/suites/siege-crossplay.js runs it next to a web
 ## player and the server). It finds a match, plays its part as host or guest, makes a clan and
 ## prints what it saw, each line starting with "GD ".
-##   godot --headless --path tower-siege-godot -s tests/online.gd -- --server=ws://127.0.0.1:PORT --name=Godo [--delay=S] [--clan=TAG]
+##   godot --headless --path tower-siege-godot -s tests/online.gd -- --server=ws://127.0.0.1:PORT --name=Godo [--delay=S] [--clan=TAG] [--drop | --peer-drops]
+## --drop: this player's connection drops right after the match starts, and it must get back in.
+## --peer-drops: the other player's will; this one must wait for them, then carry on.
 
 var main
 var my_name := "Godo"
 var delay := 0.0
 var clan_tag := "GDT"
+var drop := false
+var peer_drops := false
+var saw_wait := false
 
 
 func _initialize() -> void:
@@ -18,6 +23,10 @@ func _initialize() -> void:
 			delay = float(a.substr(8))
 		elif a.begins_with("--clan="):
 			clan_tag = a.substr(7)
+		elif a == "--drop":
+			drop = true
+		elif a == "--peer-drops":
+			peer_drops = true
 	DirAccess.remove_absolute(ProjectSettings.globalize_path("user://tower_siege.json"))
 	main = load("res://scenes/main.tscn").instantiate()
 	root.add_child(main)
@@ -55,6 +64,19 @@ func _run() -> void:
 		return
 	var b: Battle = main.battle
 	say("MAP " + JSON.stringify(b.towers.map(func(t): return [roundi(t.bx), roundi(t.by), t.type])))
+	if drop:
+		await create_timer(0.5).timeout
+		main.net.ws.close()
+		ok = await _wait(func(): return main.net.paused(), 5)
+		say("DROPPED %s" % ok)
+		ok = await _wait(func(): return main.mode == "online" and not main.net.paused() and not main.net.pvp.over, 25)
+		say("RESUMED %s role=%s" % [ok, main.net.role])
+	elif peer_drops:
+		# Reconnecting can take only a moment, so look for the "wait" message, not the pause itself
+		ok = await _wait(func(): return main.net.pvp.waits > 0, 10)
+		say("WAITED %s" % ok)
+		ok = await _wait(func(): return not main.net.paused() and not main.net.pvp.over, 25)
+		say("PEER_BACK %s" % ok)
 	if main.net.role == "guest":
 		var me: Battle.Tower = null
 		for t in b.towers:

@@ -348,6 +348,7 @@ function spawnUnit(from, to, power = 1) {
 
 // ---------- Simulation ----------
 function update(dt) {
+  if (mode === 'online' && pvpPaused(dt)) return;
   if (isGuest()) return guestUpdate(dt);
   gameTime += dt;
   if (rally > 0) rally = Math.max(0, rally - dt);
@@ -712,7 +713,7 @@ function controls(side) {
 const sideAtScreen = sy => (mode === 'duo' && sy < H / 2 ? 2 : PLAYER);
 
 canvas.addEventListener('pointerdown', e => {
-  if (state !== 'play' || screenOpen) return;
+  if (state !== 'play' || screenOpen || (mode === 'online' && pvp?.paused)) return;
   Sfx.unlock();
   canvas.setPointerCapture?.(e.pointerId);
   const p = toField(e);
