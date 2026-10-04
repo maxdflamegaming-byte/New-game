@@ -1,0 +1,173 @@
+# Checks the Godot version of Tower Siege (tower-siege-godot/) on every push that changes it:
+# the battle rules, the game flow (touch input, winning, saving), and an online match between
+# two Godot players on the real server (tower-siege/server).
+# When the workflow is run by hand from the Actions tab ("Run workflow"), it also builds the
+# game and puts it on the Releases page:
+#   - TowerSiege-1.0.N.apk  to install on a phone directly
+#   - TowerSiege-1.0.N.aab  the App Bundle to upload to Google Play
+# Both are signed with the upload key from the repo's secrets (ANDROID_KEYSTORE_BASE64 and
+# ANDROID_KEYSTORE_PASSWORD; see store/PUBLISHING.md). Until those secrets exist, the build is
+# signed with the old public test key and only the APK is kept (as a test build).
+name: Build Tower Siege (Godot)
+
+on:
+  push:
+    branches: [main, claude/military-overturn-game-sewao2]
+    paths:
+      - 'tower-siege-godot/**'
+      - 'tower-siege/server/**'
+      - '.github/workflows/tower-siege-godot.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: tower-siege-godot
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: 4.7.2
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Get Godot
+        run: |
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          wget -q "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q "Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" "$HOME/godot"
+
+      - name: Import the project and check the rules and the game flow
+        run: |
+          "$HOME/godot" --headless --path tower-siege-godot --import || true
+          # A script error leaves Godot running without quitting, so each test has a time limit
+          timeout 600 "$HOME/godot" --headless --path tower-siege-godot -s tests/sim.gd 2>&1 | tee sim.log
+          grep -q "SIM DONE 0 failed" sim.log
+          timeout 300 "$HOME/godot" --headless --path tower-siege-godot -s tests/flow.gd 2>&1 | tee flow.log
+          grep -q "FLOW DONE 0 failed" flow.log
+          ! grep -q "SCRIPT ERROR" sim.log flow.log
+
+      - name: An online match between two Godot players on the server
+        run: |
+          (cd tower-siege/server && npm ci --omit=dev)
+          tower-siege-godot/tests/online_match.sh "$HOME/godot"
+
+      # Everything below only runs when the workflow is started by hand
+      - name: Get the Android export templates
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          wget -q "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          dir="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          mkdir -p "$dir"
+          unzip -q -j "Godot_v${GODOT_VERSION}-stable_export_templates.tpz" 'templates/android_*' 'templates/version.txt' -d "$dir"
+          rm "Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          ls "$dir"
+
+      - name: Get the Android 16 SDK (API 36), which Google Play requires
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          sdkmanager="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdkmanager" --licenses > /dev/null || true
+          "$sdkmanager" --install "platforms;android-36" "build-tools;36.1.0" "platform-tools" "ndk;29.0.14206865" > /dev/null
+          ls "$ANDROID_SDK_ROOT/platforms"
+
+      - name: Tell Godot where the Android SDK and Java are
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          mkdir -p "$HOME/.config/godot"
+          for f in editor_settings-4.tres "editor_settings-${GODOT_VERSION%.*}.tres"; do
+            printf '[gd_resource type="EditorSettings" format=3]\n\n[resource]\nexport/android/android_sdk_path = "%s"\nexport/android/java_sdk_path = "%s"\n' \
+              "$ANDROID_SDK_ROOT" "$JAVA_HOME" > "$HOME/.config/godot/$f"
+          done
+
+      - name: Pick the signing key
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/upload.keystore"
+            echo "::add-mask::$KEYSTORE_PASSWORD"
+            {
+              echo "GODOT_ANDROID_KEYSTORE_RELEASE_PATH=$RUNNER_TEMP/upload.keystore"
+              echo "GODOT_ANDROID_KEYSTORE_RELEASE_USER=upload"
+              echo "GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD=$KEYSTORE_PASSWORD"
+              echo "PLAY_READY=1"
+            } >> "$GITHUB_ENV"
+            echo "Signing with the upload key from the repo's secrets."
+          else
+            echo "::warning::The upload key isn't in the repo's secrets yet (see store/PUBLISHING.md), so this is a test build signed with the old public test key. Only the APK is kept; no Google Play bundle this time."
+            {
+              echo "GODOT_ANDROID_KEYSTORE_RELEASE_PATH=$GITHUB_WORKSPACE/android/app/color-claim.keystore"
+              echo "GODOT_ANDROID_KEYSTORE_RELEASE_USER=colorclaim"
+              echo "GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD=colorclaim"
+              echo "PLAY_READY=0"
+            } >> "$GITHUB_ENV"
+          fi
+
+      - name: Export the APK and the App Bundle
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          # Every build gets a higher version, so a new one installs over the old one
+          v="1.0.${{ github.run_number }}"
+          echo "VERSION=$v" >> "$GITHUB_ENV"
+          sed -i "s/^version\/code=.*/version\/code=${{ github.run_number }}/; s/^version\/name=.*/version\/name=\"$v\"/" tower-siege-godot/export_presets.cfg
+          sed -i "s/^config\/version=.*/config\/version=\"$v\"/" tower-siege-godot/project.godot
+          mkdir -p build
+          "$HOME/godot" --headless --path tower-siege-godot --install-android-build-template --export-release "Android" "$GITHUB_WORKSPACE/build/TowerSiege-$v.apk"
+          test -s "build/TowerSiege-$v.apk"
+          # The App Bundle is always built (so the Gradle build is checked), but only kept
+          # when it's signed with your upload key
+          "$HOME/godot" --headless --path tower-siege-godot --install-android-build-template --export-release "Android Play" "$GITHUB_WORKSPACE/build/TowerSiege-$v.aab"
+          test -s "build/TowerSiege-$v.aab"
+          rm -f build/*.idsig
+          ls -la build
+
+      - name: Check what was built
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          apksigner="$(ls -d "$ANDROID_SDK_ROOT"/build-tools/36.1.0)/apksigner"
+          "$apksigner" verify --print-certs build/*.apk | head -5
+          aapt2="$(ls -d "$ANDROID_SDK_ROOT"/build-tools/36.1.0)/aapt2"
+          "$aapt2" dump badging build/*.apk | grep -E "^package|sdkVersion|targetSdkVersion"
+          jarsigner -verify build/*.aab | tail -1
+          if [ "$PLAY_READY" != "1" ]; then
+            rm build/*.aab # signed with the test key: not for Google Play
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          name: TowerSiege-build
+          path: build/*
+
+      - name: Put it on the Releases page
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$PLAY_READY" = "1" ]; then
+            notes="Tower Siege $VERSION. **TowerSiege-$VERSION.apk**: install it on an Android phone. **TowerSiege-$VERSION.aab**: the App Bundle to upload to Google Play (Play Console -> Test and release). Both are signed with your upload key."
+          else
+            notes="Tower Siege $VERSION (test build). Download **TowerSiege-$VERSION.apk** on your Android phone and open it. No Google Play bundle yet: add the upload key to the repo's secrets first (see store/PUBLISHING.md)."
+          fi
+          gh release create "tower-siege-v$VERSION" build/* \
+            --target "${{ github.sha }}" \
+            --title "Tower Siege $VERSION" \
+            --notes "$notes"

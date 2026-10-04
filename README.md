@@ -118,6 +118,19 @@ A bright cartoon tower-conquest strategy game in 3D, inspired by mobile games li
 - A strength bar shows each army's share of all soldiers, plus a 2× speed button and a level select with your stars. On wide screens the field turns on its side, so your base starts on the left.
 - **Controls:** mouse or touch. **P** pauses, **F** toggles 2× speed, **1** / **2** use the abilities, **M** mutes sound, **N** toggles music.
 - Code: `game.js` (rules, levels, enemy AI, screens), `render3d.js` (the 3D scene, models and effects), `pvp.js` (PvP modes, the connection and syncing the two phones), `social.js` (the leaderboard and clans), `server/server.js` and `server/store.js` (the server and where it saves accounts and clans).
+- **Android app:** Tower Siege is also rebuilt in Godot, see [Tower Siege (Godot)](#tower-siege-godot) below.
+
+## Tower Siege (Godot)
+
+`tower-siege-godot/` is Tower Siege rebuilt in the free [Godot](https://godotengine.org) engine (4.7, the Compatibility renderer, so it runs on almost any Android phone with OpenGL ES 3.0). It is the same game as the web version: the same rules, the same 60 levels and tutorial (the level maker is a line-for-line port, so every map is identical), the same enemy AI, abilities, upgrades, stars and coins, and all the PvP modes: online 1-vs-1, rooms with a code, the leaderboard, clans, 2 players on one phone and practice vs a bot.
+
+- **Cross-play:** it talks to the same server (`tower-siege/server/`) with the same messages, so a phone running the Godot app can play against someone in a browser, either one hosting. The leaderboard, trophies and clans are shared.
+- **Graphics:** every model is built in code from simple shapes and merged into a few meshes; team colors are set by a shader, soldiers are drawn all at once (MultiMesh) with their legs animated on the GPU, and the ground, roads and glows are shaders. Labels, numbers and road dots are drawn on top in 2D.
+- Code: `scripts/levels.gd` (the levels and the random numbers that make them), `scripts/battle.gd` (rules and enemy AI), `scripts/world.gd` and `scripts/mesh_kit.gd` (the 3D scene and models), `scripts/overlay.gd` (labels and the drag line), `scripts/ui.gd` (the menu, HUD and screens), `scripts/net.gd` and `scripts/online_screens.gd` (online play, the leaderboard and clans), `scripts/main.gd` (game flow and controls), `scripts/sfx.gd` and `scripts/music.gd` (sounds and music made in code).
+- **Tests** (`tower-siege-godot/tests/`): `sim.gd` (rules, levels identical to the web version, AI-vs-AI games), `flow.gd` (the game as a player sees it: dragging and cutting roads with touch, winning, losing, saving, the shop, 2-player and practice), `online_match.sh` (two Godot players on a local server: matching, the same map, the guest's road reaching the host, the result, trophies, a clan and the leaderboard), and `tests/suites/siege-crossplay.js` (a web player against a Godot player, with Godot as host and then as guest; set `GODOT` to the Godot binary to run it). `look.gd` takes screenshots and `make_icons.gd` redraws the app icons from the game itself.
+- **The APK:** the workflow `.github/workflows/tower-siege-godot.yml` runs the rules, flow and online tests on every change. Start it by hand (Actions → **Build Tower Siege (Godot)** → Run workflow) to also build **TowerSiege-1.0.N.apk** (to install on a phone) and **TowerSiege-1.0.N.aab** (for Google Play), which go on the Releases page. They are signed with the upload key from the repo's secrets if it's there; otherwise with the test key in `android/app/`, which is fine for installing the APK directly.
+- **Online play needs the server running** at `wss://tower-siege-server.onrender.com` (see [SERVER.md](SERVER.md)); everything else works offline.
+- To open it yourself, install Godot 4.7 and open `tower-siege-godot/project.godot`.
 
 ## Play
 

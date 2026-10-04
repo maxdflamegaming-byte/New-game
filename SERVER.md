@@ -113,7 +113,7 @@ The server makes its one table (`tower_siege`) by itself. Without `DATABASE_URL`
 4. Click **Create Web Service**. After a minute or two the logs end with
    `[server] Tower Siege server on port 10000, protocol 2, postgres storage, 0 players, 0 clans`.
    If it says `file storage`, `DATABASE_URL` isn't set, and everything will be lost when the server sleeps.
-5. The address at the top should be `https://tower-siege-server.onrender.com`. The game already connects to `wss://tower-siege-server.onrender.com`. **If Render gave it a different address, send it to me** and I'll change `PVP_SERVER` in `tower-siege/pvp.js`.
+5. The address at the top should be `https://tower-siege-server.onrender.com`. The game already connects to `wss://tower-siege-server.onrender.com`. **If Render gave it a different address, send it to me** and I'll change `PVP_SERVER` in `tower-siege/pvp.js` and `SERVER` in `tower-siege-godot/scripts/net.gd` (the Android app uses the same server, so phones and browsers play each other).
 
 (`render.yaml` also lists this service, so a Blueprint synced from this branch creates it the same way and asks for `DATABASE_URL`.)
 
@@ -130,4 +130,4 @@ cd tower-siege/server
 npm install
 node server.js            # listens on port 8090, saves to data.json
 ```
-Then open `tower-siege/index.html?server=ws://localhost:8090` in two browser windows. The browser tests do the same with two players (`node tests/run.js siege-pvp`), and `node tests/run.js siege-store` checks the Postgres and file storage.
+Then open `tower-siege/index.html?server=ws://localhost:8090` in two browser windows. The browser tests do the same with two players (`node tests/run.js siege-pvp`), and `node tests/run.js siege-store` checks the Postgres and file storage. `tower-siege-godot/tests/online_match.sh` does it with two Godot players.
