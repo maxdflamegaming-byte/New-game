@@ -342,9 +342,9 @@ func _boss_down(r: Cutscene.Run, n: int) -> void:
 	if line != "":
 		await r.say("grumble", line)
 	# He runs off the field, away from the camera
-	r.flee("grumble", Vector3(-0.4, 0, -1).normalized() * 320)
+	r.flee("grumble", Vector3(-0.4, 0, -1).normalized() * 210)
 	r.sfx("boing")
-	await r.wait(1.0)
+	await r.wait(1.3)
 
 
 ## Grumble laughs as your last building falls
