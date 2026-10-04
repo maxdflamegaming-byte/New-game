@@ -245,6 +245,44 @@ func _run() -> void:
 	ok("The looks screen opens", main.screen_open == "looks" and main.ui.looks_lists.hat.get_child_count() == Progress.HATS.size())
 	main.open_menu()
 
+	# Languages
+	if ResourceLoader.exists("res://i18n/es.gd"):
+		await _languages()
+
+	# Graphics settings
+	await _graphics()
+
+
+func _languages() -> void:
+	var re := RegEx.create_from_string("%0?[0-9]*[ds]")
+	var keys: Array = load("res://i18n/es.gd").T.keys()
+	var langs_ok := true
+	var why := ""
+	for code in I18n.LANGS:
+		if code == "" or code == "en":
+			continue
+		var table: Dictionary = load("res://i18n/%s.gd" % code).T
+		if table.keys().size() != keys.size():
+			langs_ok = false
+			why += "%s has %d texts; " % [code, table.size()]
+		for k in table:
+			var a1 := re.search_all(k).map(func(m): return m.get_string())
+			var a2 := re.search_all(table[k]).map(func(m): return m.get_string())
+			if a1 != a2:
+				langs_ok = false
+				why += "%s: %s; " % [code, k]
+	ok("Every language has every text, with the same blanks for numbers and names", langs_ok, why)
+	main.set_lang("es")
+	main.ui.show_screen("settings")
+	await _frames(2)
+	ok("Picking Spanish translates the screens", TranslationServer.get_locale() == "es" and main.ui.tr("Settings") != "Settings" and main.ui.vibrate_btn.can_auto_translate())
+	ok("Text with numbers is translated too", main.tr("Level %d") % 5 != "Level 5")
+	main.set_lang("")
+	ok("Auto goes back to the phone's language (English here)", TranslationServer.get_locale() == "en" or I18n.current() == "en")
+	main.open_menu()
+
+
+func _graphics() -> void:
 	# Graphics settings
 	main.set_gfx("low")
 	ok("Low graphics: no smoothing, no soldier shadows", main.world.quality == 0 and not main.world.soldier_shadows.visible and get_root().msaa_3d == Viewport.MSAA_DISABLED)

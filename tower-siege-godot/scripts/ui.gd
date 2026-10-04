@@ -50,6 +50,7 @@ var _win_coins := 0
 var lose_tip: Label
 var vibrate_btn: Button
 var gfx_btns := {}
+var lang_btns := {}
 var missions_btn: Button
 var daily_btn: Button
 var reward_days: HBoxContainer
@@ -70,6 +71,7 @@ func build() -> void:
 	get_viewport().size_changed.connect(_fit)
 	font_b = _font("res://assets/fonts/Fredoka-Bold.ttf")
 	font_m = _font("res://assets/fonts/Fredoka-Medium.ttf")
+	I18n.add_fallbacks(font_b, font_m)
 	theme = _make_theme()
 	_build_hud()
 	_build_menu()
@@ -560,6 +562,10 @@ func refresh_toggles() -> void:
 			var on: bool = main.save.gfx == g
 			gfx_btns[g].add_theme_stylebox_override("normal", box(YELLOW if on else PANEL_LIGHT))
 			gfx_btns[g].add_theme_color_override("font_outline_color", Color("#b06a00") if on else INK)
+		for code in lang_btns:
+			var on: bool = main.save.lang == code
+			lang_btns[code].add_theme_stylebox_override("normal", box(YELLOW if on else PANEL_LIGHT))
+			lang_btns[code].add_theme_color_override("font_outline_color", Color("#b06a00") if on else INK)
 
 
 # ---------- Daily reward ----------
@@ -580,7 +586,7 @@ func _build_reward() -> void:
 		if coins > 0:
 			main.play_sound("coin")
 			main.vibrate(40)
-			toast("+%d coins!" % coins)
+			toast(tr("+%d coins!") % coins)
 		main.open_menu())
 	reward_btn.custom_minimum_size = Vector2(360, 86)
 	reward_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -591,7 +597,7 @@ func _build_reward() -> void:
 func refresh_reward() -> void:
 	var next := Progress.streak_next(main.save)
 	var ready := Progress.reward_ready(main.save)
-	reward_title.text = ("Day %d" % next) if ready else "Collected today. See you tomorrow!"
+	reward_title.text = (tr("Day %d") % next) if ready else "Collected today. See you tomorrow!"
 	for c in reward_days.get_children():
 		c.queue_free()
 	var got := next - 1 if ready else int(main.save.streak.count)
@@ -601,12 +607,12 @@ func refresh_reward() -> void:
 		pc.add_theme_stylebox_override("panel", box(YELLOW if today_box else GREEN if i < got else PANEL_LIGHT, INK, 14, 3, 3))
 		pc.custom_minimum_size = Vector2(74, 92)
 		var vv := vbox(0)
-		vv.add_child(label("Day %d" % (i + 1), 15, WHITE, 4))
+		vv.add_child(label(tr("Day %d") % (i + 1), 15, WHITE, 4))
 		vv.add_child(label("✓" if i < got else "●", 26, WHITE, 6))
 		vv.add_child(label(str(Progress.STREAK_COINS[i]), 18, WHITE, 5))
 		pc.add_child(vv)
 		reward_days.add_child(pc)
-	reward_btn.text = "Collect %d" % Progress.STREAK_COINS[next - 1] if ready else "Back"
+	reward_btn.text = tr("Collect %d") % Progress.STREAK_COINS[next - 1] if ready else "Back"
 
 
 # ---------- Missions ----------
@@ -625,9 +631,9 @@ func refresh_missions() -> void:
 	for c in mission_list.get_children():
 		c.queue_free()
 	if Progress.reward_ready(main.save):
-		var rb := button("🎁 Collect your daily reward (day %d)" % Progress.streak_next(main.save), "yellow", 24, func(): show_screen("reward"))
+		var rb := button(tr("🎁 Collect your daily reward (day %d)") % Progress.streak_next(main.save), "yellow", 24, func(): show_screen("reward"))
 		mission_list.add_child(rb)
-	mission_streak.text = "Daily reward streak: %d day%s" % [int(main.save.streak.count), "" if int(main.save.streak.count) == 1 else "s"]
+	mission_streak.text = "Daily reward streak: 1 day" if int(main.save.streak.count) == 1 else tr("Daily reward streak: %d days") % int(main.save.streak.count)
 	var list := Progress.missions(main.save)
 	for i in list.size():
 		var m: Dictionary = list[i]
@@ -661,7 +667,7 @@ func refresh_missions() -> void:
 			if coins > 0:
 				main.write_save()
 				main.play_sound("coin")
-				toast("+%d coins!" % coins)
+				toast(tr("+%d coins!") % coins)
 			refresh_missions())
 		b.disabled = not done or m.claimed
 		b.custom_minimum_size.x = 130
@@ -773,17 +779,32 @@ func _build_settings() -> void:
 		row.add_child(b)
 	v.add_child(row)
 	v.add_child(wrapped(label("Auto starts at Medium and lowers the graphics by itself if the game runs slowly. Low is easiest on older phones and the battery.", 18, WHITE, 4, font_m), 540))
+	v.add_child(label("Language", 28))
+	var grid := GridContainer.new()
+	grid.columns = 4
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 8)
+	for code in I18n.LANGS:
+		var b := button(I18n.LANGS[code], "blue", 18, func():
+			main.set_lang(code)
+			refresh_toggles())
+		b.custom_minimum_size.x = 128
+		# Language names are shown in their own language
+		b.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED if code != "" else Node.AUTO_TRANSLATE_MODE_INHERIT
+		lang_btns[code] = b
+		grid.add_child(b)
+	v.add_child(grid)
 	col.add_child(p)
 	col.add_child(back_button())
 
 
 func refresh_menu() -> void:
 	menu_coins.text = "● %d" % main.save.coins
-	play_btn.text = "PLAY  ·  Level %d" % mini(main.save.level, Levels.LAST_LEVEL)
+	play_btn.text = tr("PLAY  ·  Level %d") % mini(main.save.level, Levels.LAST_LEVEL)
 	var n := Progress.claimable(main.save) + (1 if Progress.reward_ready(main.save) else 0)
-	missions_btn.text = "🎁 Missions" + (" (%d)" % n if n > 0 else "")
+	missions_btn.text = tr("🎁 Missions") + (" (%d)" % n if n > 0 else "")
 	missions_btn.add_theme_stylebox_override("normal", box(ORANGE if n > 0 else PANEL_LIGHT))
-	daily_btn.text = "📅 Daily ✓" if int(main.save.daily_won) == Progress.today() else "📅 Daily"
+	daily_btn.text = tr("📅 Daily") + (" ✓" if int(main.save.daily_won) == Progress.today() else "")
 	refresh_toggles()
 
 
@@ -822,7 +843,7 @@ func refresh_levels() -> void:
 		var level_n := n
 		b.pressed.connect(func(): main.start_level(level_n))
 		level_grid.add_child(b)
-	levels_stars.text = "%d ★ collected" % total
+	levels_stars.text = tr("%d ★ collected") % total
 
 
 # ---------- Upgrades ----------
@@ -1030,5 +1051,5 @@ func _build_lose() -> void:
 
 func show_lose(tip: String) -> void:
 	hide_hud()
-	lose_tip.text = "Tip: " + tip
+	lose_tip.text = tr("Tip: %s") % tr(tip)
 	show_screen("lose")

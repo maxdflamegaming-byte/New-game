@@ -253,7 +253,7 @@ func refresh_pvp_card() -> void:
 	name_edit.text = main.save.name
 	var lg := Net.league_of(int(main.save.trophies))
 	trophies_l.text = "🏆 %d" % int(main.save.trophies)
-	league_l.text = "%s league · %d wins" % [lg.name, int(main.save.pvp_wins)]
+	league_l.text = I18n.t("%s league · %d wins") % [I18n.t(lg.name), int(main.save.pvp_wins)]
 	var lp: PanelContainer = league_l.get_parent()
 	lp.add_theme_stylebox_override("panel", ui.box(lg.color, UI.INK, 10, 2, 0))
 	var c = main.save.clan
@@ -332,7 +332,7 @@ func _vs_card(p: Dictionary, side: int) -> Control:
 	var tag: String = p.get("tag", "")
 	v.add_child(ui.label(("[%s] " % tag if tag != "" else "") + str(p.get("name", "Player")), 26))
 	var tr := int(p.get("trophies", 0))
-	v.add_child(ui.label("🏆 %d · %s" % [tr, Net.league_of(tr).name], 18, Color.WHITE, 5, ui.font_m))
+	v.add_child(ui.label("🏆 %d · %s" % [tr, I18n.t(Net.league_of(tr).name)], 18, Color.WHITE, 5, ui.font_m))
 	c.add_child(v)
 	return c
 
@@ -409,8 +409,8 @@ func show_trophy_change() -> void:
 		if d == null:
 			end_trophies.text = "🏆 …"
 		else:
-			end_trophies.text = "🏆 %s%d   (%d total)" % ["+" if d >= 0 else "", d, int(main.save.trophies)] + ("   ● +20" if d > 0 else "")
-	end_league.text = "%s league" % Net.league_of(int(main.save.trophies)).name if main.mode == "online" else "Practice matches don't change your trophies" if main.mode == "practice" else ""
+			end_trophies.text = I18n.t("🏆 %s%d   (%d total)") % ["+" if d >= 0 else "", d, int(main.save.trophies)] + ("   ● +20" if d > 0 else "")
+	end_league.text = I18n.t("%s league") % I18n.t(Net.league_of(int(main.save.trophies)).name) if main.mode == "online" else "Practice matches don't change your trophies" if main.mode == "practice" else ""
 
 
 # ---------- Leaderboard ----------
@@ -491,11 +491,11 @@ func render_board() -> void:
 			left.add_child(_rank(i))
 			left.add_child(emblem(c.emblem, c.color, 48))
 			var mine: bool = main.save.clan is Dictionary and main.save.clan.id == c.id
-			board_list.add_child(_row(left, "%s [%s]" % [c.name, c.tag], "%d/%d members" % [int(c.members), CLAN_SIZE], "🏆 %d" % int(c.trophies), mine, c.id))
+			board_list.add_child(_row(left, "%s [%s]" % [c.name, c.tag], I18n.t("%d/%d members") % [int(c.members), CLAN_SIZE], "🏆 %d" % int(c.trophies), mine, c.id))
 		if clans.is_empty():
 			board_list.add_child(ui.label("No clans yet. Start one!", 22))
 	var rank := int(board_data.get("rank", 0))
-	board_me.text = "Your rank: %s · 🏆 %d · %s" % [str(rank) if rank > 0 else "–", int(main.save.trophies), Net.league_of(int(main.save.trophies)).name]
+	board_me.text = I18n.t("Your rank: %s · 🏆 %d · %s") % [str(rank) if rank > 0 else "–", int(main.save.trophies), I18n.t(Net.league_of(int(main.save.trophies)).name)]
 
 
 # ---------- Clans ----------
@@ -598,7 +598,7 @@ func browse_clans(q: String) -> void:
 		clans_status.text = res.msg
 		return
 	for c in res.list:
-		clan_list.add_child(_row(emblem(c.emblem, c.color, 48), "%s [%s]" % [c.name, c.tag], "%d/%d members" % [int(c.members), CLAN_SIZE], "🏆 %d" % int(c.trophies), false, c.id))
+		clan_list.add_child(_row(emblem(c.emblem, c.color, 48), "%s [%s]" % [c.name, c.tag], I18n.t("%d/%d members") % [int(c.members), CLAN_SIZE], "🏆 %d" % int(c.trophies), false, c.id))
 	if res.list.is_empty():
 		clan_list.add_child(ui.label("No clans match that." if q != "" else "No clans yet. Start the first one!", 22))
 
@@ -631,7 +631,7 @@ func _render_clan() -> void:
 	var n: Label = ui.label("%s [%s]" % [c.name, c.tag], 30)
 	n.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	info.add_child(n)
-	var s: Label = ui.label("🏆 %d · %d/%d members" % [int(c.trophies), int(c.members), CLAN_SIZE], 18, Color.WHITE, 5, ui.font_m)
+	var s: Label = ui.label(I18n.t("🏆 %d · %d/%d members") % [int(c.trophies), int(c.members), CLAN_SIZE], 18, Color.WHITE, 5, ui.font_m)
 	s.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	info.add_child(s)
 	clan_head.add_child(info)

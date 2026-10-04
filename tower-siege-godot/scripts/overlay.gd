@@ -20,6 +20,7 @@ func _process(_dt: float) -> void:
 
 
 func outlined(text: String, pos: Vector2, size: int, fill: Color, stroke: Color) -> void:
+	text = tr(text)
 	var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
 	var p := pos + Vector2(-w / 2, size * 0.35)
 	draw_string_outline(font, p, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, maxi(3, int(size * 0.24)), stroke)

@@ -373,7 +373,7 @@ func start_pvp(kind: String, seed_value: int) -> void:
 		_early.clear()
 	main.clear_pointers()
 	main.ui.show_screen("")
-	main.ui.start_hud("2 Players" if kind == "duo" else "Practice" if kind == "practice" else "vs " + str(opp.get("name", "Player")), false)
+	main.ui.start_hud("2 Players" if kind == "duo" else "Practice" if kind == "practice" else tr("vs %s") % str(opp.get("name", "Player")), false)
 	main.set_hint("Blue plays from the bottom, red from the top. Drag from your own buildings!" if kind == "duo"
 		else "PvP: take every enemy building, or have the bigger army when the 3 minutes are up", 8.0)
 	main.music.play_track("boss")

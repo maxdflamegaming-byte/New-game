@@ -96,7 +96,7 @@ static func missions(save: Dictionary, day := today()) -> Array:
 static func mission_text(m: Dictionary) -> String:
 	for d in MISSIONS:
 		if d.id == m.id:
-			return d.text % m.goal if d.text.contains("%d") else d.text
+			return I18n.t(d.text) % m.goal if d.text.contains("%d") else I18n.t(d.text)
 	return m.id
 
 

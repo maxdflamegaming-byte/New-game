@@ -71,6 +71,8 @@ var shells := []
 
 func _ready() -> void:
 	load_save()
+	I18n.lang = save.lang
+	I18n.setup()
 	sfx = load("res://scripts/sfx.gd").new()
 	sfx.muted = save.muted
 	add_child(sfx)
@@ -110,7 +112,7 @@ func _ready() -> void:
 func default_save() -> Dictionary:
 	var d := {"level": 1, "stars": {}, "coins": 0, "up": {"drill": 0, "boots": 0, "garrison": 0, "armory": 0},
 		"seen": {}, "muted": false, "music": true, "name": "", "trophies": 0, "pvp_wins": 0, "pvp_losses": 0,
-		"pid": "", "token": "", "clan": null, "gfx": "auto", "vibrate": true}
+		"pid": "", "token": "", "clan": null, "gfx": "auto", "vibrate": true, "lang": ""}
 	d.merge(Progress.defaults())
 	return d
 
@@ -175,6 +177,15 @@ func set_gfx(g: String) -> void:
 	apply_gfx()
 
 
+func set_lang(code: String) -> void:
+	save.lang = code
+	write_save()
+	I18n.lang = code
+	I18n.apply()
+	# Text made from numbers and names is built again in the new language
+	ui.show_screen(screen_open)
+
+
 func vibrate(ms: int) -> void:
 	if save.vibrate and not quiet:
 		Input.vibrate_handheld(ms)
@@ -223,7 +234,7 @@ func start_level(n: int) -> void:
 	shake = 0.0
 	hand_shown = data.get("hand", false)
 	charges = {"strike": 1 + save.up.armory if n >= 3 else 0, "rally": 1 + save.up.armory if n >= 6 else 0}
-	_begin(data, "Level %d%s" % [n, "  ·  Boss" if Levels.is_boss(n) else ""], n)
+	_begin(data, tr("Level %d") % n + ("  ·  " + tr("Boss") if Levels.is_boss(n) else ""), n)
 
 
 ## Today's challenge: the same map for everyone, a big prize the first time you win it
@@ -272,7 +283,7 @@ func mission(id: String, n := 1) -> void:
 	if quiet:
 		return
 	for m in Progress.add(save, id, n):
-		ui.toast("Mission done: %s! Collect %d coins in Missions." % [Progress.mission_text(m), int(m.coins)], 3.0)
+		ui.toast(tr("Mission done: %s! Collect %d coins in Missions.") % [Progress.mission_text(m), int(m.coins)], 3.0)
 		play_sound("coin")
 	write_save()
 
@@ -552,7 +563,7 @@ func pointer_up(index: int, pos: Vector2) -> void:
 					hand_shown = false
 					set_hint("")
 			elif res is String and res == "full":
-				ui.toast("This building can hold %d road%s. More soldiers unlock more." % [d.from.max_roads(), "s" if d.from.max_roads() > 1 else ""])
+				ui.toast("This building can hold 1 road. More soldiers unlock more." if d.from.max_roads() == 1 else tr("This building can hold %d roads. More soldiers unlock more.") % d.from.max_roads())
 				play_sound("beep")
 			elif res is String and res == "blocked":
 				ui.toast("A wall is in the way")
@@ -575,7 +586,7 @@ func upgrade_building(t) -> void:
 	elif res == "max":
 		ui.toast("This building has every upgrade")
 	elif res == "soldiers":
-		ui.toast("Needs %d soldiers to upgrade" % (Battle.UPGRADE_COST[t.stars] + 1))
+		ui.toast(tr("Needs %d soldiers to upgrade") % (Battle.UPGRADE_COST[t.stars] + 1))
 		play_sound("beep")
 
 

@@ -5,7 +5,9 @@ The game already has the places where these go:
 - **Google Play Games**: sign-in, a cloud save that brings progress to a new phone, and **leaderboards** (scores sent after every game);
 - a spot for **coin packs** and **Remove ads** in the shop.
 
-All of it is switched **off** (see `godot/scripts/services.gd`). No ad, purchase or sign-in code is in the app yet, so today the only data that leaves the phone is online play (see `SERVER.md`), and the Play Store forms stay simple.
+All of it is switched **off** (see `godot/scripts/services.gd`).
+
+**Tower Siege** (`tower-siege-godot/`) has the same kind of spots, also switched off: a "Watch an ad: double coins" button on the win screen and coin packs on the Upgrades screen (see `tower-siege-godot/scripts/services.gd`). The same AdMob and Play Console steps below apply; each game needs its own ad unit and products. No ad, purchase or sign-in code is in the app yet, so today the only data that leaves the phone is online play (see `SERVER.md`), and the Play Store forms stay simple.
 
 Switching each one on needs an account and some IDs that only you can create. Do the steps below for the parts you want, then send me the IDs (they're not secret, so they're fine to paste in chat). I'll then add Google's plugins, switch the parts on, update the privacy policy and tell you exactly what to change in Play Console.
 
