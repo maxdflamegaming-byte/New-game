@@ -37,6 +37,7 @@ var skip_btn: Button
 var fade_rect: ColorRect
 var tint_rect: ColorRect
 var _banner_tween: Tween
+var safe_top := 0.0              # a camera notch: the top bar grows by this much
 
 
 ## One cut scene playing
@@ -280,6 +281,15 @@ func _fit() -> void:
 	root.size = get_viewport().get_visible_rect().size
 
 
+## Keep the Skip button and the banner below a camera notch (the black bar covers it)
+func fit_safe(top: float) -> void:
+	safe_top = top
+	skip_btn.offset_top = BAR + top + 12
+	banner_root.offset_top = 210 + top
+	if run != null and bar_top.offset_bottom > 0:
+		bar_top.offset_bottom = BAR + top
+
+
 func playing() -> bool:
 	return run != null
 
@@ -376,7 +386,7 @@ func _clear_stage() -> void:
 
 func _bars(show: bool) -> void:
 	var tw := create_tween().set_parallel()
-	tw.tween_property(bar_top, "offset_bottom", BAR if show else 0.0, 0.35).set_trans(Tween.TRANS_CUBIC)
+	tw.tween_property(bar_top, "offset_bottom", BAR + safe_top if show else 0.0, 0.35).set_trans(Tween.TRANS_CUBIC)
 	tw.tween_property(bar_bottom, "offset_top", -BAR if show else 0.0, 0.35).set_trans(Tween.TRANS_CUBIC)
 	if not show:
 		tw.chain().tween_callback(func(): root.visible = run != null)

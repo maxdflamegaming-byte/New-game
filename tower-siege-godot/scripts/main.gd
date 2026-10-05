@@ -63,6 +63,8 @@ var demo_timer := 0.0
 var quiet := false             # the menu's demo battle makes no sound
 var slow_frames := 0
 const GFX := ["low", "medium", "high"]
+var safe_override := Vector2(-1, -1) # tests pretend the phone has a notch (top, bottom)
+var _back_at := -10000              # when the back button was last pressed on the menu
 
 # Input and things the overlay draws
 var drags := {}                # touch index -> {from, side, pos, p, over}
@@ -153,6 +155,70 @@ func write_save() -> void:
 		f.store_string(JSON.stringify(save))
 
 
+# ---------- The phone ----------
+func _notification(what: int) -> void:
+	if cutscene == null:
+		return # not set up yet
+	match what:
+		NOTIFICATION_WM_GO_BACK_REQUEST:
+			go_back()
+		NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_APPLICATION_PAUSED:
+			# A call, the notification shade or another app: the battle waits for you
+			if state == "play" and screen_open == "" and not cutscene.playing():
+				pause()
+			write_save()
+		NOTIFICATION_WM_CLOSE_REQUEST:
+			write_save()
+
+
+## The phone's back button: skip a cut scene, pause or resume a battle, or close the screen
+## that's open (like its Back button would). On the menu, pressing it twice leaves the game.
+func go_back() -> void:
+	if cutscene.playing():
+		cutscene.skip()
+		return
+	if screen_open == "":
+		if state == "play":
+			pause()
+		return
+	if screen_open == "paused":
+		resume()
+		return
+	if screen_open == "menu":
+		if Time.get_ticks_msec() - _back_at < 2500:
+			write_save()
+			get_tree().quit()
+		else:
+			_back_at = Time.get_ticks_msec()
+			ui.toast("Press back again to leave the game")
+		return
+	# The screen's own way out
+	var page: Control = ui.screens.get(screen_open)
+	if page:
+		for text in ["Back", "Cancel", "Got it", "Got it!", "Menu"]:
+			for b in page.find_children("*", "Button", true, false):
+				if b.text == text and b.is_visible_in_tree() and not b.disabled:
+					b.pressed.emit()
+					return
+	if screen_open in ["reward", "win", "lose"]:
+		open_menu()
+
+
+## How much of the screen's top and bottom a camera notch or rounded corners cover, in the
+## game's screen units (the phone's safe area)
+func safe_insets() -> Vector2:
+	if safe_override.x >= 0:
+		return safe_override
+	if not OS.has_feature("mobile"):
+		return Vector2.ZERO
+	var screen := DisplayServer.screen_get_size()
+	var safe := DisplayServer.get_display_safe_area()
+	if screen.y <= 0 or safe.size.y <= 0:
+		return Vector2.ZERO
+	var k := get_viewport().get_visible_rect().size.y / screen.y
+	return Vector2(maxf(0, safe.position.y), maxf(0, screen.y - safe.end.y)) * k
+
+
 # ---------- Layout ----------
 func _layout() -> void:
 	var size := get_viewport().get_visible_rect().size
@@ -160,7 +226,10 @@ func _layout() -> void:
 	landscape = size.x > size.y * 1.05
 	var fw := Levels.FH if landscape else Levels.FW
 	var fh := Levels.FW if landscape else Levels.FH
-	world.layout(size, HUD_TOP, HUD_BOTTOM, fw, fh)
+	var safe := safe_insets()
+	ui.fit_safe(safe.x, safe.y)
+	cutscene.fit_safe(safe.x)
+	world.layout(size, HUD_TOP + safe.x, HUD_BOTTOM + safe.y, fw, fh)
 	if world.soldier_shadows:
 		world.set_quality(world.quality) # the 3D resolution follows the screen size
 	if was != landscape and not battle.towers.is_empty():

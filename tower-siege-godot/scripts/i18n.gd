@@ -48,7 +48,7 @@ static func t(s: String) -> String:
 
 
 ## Adds fonts for letters Fredoka doesn't have: Hindi (Devanagari), Russian (Cyrillic) and
-## Turkish (ğ, ş, İ). The phone's own fonts still come last, for emoji and symbols.
+## Turkish (ğ, ş, İ). The emoji and symbol fonts (ui.gd _font) come after them.
 static func add_fallbacks(bold: Font, medium: Font) -> void:
 	var f := "res://assets/fonts/"
 	var sys: Array = bold.fallbacks

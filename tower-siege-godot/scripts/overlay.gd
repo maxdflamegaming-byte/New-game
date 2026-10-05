@@ -128,7 +128,9 @@ func _drags(w: World, b: Battle) -> void:
 			ok = ok and not b.blocked(a.x, a.y, d.p.x, d.p.y)
 		if d.over != null and d.over != a:
 			end = w.project(d.over.x, d.over.y, 4)
-			ok = b.can_link(a, d.over, d.side) == true
+			# can_link gives true, or the reason it can't ("full", "blocked"...)
+			var can = b.can_link(a, d.over, d.side)
+			ok = can is bool and can
 		var col: Color = main.SIDES[d.side].color if ok else Color("#ff4a3a")
 		draw_line(start, end, Color(1, 1, 1, 0.9), 16, true)
 		# A dashed line that crawls toward the target

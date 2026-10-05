@@ -67,6 +67,8 @@ var looks_lists := {}
 var looks_coins: Label
 var look_pics := {}           # "hat:crown" -> a picture of it (made the first time Looks opens)
 var _making_pics := false
+var safe_top := 0.0               # a camera notch or rounded corners (see main.safe_insets)
+var safe_bottom := 0.0
 
 
 func build() -> void:
@@ -112,12 +114,30 @@ func _fit() -> void:
 	size = get_viewport().get_visible_rect().size
 
 
+## Keep the HUD and the screens clear of a camera notch and the phone's rounded corners
+func fit_safe(top: float, bottom: float) -> void:
+	safe_top = top
+	safe_bottom = bottom
+	var bar: Control = hud.get_child(0)
+	bar.offset_top = 14 + top
+	abilities.offset_bottom = -18 - bottom
+	abilities.offset_top = -122 - bottom
+	hint_panel.offset_bottom = -150 - bottom
+	hint_panel.offset_top = -230 - bottom
+	toast_panel.offset_top = 104 + top
+	for id in screens:
+		var scroll: Control = screens[id].get_child(1)
+		scroll.offset_top = top
+		scroll.offset_bottom = -bottom
+
+
 func _font(path: String) -> Font:
 	var f: FontFile = load(path)
-	# Symbols like ★ and emoji come from the phone's own fonts
-	var fb := SystemFont.new()
-	fb.font_names = PackedStringArray(["Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", "Noto Sans Symbols 2", "DejaVu Sans", "sans-serif"])
-	f.fallbacks = [fb]
+	# Emoji and symbols like ★ come with the game: newer Android phones keep their emoji in a
+	# format Godot can't draw, so the phone's own fonts are only the last resort
+	var sys := SystemFont.new()
+	sys.font_names = PackedStringArray(["sans-serif"])
+	f.fallbacks = [load("res://assets/fonts/Emoji.ttf"), load("res://assets/fonts/Symbols.ttf"), sys]
 	return f
 
 
@@ -569,9 +589,9 @@ func toast(text: String, seconds := 2.2) -> void:
 	if _toast_tween:
 		_toast_tween.kill()
 	_toast_tween = create_tween()
-	toast_panel.offset_top = 70
+	toast_panel.offset_top = 70 + safe_top
 	_toast_tween.tween_property(toast_panel, "modulate:a", 1.0, 0.2)
-	_toast_tween.parallel().tween_property(toast_panel, "offset_top", 104.0, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_toast_tween.parallel().tween_property(toast_panel, "offset_top", 104.0 + safe_top, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_toast_tween.tween_interval(seconds)
 	_toast_tween.tween_property(toast_panel, "modulate:a", 0.0, 0.3)
 
