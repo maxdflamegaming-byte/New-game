@@ -81,6 +81,27 @@ fs.mkdirSync(OUT, { recursive: true });
   guest = await client('Gus', acct, { back: true });
   ok('Coming back too late finds no match', (await guest.wait('resume'))?.ok === false);
 
+  // The phone switched networks: it's back before the server noticed the old connection died
+  host.send({ t: 'find' });
+  await host.wait('waiting');
+  guest.send({ t: 'find' });
+  const m3 = await host.wait('match');
+  await guest.wait('match');
+  const stale = guest;
+  guest = await client('Gus', acct, { back: true });
+  const res3 = await guest.wait('resume');
+  ok('Coming back while the old connection still hangs takes over the match', res3?.ok === true && res3.seed === m3?.seed, JSON.stringify(res3));
+  ok('...the host is told the guest is back', !!(await host.wait('back')));
+  host.send({ t: 'snap', tm: 1, tw: [], k: 1, u: [] });
+  ok("...the host's updates reach the new connection", !!(await guest.wait('snap')));
+  await sleep(300);
+  ok('...and the old connection is closed', stale.ws.readyState >= WebSocket.CLOSING);
+  guest.send({ t: 'leave' });
+  await host.wait('result');
+  await sleep(200);
+  host.got = [];
+  guest.got = [];
+
   // A fresh start (the app was closed) while a match waits: that match is lost straight away
   host.send({ t: 'find' });
   await host.wait('waiting');

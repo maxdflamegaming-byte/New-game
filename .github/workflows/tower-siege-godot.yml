@@ -1,5 +1,6 @@
 # Checks the Godot version of Tower Siege (tower-siege-godot/) on every push that changes it:
-# the battle rules, the game flow (touch input, winning, saving), the server on its own, and
+# the battle rules, the game flow (touch input, winning, saving), a play-through the way a
+# phone runs it (screen shape, notch, touch, back button, with drawing), the server on its own, and
 # online matches between Godot players on the real server (tower-siege/server), including
 # dropped connections.
 # When the workflow is run by hand from the Actions tab ("Run workflow"), it also builds the
@@ -62,6 +63,14 @@ jobs:
           timeout 300 "$HOME/godot" --headless --path tower-siege-godot -s tests/flow.gd 2>&1 | tee flow.log
           grep -q "FLOW DONE 0 failed" flow.log
           ! grep -q "SCRIPT ERROR" sim.log flow.log
+
+      - name: Play it like a phone (screen shape, notch, touch, back button), with drawing on
+        run: |
+          # The headless tests above draw nothing, so errors in drawing code only show here
+          sudo apt-get install -y -qq xvfb > /dev/null 2>&1 || true
+          timeout 600 xvfb-run -a -s "-screen 0 1280x1920x24" "$HOME/godot" --path tower-siege-godot --rendering-driver opengl3 -s tests/phone.gd 2>&1 | tee phone.log
+          grep -q "PHONE DONE 0 failed" phone.log
+          ! grep -q "SCRIPT ERROR" phone.log
 
       - name: Online matches between Godot players on the server, with dropped connections
         run: |

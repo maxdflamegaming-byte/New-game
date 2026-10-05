@@ -135,7 +135,7 @@ const T := {
 	"Draw!": "Seri!",
 	"Disconnected": "Terputus",
 	"Defeat": "Kalah",
-	"The connection to the server was lost. No trophies were lost.": "Koneksi ke server terputus. Tidak ada trofi yang hilang.",
+	"The connection to the server was lost, so the match counts as a loss.": "Koneksi ke server terputus, jadi pertandingan ini dihitung kalah.",
 	"Every enemy building taken!": "Semua bangunan musuh direbut!",
 	"🏆 %s%d   (%d total)": "🏆 %s%d   (total %d)",
 	"%s league": "Liga %s",
@@ -308,4 +308,5 @@ const T := {
 	"Story scenes: on": "Adegan cerita: nyala",
 	"Story scenes: off": "Adegan cerita: mati",
 	"🎬 Watch the story again": "🎬 Tonton ceritanya lagi",
+	"Press back again to leave the game": "Tekan kembali sekali lagi untuk keluar dari game",
 }

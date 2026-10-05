@@ -130,12 +130,17 @@ func _row(left: Control, middle: String, sub: String, right: String, me := false
 	h.add_child(v)
 	h.add_child(ui.label(right, 24, UI.INK, 0))
 	p.add_child(h)
+	# Rows let a finger drag scroll the list; a tap on a clan's row (not a drag) opens it
+	p.mouse_filter = Control.MOUSE_FILTER_PASS
 	if data != "":
 		p.set_meta("clan", data)
-		p.mouse_filter = Control.MOUSE_FILTER_STOP
+		var down := [Vector2.ZERO]
 		p.gui_input.connect(func(ev):
-			if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
-				show_clan(data))
+			if ev is InputEventMouseButton and ev.button_index == MOUSE_BUTTON_LEFT:
+				if ev.pressed:
+					down[0] = ev.global_position
+				elif ev.global_position.distance_to(down[0]) < 20:
+					show_clan(data))
 	return p
 
 
@@ -162,12 +167,17 @@ func _build_pvp() -> void:
 	var tags: HBoxContainer = ui.hbox(8)
 	tags.alignment = BoxContainer.ALIGNMENT_BEGIN
 	league_l = ui.label("", 16, UI.INK, 0)
+	# Long league and clan names shorten with "…" instead of pushing the card off the screen
+	league_l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	var lp := PanelContainer.new()
 	lp.add_theme_stylebox_override("panel", ui.box(Color("#e0965a"), UI.INK, 10, 2, 0))
 	lp.add_child(league_l)
 	lp.name = "league"
 	tags.add_child(lp)
 	clan_btn = ui.button("No clan yet", "white", 16, func(): open_clans())
+	clan_btn.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	clan_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	clan_btn.custom_minimum_size.x = 90
 	tags.add_child(clan_btn)
 	who.add_child(tags)
 	me.add_child(who)
@@ -330,7 +340,10 @@ func _vs_card(p: Dictionary, side: int) -> Control:
 	a.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	v.add_child(a)
 	var tag: String = p.get("tag", "")
-	v.add_child(ui.label(("[%s] " % tag if tag != "" else "") + str(p.get("name", "Player")), 26))
+	var who: Label = ui.label(("[%s] " % tag if tag != "" else "") + str(p.get("name", "Player")), 26)
+	who.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	who.custom_minimum_size.x = 226
+	v.add_child(who)
 	var tr := int(p.get("trophies", 0))
 	v.add_child(ui.label("🏆 %d · %s" % [tr, I18n.t(Net.league_of(tr).name)], 18, Color.WHITE, 5, ui.font_m))
 	c.add_child(v)
@@ -391,7 +404,7 @@ func show_end(winner: int, why: String) -> void:
 	var color: Color = UI.ORANGE if (winner == 1 or (mode == "duo" and winner != 2)) else UI.RED if mode == "duo" else Color("#9a8cff")
 	end_ribbon.add_theme_stylebox_override("panel", ui.box(color, UI.INK, 14, 3, 5))
 	end_why.text = {"time": "Time's up! The bigger army wins.", "left": "Your opponent left the match.",
-		"lost": "The connection to the server was lost. No trophies were lost."}.get(why,
+		"lost": "The connection to the server was lost, so the match counts as a loss."}.get(why,
 		"Every enemy building taken!" if winner == 1 or mode == "duo" else "Your last building has fallen.")
 	again_btn.text = "Find a new match" if mode == "online" else "Play again"
 	main.ui.hide_hud()
@@ -445,6 +458,8 @@ func open_board() -> void:
 	render_board()
 	board_status.text = "Connecting…"
 	var err: String = await net.go_online(func(s): board_status.text = s)
+	if main.screen_open != "board":
+		return
 	if err != "":
 		board_status.text = "Can't reach the server right now. Try again in a little while." if err == "down" else "This version of the game is too old for the server. Please update it."
 		return
@@ -569,6 +584,8 @@ func open_clans() -> void:
 	clans_status.text = ""
 	# Ask who we are first: a leader may have removed us since
 	await net.request({"t": "whoami"}, ["me"])
+	if main.screen_open != "clans":
+		return # the player went elsewhere while it connected
 	if main.save.clan is Dictionary:
 		await show_clan(main.save.clan.id)
 	else:
@@ -607,9 +624,11 @@ func show_clan(id: String) -> void:
 	if main.screen_open != "clans":
 		ui.show_screen("clans")
 	var res: Dictionary = await net.request({"t": "clan", "id": id}, ["clan"])
+	if main.screen_open != "clans":
+		return
 	if res.t == "clanerr":
 		clans_status.text = res.msg
-		if main.save.clan is Dictionary and main.save.clan.id == id:
+		if net.online and main.save.clan is Dictionary and main.save.clan.id == id and not res.msg.begins_with("The server didn't answer"):
 			main.save.clan = null
 			main.write_save()
 		browse_clans("")

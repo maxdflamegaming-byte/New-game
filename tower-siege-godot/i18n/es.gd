@@ -135,7 +135,7 @@ const T := {
 	"Draw!": "¡Empate!",
 	"Disconnected": "Desconectado",
 	"Defeat": "Derrota",
-	"The connection to the server was lost. No trophies were lost.": "Se perdió la conexión con el servidor. No has perdido trofeos.",
+	"The connection to the server was lost, so the match counts as a loss.": "Se perdió la conexión con el servidor, así que la partida cuenta como derrota.",
 	"Every enemy building taken!": "¡Todos los edificios enemigos conquistados!",
 	"🏆 %s%d   (%d total)": "🏆 %s%d   (%d en total)",
 	"%s league": "Liga %s",
@@ -308,4 +308,5 @@ const T := {
 	"Story scenes: on": "Escenas de historia: sí",
 	"Story scenes: off": "Escenas de historia: no",
 	"🎬 Watch the story again": "🎬 Ver la historia otra vez",
+	"Press back again to leave the game": "Pulsa atrás otra vez para salir del juego",
 }

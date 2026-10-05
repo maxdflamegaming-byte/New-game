@@ -135,7 +135,7 @@ const T := {
 	"Draw!": "Ничья!",
 	"Disconnected": "Нет связи",
 	"Defeat": "Поражение",
-	"The connection to the server was lost. No trophies were lost.": "Связь с сервером потеряна. Трофеи не потеряны.",
+	"The connection to the server was lost, so the match counts as a loss.": "Связь с сервером потеряна, поэтому матч засчитан как поражение.",
 	"Every enemy building taken!": "Все вражеские здания захвачены!",
 	"🏆 %s%d   (%d total)": "🏆 %s%d   (всего %d)",
 	"%s league": "Лига: %s",
@@ -308,4 +308,5 @@ const T := {
 	"Story scenes: on": "Сюжетные сцены: вкл",
 	"Story scenes: off": "Сюжетные сцены: выкл",
 	"🎬 Watch the story again": "🎬 Посмотреть историю снова",
+	"Press back again to leave the game": "Нажмите «назад» ещё раз, чтобы выйти из игры",
 }

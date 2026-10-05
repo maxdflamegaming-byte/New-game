@@ -384,8 +384,17 @@ function hello(ws, msg) {
   if (name && name !== p.name) { p.name = name; savePlayer(p); }
   ws.player = p;
   send(ws, { t: 'welcome', online: wss.clients.size, you: publicPlayer(p), token });
-  if (msg.back) rejoin(ws);
-  else if (away.has(p.id)) forfeit(away.get(p.id).match, away.get(p.id).role); // a fresh start: that match is lost
+  if (msg.back) {
+    // Back after a drop the server hasn't noticed yet (a phone switching from Wi-Fi to mobile
+    // data leaves its old connection hanging): keep that match's place and take it over
+    for (const c of wss.clients) {
+      if (c !== ws && c.player && c.player.id === p.id && c.match && !c.match.done) {
+        hold(c);
+        c.terminate();
+      }
+    }
+    rejoin(ws);
+  } else if (away.has(p.id)) forfeit(away.get(p.id).match, away.get(p.id).role); // a fresh start: that match is lost
 }
 
 // Drop connections that stopped answering
@@ -395,7 +404,7 @@ setInterval(() => {
     ws.alive = false;
     ws.ping();
   }
-}, 30000).unref();
+}, 10000).unref();
 
 setInterval(() => {
   console.log(`[server] ${wss.clients.size} connected, ${queue.length} waiting, ${rooms.size} rooms, ${matches} matches, ${players.size} players, ${clans.size} clans`);

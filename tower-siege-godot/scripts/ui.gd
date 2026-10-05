@@ -93,6 +93,11 @@ func build() -> void:
 	_build_win()
 	_build_lose()
 	_build_toast()
+	for id in screens:
+		_let_drags_scroll(screens[id])
+	get_tree().node_added.connect(func(n: Node):
+		if n is Control and _on_a_screen(n):
+			_let_drags_scroll(n))
 
 
 func _process(dt: float) -> void:
@@ -271,6 +276,8 @@ func panel() -> PanelContainer:
 	p.add_theme_stylebox_override("panel", s)
 	p.custom_minimum_size.x = 600
 	p.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	# A finger dragging on a panel scrolls the screen (a panel would stop the drag otherwise)
+	p.mouse_filter = Control.MOUSE_FILTER_PASS
 	return p
 
 
@@ -294,6 +301,10 @@ func screen(id: String, backdrop := Color(0.43, 0.75, 1.0, 0.55)) -> VBoxContain
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.mouse_filter = Control.MOUSE_FILTER_STOP
 	root.visible = false
+	# Tapping outside a text box closes the phone's keyboard (and saves what was typed)
+	root.gui_input.connect(func(e):
+		if e is InputEventMouseButton and e.pressed:
+			root.get_viewport().gui_release_focus())
 	var bg := ColorRect.new()
 	bg.color = backdrop
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -316,6 +327,26 @@ func screen(id: String, backdrop := Color(0.43, 0.75, 1.0, 0.55)) -> VBoxContain
 	add_child(root)
 	screens[id] = root
 	return col
+
+
+## Buttons and panels on a screen let a finger drag scroll it (by default they'd catch the
+## drag). Taps still press buttons, and a drag that scrolls doesn't press anything.
+func _let_drags_scroll(n: Node) -> void:
+	if n is Control and n.mouse_filter == Control.MOUSE_FILTER_STOP and _on_a_screen(n) \
+			and not (n is LineEdit or n is TextEdit or n is ScrollContainer or n is ScrollBar or n is Slider):
+		n.mouse_filter = Control.MOUSE_FILTER_PASS
+	for c in n.get_children():
+		_let_drags_scroll(c)
+
+
+## Inside a screen's scrolling part (where the scroll container stops a drag going further)
+func _on_a_screen(n: Node) -> bool:
+	var p := n.get_parent()
+	while p != null and p != self:
+		if p is ScrollContainer and p.get_parent() in screens.values():
+			return true
+		p = p.get_parent()
+	return false
 
 
 ## A screen appearing: it fades in and its content springs up from a little smaller

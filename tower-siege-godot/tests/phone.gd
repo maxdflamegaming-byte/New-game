@@ -38,8 +38,9 @@ func _initialize() -> void:
 	headless = DisplayServer.get_name() == "headless"
 	DisplayServer.window_set_size(size)
 	root.size = size
-	# Like Android: no mouse, and the first finger also makes mouse events
-	Input.emulate_touch_from_mouse = false
+	# Like Android: the first finger also makes mouse events, and there is a touchscreen
+	# (Godot counts one when it makes touches from the mouse; lists only drag-scroll then)
+	Input.emulate_touch_from_mouse = true
 	Input.emulate_mouse_from_touch = true
 	DirAccess.remove_absolute(ProjectSettings.globalize_path("user://tower_siege.json"))
 	main = load("res://scenes/main.tscn").instantiate()
@@ -225,6 +226,22 @@ func _run() -> void:
 			await _seconds(0.4)
 		ok("The phone's back button leaves %s" % item[1], back_worked)
 		ok("Back to the menu from %s" % item[1], main.screen_open == "menu", "screen %s" % main.screen_open)
+
+	# ----- A long list scrolls with a finger, even when the drag starts on a button -----
+	var had: int = main.save.level
+	main.save.level = 150
+	await tap(find_button("Levels", ui.screens.menu), "Levels")
+	await _seconds(1.0)
+	var scroll: ScrollContainer = ui.screens.levels.get_child(1)
+	var grid_btn: Control = ui.level_grid.get_child(20)
+	var from := grid_btn.get_global_rect().get_center()
+	await drag(0, from, from - Vector2(0, 500), 10)
+	await _seconds(0.6)
+	ok("A finger drag on the level buttons scrolls the list", scroll.scroll_vertical > 200, "scrolled %d" % scroll.scroll_vertical)
+	ok("...without starting a level", main.screen_open == "levels" and main.state == "menu", "screen %s state %s" % [main.screen_open, main.state])
+	await shot("levels-scrolled")
+	await back_button()
+	main.save.level = had
 
 	# ----- Online with no server -----
 	for item in [["🏆 Leaderboard", "board"], ["🛡 Clans", "clans"], ["⚔ PvP", "pvp"]]:

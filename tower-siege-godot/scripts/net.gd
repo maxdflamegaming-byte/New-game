@@ -67,6 +67,21 @@ func server_url() -> String:
 	return SERVER
 
 
+## The app going to the background: stop searching (you'd be matched while away), and in a
+## match close the connection, so the other player is told right away instead of watching a
+## frozen field. Coming back reconnects (see _on_lost).
+func _notification(what: int) -> void:
+	if what != NOTIFICATION_APPLICATION_PAUSED or main == null:
+		return
+	if main.screen_open == "pvp-wait":
+		cancel_find()
+		if ws != null:
+			ws.poll()
+	elif main.mode == "online" and not pvp.is_empty() and not pvp.over and ws != null:
+		ws.close()
+		ws.poll()
+
+
 func is_guest() -> bool:
 	return main != null and main.mode == "online" and role == "guest"
 
@@ -97,18 +112,45 @@ func _process(_dt: float) -> void:
 			_on_lost()
 
 
-## Connect and say hello. A free server may be asleep, so keep trying for up to a minute.
-## Returns "" when connected, or why not ("down", "old").
+## Is the server there at all? One quick look at its web page, because a WebSocket can't
+## tell a missing server from a sleeping one: "up", "asleep" (slow to answer: a free server
+## waking up) or "down" (no internet, or no server at that address).
+func probe() -> String:
+	var http := HTTPRequest.new()
+	http.timeout = 6.0
+	add_child(http)
+	var url := server_url().replace("wss://", "https://").replace("ws://", "http://")
+	if http.request(url) != OK:
+		http.queue_free()
+		return "down"
+	var res: Array = await http.request_completed
+	http.queue_free()
+	var result: int = res[0]
+	var code: int = res[1]
+	if result == HTTPRequest.RESULT_SUCCESS and code >= 200 and code < 300:
+		return "up"
+	if result == HTTPRequest.RESULT_TIMEOUT or code in [502, 503, 504]:
+		return "asleep"
+	return "down"
+
+
+## Connect and say hello. A free server may be asleep, so keep trying for up to a minute;
+## if it isn't there at all, say so right away. Returns "" when connected, or why not
+## ("down", "old").
 func go_online(status: Callable = Callable(), max_ms := 60000) -> String:
 	if main.save.name == "":
 		main.save.name = "Commander%d" % (100 + randi() % 900)
 		main.write_save()
 	if online and ws != null:
 		return ""
+	if ws == null and await probe() == "down":
+		return "down"
 	var started := Time.get_ticks_msec()
 	while true:
 		if ws == null:
 			ws = WebSocketPeer.new()
+			# Notice a dead connection in seconds (a phone switching networks) instead of never
+			ws.heartbeat_interval = 2.0
 			_was_open = false
 			if ws.connect_to_url(server_url()) != OK:
 				ws = null
@@ -151,6 +193,8 @@ func send(msg: Dictionary) -> void:
 ## Send a message and wait for the server's answer (one of `types`). Returns the answer, or
 ## {"t": "clanerr", "msg": ...} for an error or no answer.
 func request(msg: Dictionary, types: Array) -> Dictionary:
+	if not online:
+		return {"t": "clanerr", "msg": "Can't reach the server right now. Try again in a little while."}
 	var w := {"types": types + ["clanerr"], "reply": null}
 	_waiters.append(w)
 	send(msg)
@@ -304,6 +348,8 @@ func find_match(room := "") -> void:
 	var err: String = await go_online(func(s): screens.wait_text(s))
 	if err != "":
 		_searching = false
+		if main.screen_open != "pvp-wait":
+			return # cancelled, or playing something else by now
 		screens.open_pvp("This version of the game is too old for the server. Please update it." if err == "old"
 			else "Can't reach the PvP server right now. Try 2 players on one phone, or practice against a bot.")
 		return
@@ -373,6 +419,9 @@ func start_pvp(kind: String, seed_value: int) -> void:
 		for m in _early:
 			_apply_cmd(m)
 		_early.clear()
+	# The connection dropped while the VS card showed: the server keeps our place, go back in
+	if kind == "online" and not online:
+		_reconnect()
 	main.clear_pointers()
 	main.ui.show_screen("")
 	main.ui.start_hud("2 Players" if kind == "duo" else "Practice" if kind == "practice" else tr("vs %s") % str(opp.get("name", "Player")), false)

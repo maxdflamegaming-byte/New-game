@@ -135,7 +135,7 @@ const T := {
 	"Draw!": "ड्रॉ!",
 	"Disconnected": "कनेक्शन टूटा",
 	"Defeat": "हार",
-	"The connection to the server was lost. No trophies were lost.": "सर्वर से कनेक्शन टूट गया। कोई ट्रॉफ़ी नहीं गई।",
+	"The connection to the server was lost, so the match counts as a loss.": "सर्वर से कनेक्शन टूट गया, इसलिए यह मैच हार माना जाएगा।",
 	"Every enemy building taken!": "दुश्मन की हर इमारत पर कब्ज़ा!",
 	"🏆 %s%d   (%d total)": "🏆 %s%d   (कुल %d)",
 	"%s league": "%s लीग",
@@ -308,4 +308,5 @@ const T := {
 	"Story scenes: on": "कहानी के दृश्य: चालू",
 	"Story scenes: off": "कहानी के दृश्य: बंद",
 	"🎬 Watch the story again": "🎬 कहानी फिर से देखें",
+	"Press back again to leave the game": "गेम से बाहर निकलने के लिए फिर से बैक दबाएँ",
 }

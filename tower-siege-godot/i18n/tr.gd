@@ -135,7 +135,7 @@ const T := {
 	"Draw!": "Berabere!",
 	"Disconnected": "Bağlantı koptu",
 	"Defeat": "Yenilgi",
-	"The connection to the server was lost. No trophies were lost.": "Sunucuyla bağlantı koptu. Hiç kupa kaybetmedin.",
+	"The connection to the server was lost, so the match counts as a loss.": "Sunucuyla bağlantı koptu, bu yüzden maç yenilgi sayılır.",
 	"Every enemy building taken!": "Tüm düşman binaları alındı!",
 	"🏆 %s%d   (%d total)": "🏆 %s%d   (toplam %d)",
 	"%s league": "%s ligi",
@@ -308,4 +308,5 @@ const T := {
 	"Story scenes: on": "Hikâye sahneleri: açık",
 	"Story scenes: off": "Hikâye sahneleri: kapalı",
 	"🎬 Watch the story again": "🎬 Hikâyeyi yeniden izle",
+	"Press back again to leave the game": "Oyundan çıkmak için tekrar geri tuşuna basın",
 }
