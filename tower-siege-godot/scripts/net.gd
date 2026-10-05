@@ -317,9 +317,11 @@ func _reconnect() -> void:
 	pvp.wait_left = RECONNECT_TIME
 	main.clear_pointers()
 	_back = true
+	var match := pvp
 	var err: String = await go_online(Callable(), int(RECONNECT_TIME * 1000))
 	_back = false
-	if err != "" and not pvp.is_empty() and not pvp.over and pvp.paused == "self":
+	# Only if we're still in that match (the player may have left it, or be in a level by now)
+	if err != "" and is_same(pvp, match) and main.mode == "online" and not pvp.over and pvp.paused == "self":
 		finish(-1, "lost")
 
 
@@ -372,6 +374,8 @@ func cancel_find() -> void:
 func leave() -> void:
 	send({"t": "leave"})
 	role = ""
+	if not pvp.is_empty():
+		pvp.over = true # for us it's over: nothing that was still waiting may end it later
 
 
 func open_pvp() -> void:
@@ -701,6 +705,8 @@ func check_end() -> void:
 
 ## winner: 1 = us online (or blue on one phone), 2 = them / red, 0 = a draw, -1 = no result
 func finish(winner: int, why: String) -> void:
+	if pvp.is_empty() or main.mode == "campaign":
+		return # a PvP result never ends a campaign level
 	pvp.over = true
 	main.mission("pvp")
 	main.mission("beat", main.battle.stats.killed)
@@ -715,4 +721,7 @@ func finish(winner: int, why: String) -> void:
 		for t in main.battle.towers:
 			if t.owner == winner:
 				main.world.capture(t.x, t.y, winner)
-	get_tree().create_timer(1.1).timeout.connect(func(): screens.show_end(winner, why))
+	var match := pvp
+	get_tree().create_timer(1.1).timeout.connect(func():
+		if is_same(pvp, match) and main.state == "over" and main.mode != "campaign":
+			screens.show_end(winner, why))
