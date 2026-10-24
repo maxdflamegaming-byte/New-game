@@ -95,27 +95,53 @@ func _upgrade_offer() -> void:
 		outlined(str(Battle.UPGRADE_COST[t.stars]), btn.c + Vector2(0, r * 0.5), int(r * 0.5), Color.WHITE, ink)
 
 
-# The number on a roof, and dots for its roads (white = free, faded = in use)
+# A building's badge: a rounded pill in its army's colour with the number of soldiers, gold
+# stars for its upgrades, and dots for its roads (white = free, faded = in use)
 func _label(t, w: World) -> void:
 	var s := w.tower_screen(t)
 	# The number swells when soldiers arrive or the building changes hands
-	var size := int(clampf(w.px_per_unit(t.x, t.y) * 46, 16, 40) * (1.0 + t.pop * 0.12))
+	var size := int(clampf(w.px_per_unit(t.x, t.y) * 50, 18, 42) * (1.0 + t.pop * 0.14))
 	var n := floori(maxf(0, t.units))
 	var text := "Max" if n >= Battle.CAP else str(n)
 	if t.type == "factory":
 		text = "⇡" + text
-	var y: float = s.top_y - size * 0.55
-	var dark: Color = main.SIDES[t.owner].dark
-	outlined(text, Vector2(s.top_x, y), size, Color.WHITE, dark)
-	# Upgrades: a gold star for each
+	var tw := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+	var bh := size * 1.18
+	var bw := maxf(tw + size * 0.75, bh * 1.25)
+	var cy: float = s.top_y - bh * 0.5
+	var r := Rect2(s.top_x - bw / 2, cy - bh / 2, bw, bh)
+	var side: Dictionary = main.SIDES[t.owner]
+	draw_style_box(_badge(t.owner), r)
+	var p := Vector2(s.top_x - tw / 2, cy + size * 0.36)
+	draw_string_outline(font, p, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, maxi(2, int(size * 0.16)), side.dark)
+	draw_string(font, p, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color.WHITE)
+	# Upgrades: a gold star for each, above the badge
 	if t.stars > 0:
-		outlined("★".repeat(t.stars), Vector2(s.top_x, y - size * 0.95), int(size * 0.6), Color("#ffd23f"), Color("#9a5b00"))
+		outlined("★".repeat(t.stars), Vector2(s.top_x, r.position.y - size * 0.4), int(size * 0.62), Color("#ffd23f"), Color("#9a5b00"))
 	var m: int = t.max_roads()
-	var dr := maxf(3.0, size * 0.17)
+	var dr := maxf(3.0, size * 0.15)
 	for i in m:
-		var c := Vector2(s.top_x + (i - (m - 1) / 2.0) * dr * 2.9, y + size * 0.72)
-		draw_circle(c, dr + 1.5, dark)
+		var c := Vector2(s.top_x + (i - (m - 1) / 2.0) * dr * 2.9, r.end.y + dr + 3)
+		draw_circle(c, dr + 1.5, side.dark)
 		draw_circle(c, dr, Color.WHITE if i < m - t.roads.size() else Color(1, 1, 1, 0.35))
+
+
+var _badges := {}
+
+
+func _badge(owner: int) -> StyleBoxFlat:
+	if not _badges.has(owner):
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = (main.SIDES[owner].color as Color).darkened(0.06)
+		sb.border_color = Color.WHITE
+		sb.set_border_width_all(3)
+		sb.set_corner_radius_all(64)
+		sb.shadow_color = Color(0.05, 0.1, 0.25, 0.3)
+		sb.shadow_offset = Vector2(0, 3)
+		sb.shadow_size = 2
+		sb.anti_aliasing = true
+		_badges[owner] = sb
+	return _badges[owner]
 
 
 func _drags(w: World, b: Battle) -> void:

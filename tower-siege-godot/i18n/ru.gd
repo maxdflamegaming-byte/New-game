@@ -309,4 +309,5 @@ const T := {
 	"Story scenes: off": "Сюжетные сцены: выкл",
 	"🎬 Watch the story again": "🎬 Посмотреть историю снова",
 	"Press back again to leave the game": "Нажмите «назад» ещё раз, чтобы выйти из игры",
+	"Daily": "Ежедневно",
 }

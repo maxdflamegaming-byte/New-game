@@ -214,7 +214,7 @@ func _run() -> void:
 	clear_of_notch(ui.menu_coins.get_parent(), "The coins")
 
 	# ----- Every menu screen, and back -----
-	for item in [["levels", "Levels"], ["shop", "Upgrades"], ["missions", "🎁 Missions"], ["looks", "🎨 Looks"], ["settings", "⚙ Settings"], ["help", "?"]]:
+	for item in [["levels", "Levels"], ["shop", "Upgrades"], ["missions", "Missions"], ["looks", "Looks"], ["settings", "Settings"], ["help", "How to play"]]:
 		await tap(find_button(item[1], ui.screens.menu), item[1])
 		await _seconds(0.6)
 		ok("%s opens" % item[1], main.screen_open == item[0], "screen %s" % main.screen_open)
@@ -244,7 +244,7 @@ func _run() -> void:
 	main.save.level = had
 
 	# ----- Online with no server -----
-	for item in [["🏆 Leaderboard", "board"], ["🛡 Clans", "clans"], ["⚔ PvP", "pvp"]]:
+	for item in [["Leaderboard", "board"], ["Clans", "clans"], ["⚔ PvP", "pvp"]]:
 		await tap(find_button(item[0], ui.screens.menu), item[0])
 		await _seconds(6.0)
 		await shot(item[1] + "-no-server")

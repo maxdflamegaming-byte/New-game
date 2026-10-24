@@ -1,7 +1,8 @@
 class_name World
 extends Node3D
-## The 3D look of Tower Siege: a high camera, bright cartoon colors, stacked towers in army
-## colors, chibi soldiers and tanks. Every model is built in code from simple shapes
+## The 3D look of Tower Siege: a high camera over a clean, bright battlefield (scenery only
+## around its edge), round castle towers that grow with every level, toy soldiers marching
+## three abreast, tanks, and roads with chevrons that flow toward their target. Every model is built in code from simple shapes
 ## (see mesh_kit.gd), so there are no model or texture files. It draws a Battle; it doesn't
 ## change it. Field (x, y) is (x, 0, y) here.
 
@@ -10,11 +11,12 @@ const MAX_SOLDIERS := 1200
 const MAX_TANKS := 240
 const MAX_BITS := 220
 
+## Each land: the board's colour, the ground around it, and the scenery that stands there
 const THEMES := {
-	"grass": {"ground": "#5fbf36", "field": "#6fcd3e", "spot": "#53ad2d", "sky": "#bfe9ff", "props": "pine", "wall": "hedge", "flowers": true},
-	"desert": {"ground": "#f2be5c", "field": "#f8cf7c", "spot": "#e3ab4c", "sky": "#ffeccc", "props": "cactus", "wall": "crate", "cracks": true},
-	"snow": {"ground": "#bfe2f8", "field": "#a6d8f6", "spot": "#8ec9ee", "sky": "#e8f7ff", "props": "snowpine", "wall": "ice"},
-	"beach": {"ground": "#3fcbec", "field": "#fbdc95", "spot": "#efc574", "sky": "#c9f1ff", "props": "palm", "wall": "toy", "water": true},
+	"grass": {"ground": "#4a9d31", "field": "#66b843", "spot": "#3f8c2a", "sky": "#bfe9ff", "props": "tree", "wall": "hedge"},
+	"desert": {"ground": "#d29a45", "field": "#d6ab62", "spot": "#c48b3c", "sky": "#ffeccc", "props": "cactus", "wall": "crate", "cracks": true},
+	"snow": {"ground": "#9fc6e3", "field": "#a9c9e6", "spot": "#8db7d8", "sky": "#e8f7ff", "props": "snowpine", "wall": "ice"},
+	"beach": {"ground": "#3fcbec", "field": "#e2bd78", "spot": "#e3b866", "sky": "#c9f1ff", "props": "palm", "wall": "toy", "water": true},
 }
 const BRIGHT := ["#ff5a5a", "#ffb92e", "#4fc3ff", "#7bdc4a", "#ff7ad1", "#9b7bff"]
 
@@ -58,6 +60,8 @@ var time := 0.0
 var cam_base := Transform3D()  # where the battle camera sits (set by layout)
 var cam_free := false          # a cut scene is moving the camera
 var drift := false             # on the menu the camera slowly circles the field
+var focus := Rect2()           # the part of the field the camera frames: where the buildings are
+var _hud := Vector2(92, 130)   # the space the HUD takes at the top and bottom (from layout)
 const MAX_HELMETS := 60
 
 
@@ -110,15 +114,20 @@ func glow_material(c: Color) -> ShaderMaterial:
 
 # ---------- Camera ----------
 ## A high, tilted camera, moved until the whole field fits between the HUD bars
+## It frames the buildings in play (focus) rather than the whole field, so a small map comes
+## up close and big buildings and soldiers fill the screen.
 func layout(size: Vector2, top: float, bottom: float, field_w: float, field_h: float) -> void:
 	view_size = size
+	_hud = Vector2(top, bottom)
 	fw = field_w
 	fh = field_h
 	var pitch := 1.0
-	var target := Vector3(fw / 2, 0, fh / 2)
+	var f := focus if focus.has_area() else Rect2(0, 0, fw, fh)
+	var target := Vector3(f.get_center().x, 0, f.get_center().y)
 	var d := 2400.0
 	var pad := 6.0
-	var corners := [Vector3(-20, 120, -40), Vector3(fw + 20, 120, -40), Vector3(-20, 0, fh + 30), Vector3(fw + 20, 0, fh + 30)]
+	var corners := [Vector3(f.position.x - 20, 120, f.position.y - 40), Vector3(f.end.x + 20, 120, f.position.y - 40),
+		Vector3(f.position.x - 20, 0, f.end.y + 30), Vector3(f.end.x + 20, 0, f.end.y + 30)]
 	var was := camera.transform
 	for i in 40:
 		camera.position = target + Vector3(0, sin(pitch) * d, cos(pitch) * d)
@@ -138,7 +147,7 @@ func layout(size: Vector2, top: float, bottom: float, field_w: float, field_h: f
 		var k := maxf((x1 - x0) / avail_w, (y1 - y0) / avail_h)
 		d *= pow(k, 0.85)
 		var want_y := top + pad + avail_h / 2
-		target.z += ((y0 + y1) / 2 - want_y) * (fh / maxf(1, y1 - y0)) * 0.6
+		target.z += ((y0 + y1) / 2 - want_y) * (f.size.y / maxf(1, y1 - y0)) * 0.6
 	cam_base = camera.transform
 	if cam_free:
 		camera.transform = was
@@ -216,59 +225,31 @@ func build(seed_value: int, theme_name: String, battle: Battle) -> void:
 	g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	level_root.add_child(g)
 
-	# Props around the field, and the walls that block roads
-	var props := {"pine": [], "snowpine": [], "cactus": [], "palm": [], "flower": [], "rock": [], "barrel": [], "crate": [], "tire": [], "w_crate": [], "w_ice": [], "w_hedge": [], "w_toy": []}
-	var avoid := func(x: float, z: float, d: float) -> bool:
-		for t in battle.towers:
-			if Battle.dist(t.x, t.y, x, z) < d:
-				return true
-		return false
-	for i in 260:
+	# Scenery: only outside the board, so the battlefield stays clean and easy to read.
+	# A ring of trees close to the edge frames it; a few more stand further out.
+	var props := {"tree": [], "pine": [], "snowpine": [], "cactus": [], "palm": [], "bush": [], "rock": [], "w_crate": [], "w_ice": [], "w_hedge": [], "w_toy": []}
+	for i in 150:
 		var side := rng.randi_range(0, 3)
-		var out := 60 + rng.randf() * 260
+		var out := 95 + pow(rng.randf(), 1.6) * 300
 		var x := 0.0
 		var z := 0.0
 		if side == 0:
-			x = -200 + rng.randf() * (fw + 400)
+			x = -260 + rng.randf() * (fw + 520)
 			z = -out
 		elif side == 1:
-			x = -200 + rng.randf() * (fw + 400)
+			x = -260 + rng.randf() * (fw + 520)
 			z = fh + out
 		elif side == 2:
 			x = -out
-			z = -200 + rng.randf() * (fh + 400)
+			z = -260 + rng.randf() * (fh + 520)
 		else:
 			x = fw + out
-			z = -200 + rng.randf() * (fh + 400)
+			z = -260 + rng.randf() * (fh + 520)
 		if th.get("water", false) and (x < -110 or x > fw + 110 or z < -110 or z > fh + 110):
 			continue # that's the sea
 		var k := rng.randf()
-		var kind: String = th.props if k < 0.6 else "rock" if k < 0.7 else "barrel" if k < 0.8 else "crate" if k < 0.9 else ("flower" if th.get("flowers", false) else "tire")
-		props[kind].append([x, z, 0.8 + rng.randf() * 0.7, rng.randf() * TAU, rng.randf()])
-	for i in 40:
-		var edge := rng.randi_range(0, 3)
-		var inset := 15 + rng.randf() * 30
-		var x := rng.randf() * fw
-		var z := rng.randf() * fh
-		if edge == 0:
-			z = inset
-		elif edge == 1:
-			z = fh - inset
-		elif edge == 2:
-			x = inset
-		else:
-			x = fw - inset
-		if avoid.call(x, z, 160):
-			continue
-		props[th.props].append([x, z, 0.7 + rng.randf() * 0.4, rng.randf() * TAU, rng.randf()])
-	if th.get("flowers", false):
-		for i in 26:
-			var cx := rng.randf() * fw
-			var cz := rng.randf() * fh
-			if avoid.call(cx, cz, 110) or battle.rocks.any(func(w): return Battle.dist(w.x, w.y, cx, cz) < w.r + 30):
-				continue
-			for j in 4:
-				props.flower.append([cx + (rng.randf() - 0.5) * 36, cz + (rng.randf() - 0.5) * 36, 1 + rng.randf() * 0.4, rng.randf() * TAU, rng.randf()])
+		var kind: String = th.props if k < 0.68 else ("bush" if th.props == "tree" or th.props == "palm" else th.props) if k < 0.88 else "rock"
+		props[kind].append([x, z, 0.85 + rng.randf() * 0.55, rng.randf() * TAU, rng.randf()])
 	for w in battle.rocks:
 		var n := maxi(2, roundi(w.r / 18))
 		for i in n:
@@ -278,6 +259,23 @@ func build(seed_value: int, theme_name: String, battle: Battle) -> void:
 	_add_props(props)
 	for t in battle.towers:
 		_sync_tower(t)
+	# Frame the buildings: their spread plus room for the buildings themselves, at least 640
+	# wide so a tiny map doesn't come up huge, never more than the whole field
+	if not battle.towers.is_empty():
+		var x0 := INF
+		var x1 := -INF
+		var y0 := INF
+		var y1 := -INF
+		for t in battle.towers:
+			x0 = minf(x0, t.x)
+			x1 = maxf(x1, t.x)
+			y0 = minf(y0, t.y)
+			y1 = maxf(y1, t.y)
+		var r := Rect2(x0 - 130, y0 - 150, x1 - x0 + 260, y1 - y0 + 280)
+		if r.size.x < 640:
+			r = r.grow_individual((640 - r.size.x) / 2, 0, (640 - r.size.x) / 2, 0)
+		focus = r.intersection(Rect2(-60, -80, fw + 120, fh + 160))
+		layout(view_size, _hud.x, _hud.y, fw, fh)
 
 
 func _instanced(m: Mesh, list: Array, color_fn := Callable(), shadow := true, sway := 0.0) -> void:
@@ -305,17 +303,26 @@ func _instanced(m: Mesh, list: Array, color_fn := Callable(), shadow := true, sw
 func _add_props(P: Dictionary) -> void:
 	var T := MeshKit.TEAM
 	var trunk := Color("#b07a48")
+	# Round trees: a trunk and a cluster of soft green balls
+	var tree := MeshKit.new().cyl(3.5, 4.8, 18, 7, Vector3(0, 9, 0), trunk)
+	tree.sphere(19, Vector3(0, 33, 0), T, Vector3(1, 0.92, 1), false, 10, 6)
+	tree.sphere(13, Vector3(11, 27, 5), T, Vector3.ONE, false, 9, 5).sphere(12, Vector3(-10, 29, -6), T, Vector3.ONE, false, 9, 5)
+	_instanced(tree.mesh(), P.tree, func(c): return Color.from_hsv(0.29 + c * 0.05, 0.62, 0.66 + c * 0.12), true, 0.5)
 	# Pine trees, plain or with snow on top
 	for kind in ["pine", "snowpine"]:
 		var k := MeshKit.new().cyl(3, 4, 10, 6, Vector3(0, 5, 0), trunk)
 		k.cone(17, 22, 8, Vector3(0, 18, 0), T).cone(14, 19, 8, Vector3(0, 30, 0), T).cone(10, 16, 8, Vector3(0, 41, 0), T)
 		if kind == "snowpine":
 			k.cone(9, 9, 8, Vector3(0, 46, 0), Color.WHITE).cone(14, 5, 8, Vector3(0, 32, 0), Color.WHITE)
-		_instanced(k.mesh(), P[kind], func(c): return Color.from_hsv(0.3 + c * 0.06, 0.6, 0.62 + c * 0.12), true, 0.8)
+		_instanced(k.mesh(), P[kind], func(c): return Color.from_hsv(0.3 + c * 0.06, 0.55, 0.6 + c * 0.12), true, 0.8)
+	# Bushes
+	var bush := MeshKit.new().sphere(12, Vector3(0, 7, 0), T, Vector3(1.15, 0.75, 1.15), false, 9, 5)
+	bush.sphere(8.5, Vector3(10, 5, 4), T, Vector3(1, 0.8, 1), false, 8, 4).sphere(8, Vector3(-9, 5, -3), T, Vector3(1, 0.8, 1), false, 8, 4)
+	_instanced(bush.mesh(), P.bush, func(c): return Color.from_hsv(0.28 + c * 0.05, 0.6, 0.62 + c * 0.1), true, 0.4)
 	# Cacti
 	_instanced(MeshKit.new().cyl(5, 5.5, 34, 8, Vector3(0, 17, 0), T).sphere(5, Vector3(0, 34, 0), T, Vector3.ONE, true)
 		.cyl(3.5, 3.5, 12, 6, Vector3(9, 20, 0), T).cyl(3.5, 3.5, 6, 6, Vector3(6, 15, 0), T, Basis(Vector3.BACK, PI / 2)).mesh(),
-		P.cactus, func(c): return Color.from_hsv(0.3, 0.6, 0.75 + c * 0.1), true, 0.15)
+		P.cactus, func(c): return Color.from_hsv(0.3, 0.55, 0.72 + c * 0.1), true, 0.15)
 	# Palm trees: a leaning trunk, a crown of leaves and coconuts
 	var palm := MeshKit.new()
 	for i in 5:
@@ -327,24 +334,15 @@ func _add_props(P: Dictionary) -> void:
 	for p in [Vector3(6, 47, 2), Vector3(10, 47, -2), Vector3(8, 46, 3)]:
 		palm.sphere(2.6, p, Color("#8a5a32"))
 	_instanced(palm.mesh(), P.palm, func(c): return Color.from_hsv(0.3, 0.7, 0.7 + c * 0.1), true, 0.7)
-	# Flowers: a stem and a bright head
-	_instanced(MeshKit.new().cyl(0.7, 0.7, 8, 4, Vector3(0, 4, 0), Color("#62c94a")).sphere(3.2, Vector3(0, 9, 0), T, Vector3(1, 0.6, 1)).mesh(),
-		P.flower, func(c): return Color(BRIGHT[int(c * BRIGHT.size()) % BRIGHT.size()]), false, 3.0)
 	# Rocks
 	_instanced(MeshKit.new().sphere(14, Vector3(0, 6, 0), T, Vector3(1, 0.7, 1), false, 7, 4).mesh(), P.rock, func(c): return Color.from_hsv(0.6, 0.06, 0.78 + c * 0.12))
-	# Barrels in bright colors, crates and old tires
-	_instanced(MeshKit.new().cyl(7, 7, 16, 12, Vector3(0, 8, 0), T).cyl(7.5, 7.5, 1.8, 12, Vector3(0, 4, 0), MeshKit.DARK).cyl(7.5, 7.5, 1.8, 12, Vector3(0, 12, 0), MeshKit.DARK).mesh(),
-		P.barrel, func(c): return Color(BRIGHT[int(c * BRIGHT.size()) % BRIGHT.size()]))
-	_instanced(MeshKit.new().box(18, 18, 18, Vector3(0, 9, 0), T).mesh(), P.crate, func(c): return Color.from_hsv(0.08, 0.6, 0.78 + c * 0.1))
-	var tire := TorusMesh.new()
-	tire.inner_radius = 4.5
-	tire.outer_radius = 11.5
-	_instanced(MeshKit.new().add(tire, Transform3D(Basis(), Vector3(0, 3.5, 0)), Color("#4a5066")).mesh(), P.tire)
 	# Wall pieces: crates, ice blocks, hedges or toy blocks, depending on the map
 	_instanced(MeshKit.new().box(24, 22, 24, Vector3(0, 11, 0), T).box(25, 2.5, 4, Vector3(0, 11, 12.2), MeshKit.DARK).box(25, 2.5, 4, Vector3(0, 11, -12.2), MeshKit.DARK)
 		.box(4, 2.5, 25, Vector3(12.2, 11, 0), MeshKit.DARK).box(4, 2.5, 25, Vector3(-12.2, 11, 0), MeshKit.DARK).mesh(), P.w_crate, func(c): return Color.from_hsv(0.08, 0.62, 0.8 + c * 0.1))
 	_instanced(MeshKit.new().box(25, 20, 25, Vector3(0, 10, 0), T).box(26, 3, 26, Vector3(0, 21.5, 0), Color("#f2fbff")).mesh(), P.w_ice, func(c): return Color.from_hsv(0.55, 0.45, 0.95 + c * 0.05))
-	_instanced(MeshKit.new().sphere(15, Vector3(0, 12, 0), T, Vector3(1.1, 0.95, 1.1), false, 8, 5).mesh(), P.w_hedge, func(c): return Color.from_hsv(0.3, 0.65, 0.62 + c * 0.1))
+	# On grass the walls are piles of big boulders
+	_instanced(MeshKit.new().sphere(17, Vector3(0, 9, 0), T, Vector3(1.1, 0.8, 1), false, 9, 5).sphere(10, Vector3(11, 6, 7), T, Vector3(1, 0.8, 1), false, 8, 4).mesh(),
+		P.w_hedge, func(c): return Color.from_hsv(0.08, 0.1, 0.72 + c * 0.12))
 	var toy := MeshKit.new().box(24, 22, 24, Vector3(0, 11, 0), T)
 	for p in [Vector3(-6, 24, -6), Vector3(6, 24, -6), Vector3(-6, 24, 6), Vector3(6, 24, 6)]:
 		toy.cyl(4, 4, 4, 10, p, T)
@@ -365,43 +363,66 @@ func _build_model(t, lv: int) -> Dictionary:
 	var SH := Color("#cfdaea")
 	var DK := Color("#46506b")
 	var METAL := Color("#8792a6")
-	if t.type == "barracks" or t.type == "fort":
-		# A stack of hexagonal floors, one more for every level, with a colored cap
-		var fort: bool = t.type == "fort"
-		var R := 40.0 if fort else 34.0
-		k.hex(R + 6, R + 8, 8, Vector3(0, 4, 0), SH)
-		k.hex(R + 6.6, R + 6.6, 3, Vector3(0, 7, 0), MeshKit.TEAM)
-		var y := 8.0
-		var r := R
-		var floors := 1 + ceili(lv / 2.0) if fort else lv + 1
-		for i in floors:
-			var h := 15.0 if fort else 14.0
-			k.hex(r - 1.5, r, h, Vector3(0, y + h / 2, 0), W)
-			k.hex(r + 0.6, r + 0.6, 3.5, Vector3(0, y + h - 2, 0), MeshKit.TEAM)
-			# Window slits on the front faces
-			var fz := (r - 1) * cos(PI / 6)
-			k.box(r * 0.75, 3, 2, Vector3(0, y + 6.5, fz), DK)
-			for s in [-1, 1]:
-				k.box(r * 0.55, 3, 2, Basis(Vector3.UP, s * PI / 3) * Vector3(0, 0, fz) + Vector3(0, y + 6.5, 0), DK, s * PI / 3)
-			y += h
-			r -= 1.0 if fort else 2.0
-		if fort:
-			# Bunker: thick armor plates and a gun on each side
-			for i in 6:
-				var a := i * PI / 3 + PI / 6
-				k.box(10, y - 6, 6, Vector3(sin(a) * (R + 2), (y + 4) / 2, cos(a) * (R + 2)), SH, a)
-			for i in lv:
-				var a := i * TAU / lv + 0.4
-				var b := Basis(Vector3.UP, a) * Basis(Vector3.RIGHT, PI / 2)
-				k.cyl(2.4, 2.8, 16, 6, Basis(Vector3.UP, a) * Vector3(0, 0, r + 8) + Vector3(0, y - 8, 0), METAL, b)
-		# The cap: the army's color, where the number sits
-		k.hex(r + 3, r + 3, 6, Vector3(0, y + 3, 0), MeshKit.DARK)
-		k.hex(r - 0.5, r + 3, 5, Vector3(0, y + 8.5, 0), MeshKit.TEAM)
-		var front := (R + 0.5) * cos(PI / 6)
-		k.box(12, 14, 2, Vector3(0, 15, front + 1), DK)
-		k.box(15, 2.5, 3, Vector3(0, 23, front + 1.2), SH)
-		info.flag_at = Vector3(0, y + 11, 0)
-		info.top = y + 11
+	var STONE := Color("#f3eee4")
+	if t.type == "barracks":
+		# A round castle tower: a stone base with the army's trim, a body that gets taller and
+		# wider with every level, a gallery with battlements and a pointed roof in army colours
+		var R := 25.0 + lv * 2.5
+		var h := 14.0 + lv * 11.0
+		k.cyl(R + 9, R + 11, 6, 28, Vector3(0, 3, 0), SH)
+		k.cyl(R + 9.6, R + 9.6, 2.2, 28, Vector3(0, 6.6, 0), MeshKit.TEAM)
+		k.cyl(R, R + 2.5, h, 28, Vector3(0, 6 + h / 2, 0), STONE)
+		# Stone courses
+		var y := 17.0
+		while y < 6 + h - 4:
+			var r_at := R + 2.5 - 2.5 * (y - 6) / h
+			k.cyl(r_at + 0.6, r_at + 0.6, 1.3, 28, Vector3(0, y, 0), SH)
+			y += 11.0
+		# An arched door facing the camera, and window slits up the tower
+		k.box(11, 12, 4, Vector3(0, 12, R + 1.2), DK)
+		k.cyl(5.5, 5.5, 4, 14, Vector3(0, 18, R + 1.2), DK, Basis(Vector3.RIGHT, PI / 2))
+		for f in lv:
+			var wy := 30.0 + f * 11.0
+			if wy > 6 + h - 7:
+				break
+			for a in [-0.75, 0.75]:
+				var r_at := R + 2.5 - 2.5 * (wy - 6) / h
+				k.box(3, 6, 3, Vector3(sin(a) * r_at, wy, cos(a) * r_at), DK, a)
+		var top := 6.0 + h
+		k.cyl(R + 5.5, R + 1, 5, 28, Vector3(0, top + 2.5, 0), SH)
+		k.cyl(R + 5.5, R + 5.5, 3, 28, Vector3(0, top + 6.5, 0), MeshKit.TEAM)
+		var n_m := 10 + lv * 2
+		for i in n_m:
+			var a := i * TAU / n_m
+			k.box(6, 7, 4.5, Vector3(sin(a) * (R + 3.6), top + 11.5, cos(a) * (R + 3.6)), STONE, a)
+		var rh := 20.0 + lv * 3.0
+		k.cone(R + 1.5, rh, 28, Vector3(0, top + 8 + rh / 2, 0), MeshKit.TEAM)
+		k.cyl(R + 2, R + 2, 2.2, 28, Vector3(0, top + 9, 0), MeshKit.DARK)
+		info.flag_at = Vector3(0, top + 8 + rh - 1, 0)
+		info.top = top + 8 + rh + 4
+	elif t.type == "fort":
+		# Bunker: a squat round fortress with thick buttresses, battlements and a gun dome
+		var R := 36.0 + lv * 2.0
+		var h := 16.0 + lv * 4.0
+		k.cyl(R + 8, R + 11, 6, 28, Vector3(0, 3, 0), SH)
+		k.cyl(R + 8.6, R + 8.6, 2.2, 28, Vector3(0, 6.6, 0), MeshKit.TEAM)
+		k.cyl(R, R + 3, h, 28, Vector3(0, 6 + h / 2, 0), STONE)
+		for i in 8:
+			var a := i * TAU / 8 + PI / 8
+			k.box(9, h + 2, 9, Vector3(sin(a) * (R + 2.5), 6 + h / 2 + 1, cos(a) * (R + 2.5)), SH, a)
+		k.box(13, 11, 4, Vector3(0, 11.5, R + 2.6), DK)
+		var top := 6.0 + h
+		k.cyl(R + 3, R + 3, 4, 28, Vector3(0, top + 2, 0), MeshKit.TEAM)
+		for i in 16:
+			var a := i * TAU / 16
+			k.box(7, 6, 5, Vector3(sin(a) * (R + 0.5), top + 7, cos(a) * (R + 0.5)), STONE, a)
+		k.sphere(R * 0.52, Vector3(0, top + 3, 0), MeshKit.TEAM, Vector3(1, 0.75, 1), true, 20, 6)
+		for i in lv:
+			var a := i * TAU / lv + 0.4
+			var b := Basis(Vector3.UP, a) * Basis(Vector3.RIGHT, PI / 2)
+			k.cyl(2.4, 2.8, 18, 8, Basis(Vector3.UP, a) * Vector3(0, 0, R * 0.5 + 6) + Vector3(0, top + 8, 0), METAL, b)
+		info.flag_at = Vector3(0, top + 3 + R * 0.39, 0)
+		info.top = top + 3 + R * 0.39 + 6
 	elif t.type == "factory":
 		# Tank factory: a hall with a big garage door and smoking chimneys
 		var h := 26.0 + lv * 2
@@ -632,9 +653,9 @@ func _make_units() -> void:
 	soldiers_me.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	# Soldiers' shadows come from a few plain boxes in the same places, which is much cheaper
 	var sh := MeshKit.new()
-	sh.box(9, 16, 6.5, Vector3(0, 12, 0), Color.WHITE)
-	sh.box(12, 9, 11, Vector3(0, 22, 0), Color.WHITE)
-	sh.box(8, 6, 3.4, Vector3(0, 3, 0), Color.WHITE)
+	sh.box(12, 11, 7, Vector3(0, 12, 0), Color.WHITE)
+	sh.box(9, 9, 9, Vector3(0, 21, 0), Color.WHITE)
+	sh.box(8, 7, 3.4, Vector3(0, 3.5, 0), Color.WHITE)
 	soldier_shadows = _unit_mm(sh.mesh(), MAX_SOLDIERS, false)
 	soldier_shadows.material_override = StandardMaterial3D.new()
 	soldier_shadows.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
@@ -647,46 +668,50 @@ func _make_units() -> void:
 	tanks = _unit_mm(tk.mesh(), MAX_TANKS, false)
 
 
-## Chibi soldier: a big head, a hat, a small body in the army's color, marching legs
+## A toy soldier: a tunic and arms in the army's colour, a belt, a rifle on the shoulder,
+## marching legs and a hat (a helmet, or the hat picked under Looks)
 func _soldier_mesh(hat: String) -> ArrayMesh:
 	var T := MeshKit.TEAM
 	var k := MeshKit.new()
-	k.box(9, 9, 6.5, Vector3(0, 11.5, 0), T)
-	k.box(9.4, 1.8, 6.9, Vector3(0, 9, 0), Color.WHITE)
-	k.sphere(5.6, Vector3(0, 21, 0.4), Color("#ffd3a8"), Vector3.ONE, false, 8, 4)
-	k.box(1.6, 1.8, 0.6, Vector3(-2, 20.6, 5.7), Color("#27304a"))
-	k.box(1.6, 1.8, 0.6, Vector3(2, 20.6, 5.7), Color("#27304a"))
-	k.box(2, 2.4, 15, Vector3(5.8, 12, 3), Color("#46506b"))
-	k.box(3.4, 7, 3.4, Vector3(-2.4, 3.5, 0), Color("#5a6278"), 0.0, Vector2(1, 7))
-	k.box(3.4, 7, 3.4, Vector3(2.4, 3.5, 0), Color("#5a6278"), 0.0, Vector2(2, 7))
+	var trousers := Color("#3b4766")
+	k.box(3.3, 7.5, 3.5, Vector3(-2.1, 3.75, 0), trousers, 0.0, Vector2(1, 7.5))
+	k.box(3.3, 7.5, 3.5, Vector3(2.1, 3.75, 0), trousers, 0.0, Vector2(2, 7.5))
+	# Kept under 300 triangles: there can be a thousand of them on screen
+	k.cyl(4.1, 4.8, 10, 8, Vector3(0, 12.4, 0), T, Basis(Vector3.UP, PI / 8))
+	k.box(9.6, 1.6, 7.4, Vector3(0, 8.8, 0), Color("#2b3350"))
+	k.box(2.5, 8, 2.8, Vector3(-5.4, 12, 0.4), T).box(2.5, 8, 2.8, Vector3(5.4, 12, 0.4), T)
+	k.box(1.7, 1.9, 17, Vector3(6.6, 15.5, 2.5), Color("#4a3a2e"))
+	k.sphere(4.5, Vector3(0, 20.6, 0.2), Color("#ffd3a8"), Vector3.ONE, false, 8, 4)
+	k.box(1.2, 1.5, 0.6, Vector3(-1.6, 20.6, 4.5), Color("#27304a"))
+	k.box(1.2, 1.5, 0.6, Vector3(1.6, 20.6, 4.5), Color("#27304a"))
 	var gold := Color("#ffd23f")
 	match hat:
 		"beret":
-			k.sphere(6.6, Vector3(0.8, 25.2, -0.4), MeshKit.DARK, Vector3(1, 0.32, 1), false, 8, 3)
-			k.box(1.4, 1.6, 1.4, Vector3(0.8, 27.4, -0.4), MeshKit.DARK)
+			k.sphere(5.4, Vector3(0.7, 24.2, -0.3), MeshKit.DARK, Vector3(1, 0.32, 1), false, 10, 3)
+			k.box(1.2, 1.4, 1.2, Vector3(0.7, 26, -0.3), MeshKit.DARK)
 		"cap":
-			k.sphere(6.1, Vector3(0, 22.6, 0), T, Vector3(1, 0.8, 1), true, 8, 3)
-			k.box(9, 1, 6, Vector3(0, 23, 6.4), MeshKit.LIGHT)
+			k.sphere(4.9, Vector3(0, 22, 0), T, Vector3(1, 0.85, 1), true, 10, 3)
+			k.box(7.5, 0.9, 5, Vector3(0, 22.3, 5.2), MeshKit.LIGHT)
 		"viking":
-			k.sphere(6.3, Vector3(0, 22.4, 0), Color("#b4bdcc"), Vector3(1, 0.85, 1), true, 8, 3)
-			k.box(13, 1.6, 1.6, Vector3(0, 23, 0), gold)
-			for s in [-1, 1]:
-				k.cone(1.8, 9, 6, Vector3(s * 8.6, 27, 0), Color("#fff4dc"), Basis(Vector3.BACK, -s * 0.9))
+			k.sphere(5.1, Vector3(0, 21.8, 0), Color("#b4bdcc"), Vector3(1, 0.9, 1), true, 10, 3)
+			k.box(10.6, 1.4, 1.4, Vector3(0, 22.3, 0), gold)
+			for sd in [-1, 1]:
+				k.cone(1.5, 7.5, 6, Vector3(sd * 7, 25.6, 0), Color("#fff4dc"), Basis(Vector3.BACK, -sd * 0.9))
 		"crown":
-			k.sphere(6.3, Vector3(0, 22.2, 0), MeshKit.LIGHT, Vector3(1, 0.7, 1), true, 8, 3)
-			k.cyl(4.6, 4.6, 3, 8, Vector3(0, 27.4, 0), gold)
+			k.sphere(5.0, Vector3(0, 21.6, 0), MeshKit.LIGHT, Vector3(1, 0.7, 1), true, 10, 3)
+			k.cyl(3.8, 3.8, 2.6, 10, Vector3(0, 25.6, 0), gold)
 			for i in 5:
 				var a := i * TAU / 5
-				k.cone(1.4, 3.6, 4, Vector3(sin(a) * 4, 30.6, cos(a) * 4), gold)
-			k.sphere(1.2, Vector3(0, 27.4, 4.7), Color("#ff5257"), Vector3.ONE, false, 6, 3)
+				k.cone(1.2, 3, 4, Vector3(sin(a) * 3.3, 28.3, cos(a) * 3.3), gold)
+			k.sphere(1, Vector3(0, 25.6, 3.9), Color("#ff5257"), Vector3.ONE, false, 6, 3)
 		"party":
-			k.cone(5, 13, 8, Vector3(0, 30.5, 0), T)
-			k.cyl(5.2, 5.2, 1.4, 8, Vector3(0, 24.4, 0), gold)
-			k.sphere(1.8, Vector3(0, 37.6, 0), gold, Vector3.ONE, false, 6, 3)
+			k.cone(4.2, 11, 10, Vector3(0, 29, 0), T)
+			k.cyl(4.4, 4.4, 1.2, 10, Vector3(0, 23.8, 0), gold)
+			k.sphere(1.5, Vector3(0, 35, 0), gold, Vector3.ONE, false, 6, 3)
 		_:
-			# The standard helmet
-			k.sphere(6.4, Vector3(0, 22.2, 0), MeshKit.LIGHT, Vector3(1, 0.85, 1), true, 8, 3)
-			k.cyl(7.2, 7.2, 1.4, 8, Vector3(0, 22.4, 0), MeshKit.DARK, Basis(Vector3.UP, PI / 8))
+			# The standard helmet, in a darker shade of the army's colour
+			k.sphere(5.2, Vector3(0, 21.6, 0), MeshKit.DARK, Vector3(1, 0.88, 1), true, 8, 3)
+			k.cyl(5.9, 5.9, 1.2, 6, Vector3(0, 21.8, 0), MeshKit.DARK)
 	return k.mesh()
 
 
@@ -846,6 +871,11 @@ func _draw_units(units: Array) -> void:
 		var k_in := clampf((u.d - u.from.radius() * 0.5) / 28.0, 0.0, 1.0)
 		var k_out := clampf((L - u.to.radius() * 0.5 - u.d) / 22.0, 0.0, 1.0)
 		var pop := (0.35 + 0.65 * k_in + 0.25 * sin(k_in * PI)) * (0.4 + 0.6 * k_out)
+		# They march three abreast, closing up as they leave and reach a building (looks only:
+		# the battle still has them on the road's line)
+		var side_off := (float(u.id % 3) - 1.0) * 10.0 * minf(k_in, k_out) / maxf(L, 1.0)
+		var ux: float = u.x - dz * side_off
+		var uz: float = u.y + dx * side_off
 		if u.power > 1:
 			if k >= MAX_TANKS:
 				continue
@@ -855,7 +885,7 @@ func _draw_units(units: Array) -> void:
 		else:
 			if s + me >= MAX_SOLDIERS:
 				continue
-			var xf := Transform3D(Basis(Vector3.UP, ang).scaled(Vector3.ONE * 1.75 * S * pop), Vector3(u.x, 0, u.y))
+			var xf := Transform3D(Basis(Vector3.UP, ang).scaled(Vector3.ONE * 1.9 * S * pop), Vector3(ux, 0, uz))
 			var cd := Color(team.r, team.g, team.b, fmod(u.id * 0.137, 1.0))
 			if shadows:
 				shm.set_instance_transform(s + me, xf)
@@ -1471,7 +1501,8 @@ func _apply_camera(dt: float) -> void:
 	if cam_free:
 		return
 	if drift:
-		var c := Vector3(fw / 2, 0, fh / 2)
+		var fc := focus.get_center() if focus.has_area() else Vector2(fw / 2, fh / 2)
+		var c := Vector3(fc.x, 0, fc.y)
 		var a := sin(time * 0.12) * 0.08
 		var xf := cam_base
 		xf.origin = c + (xf.origin - c).rotated(Vector3.UP, a) + Vector3(0, sin(time * 0.21) * 24, 0)
@@ -1481,23 +1512,22 @@ func _apply_camera(dt: float) -> void:
 		camera.transform = cam_base
 
 
-## Graphics quality. Low: the 3D drawn at about 640 pixels across and scaled up, hard shadows
-## from buildings only, no smoothing. Medium: about 900 pixels across, soft shadows, soldiers'
-## shadows, smoothing. High: the screen's full resolution and the softest shadows.
-## The HUD and labels are always drawn at full resolution.
+## Graphics quality. The 3D is always drawn at the screen's full resolution with smooth edges:
+## drawn smaller and scaled up, it looked blurry and jagged on phones. What the lower settings
+## save is the extra work: Low has lighter smoothing and hard shadows from buildings only;
+## Medium adds soldiers' shadows and soft shadows; High the softest shadows.
 func set_quality(q: int) -> void:
 	quality = clampi(q, 0, 2)
 	var vp := get_viewport()
-	var short := float(mini(vp.size.x, vp.size.y))
-	var target: float = [640.0, 900.0, 100000.0][quality]
 	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
-	vp.scaling_3d_scale = clampf(target / maxf(short, 1.0), 0.5, 1.0)
-	vp.msaa_3d = Viewport.MSAA_DISABLED if quality == 0 else Viewport.MSAA_2X
+	vp.scaling_3d_scale = 1.0
+	vp.msaa_3d = Viewport.MSAA_2X if quality == 0 else Viewport.MSAA_4X
 	sun.shadow_blur = [0.0, 1.0, 1.5][quality]
 	RenderingServer.directional_shadow_atlas_set_size(1024 if quality == 0 else 2048, true)
 	soldier_shadows.visible = quality > 0
+	# Cloud shadows looked like dirty patches on the clean board, so they stay off
 	for c in clouds:
-		c.visible = quality > 0
+		c.visible = false
 
 
 func lower_quality() -> bool:

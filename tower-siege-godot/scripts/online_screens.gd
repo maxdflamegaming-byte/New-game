@@ -422,7 +422,7 @@ func show_trophy_change() -> void:
 		if d == null:
 			end_trophies.text = "🏆 …"
 		else:
-			end_trophies.text = I18n.t("🏆 %s%d   (%d total)") % ["+" if d >= 0 else "", d, int(main.save.trophies)] + ("   ● +20" if d > 0 else "")
+			end_trophies.text = I18n.t("🏆 %s%d   (%d total)") % ["+" if d >= 0 else "", d, int(main.save.trophies)] + ("   🪙 +20" if d > 0 else "")
 	end_league.text = I18n.t("%s league") % I18n.t(Net.league_of(int(main.save.trophies)).name) if main.mode == "online" else "Practice matches don't change your trophies" if main.mode == "practice" else ""
 
 

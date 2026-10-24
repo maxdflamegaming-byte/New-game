@@ -87,6 +87,10 @@ func _run() -> void:
 		await _frames(5)
 		main.show_lose()
 		await _frames(20)
+	elif what == "menu":
+		main.reward_shown_day = Progress.today()
+		main.open_menu()
+		await _frames(60)
 	else:
 		await _frames(60)
 	var img := root.get_texture().get_image()

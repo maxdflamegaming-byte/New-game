@@ -1,5 +1,6 @@
-// The ground: the battlefield (a rounded rectangle, a little brighter), soft patches and
-// speckles so it isn't flat, and on the beach map the sea, white foam and a sandy shore.
+// The ground: a clean, bright battlefield (a rounded "board" with soft mowed stripes and a
+// tidy edge) on darker ground where the scenery stands. On the beach map the sea, white foam
+// and a sandy shore go around it instead.
 shader_type spatial;
 render_mode cull_back;
 
@@ -31,21 +32,22 @@ void vertex() {
 
 void fragment() {
 	vec2 w = world.xz;
-	float d = round_box(w - field_center, field_half + 50.0, 70.0);
-	vec3 c = mix(field, ground, smoothstep(-30.0, 40.0, d));
-	// Soft patches, lighter and darker
-	float n = noise(w / 170.0) * 0.6 + noise(w / 55.0) * 0.4;
-	c = mix(c, spot, smoothstep(0.55, 0.85, n) * 0.55);
-	c = mix(c, c * 1.12 + 0.03, smoothstep(0.62, 0.9, 1.0 - n) * 0.35);
-	// Speckles (grass tufts, pebbles)
-	vec2 cell = floor(w / 9.0);
-	float h = hash(cell);
-	float round_dot = 1.0 - smoothstep(0.25, 0.42, length(fract(w / 9.0) - 0.5));
-	if (h > 0.97) c = mix(c, spot * 0.82, 0.55 * round_dot);
-	else if (h < 0.012) c = mix(c, c * 1.18 + 0.04, 0.6 * round_dot);
+	float d = round_box(w - field_center, field_half + 40.0, 90.0);
+	// The board: wide soft stripes, like a freshly mowed lawn (or raked sand, or packed snow)
+	float stripe = smoothstep(0.35, 0.65, abs(fract(w.y / 220.0) * 2.0 - 1.0));
+	vec3 board = mix(field, field * 0.955, stripe);
+	// Very gentle large patches, so it isn't perfectly flat
+	board = mix(board, board * 1.04, smoothstep(0.55, 0.9, noise(w / 260.0)) * 0.6);
+	// Around the board: darker ground with soft patches
+	float n = noise(w / 150.0) * 0.6 + noise(w / 60.0) * 0.4;
+	vec3 outside = mix(ground, spot, smoothstep(0.5, 0.85, n) * 0.6);
+	vec3 c = mix(board, outside, smoothstep(-2.0, 2.0, d));
+	// The board's edge: a soft shadow line and a bright rim, so it reads as a tidy playing field
+	c = mix(c, c * 0.82, (1.0 - smoothstep(0.0, 14.0, d)) * smoothstep(-2.0, 1.0, d) * 0.9);
+	c = mix(c, c * 1.1 + 0.04, (1.0 - smoothstep(-10.0, -2.0, d)) * smoothstep(-18.0, -10.0, d) * 0.7);
 	if (cracks) {
 		float k = abs(noise(w / 40.0) - 0.5);
-		c = mix(c, spot * 0.8, (1.0 - smoothstep(0.0, 0.015, k)) * 0.5 * step(0.5, noise(w / 300.0 + 3.0)));
+		c = mix(c, spot * 0.85, (1.0 - smoothstep(0.0, 0.012, k)) * 0.35 * step(0.55, noise(w / 300.0 + 3.0)) * step(0.0, d));
 	}
 	if (water) {
 		// Beyond the shore: the sea with little waves, then foam, then sand

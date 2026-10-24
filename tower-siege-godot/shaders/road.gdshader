@@ -1,5 +1,5 @@
-// A road: a see-through strip in the army's color with bright edges and white dots that
-// march toward the target. UV.x goes across the road, UV.y along it (in steps of 30 units).
+// A road: a soft lane in the army's colour with white edges, and chevrons that flow toward the
+// building it leads to. UV.x goes across the road, UV.y along it (in steps of 30 units).
 shader_type spatial;
 render_mode unshaded, cull_disabled, depth_draw_never, blend_mix;
 
@@ -8,10 +8,11 @@ uniform float grow = 1.0;
 
 void fragment() {
 	float across = abs(UV.x * 2.0 - 1.0);
-	vec2 g = vec2(UV.x - 0.5, (fract(UV.y - TIME * 1.4) - 0.5) * 0.42);
-	float dot_ = 1.0 - smoothstep(0.1, 0.13, length(g));
-	vec3 c = mix(color, vec3(1.0), dot_ * 0.95);
-	float a = mix(0.6, 0.95, step(0.84, across));
+	// Chevrons pointing along the road (their middle leads), drifting forward
+	float f = fract(UV.y * 0.42 - across * 0.32 - TIME * 0.9);
+	float chevron = smoothstep(0.0, 0.06, f) * (1.0 - smoothstep(0.2, 0.26, f)) * (1.0 - smoothstep(0.62, 0.7, across));
+	float edge = smoothstep(0.8, 0.86, across) * (1.0 - smoothstep(0.96, 1.0, across));
+	vec3 c = mix(color, vec3(1.0), max(chevron * 0.85, edge * 0.9));
 	ALBEDO = c;
-	ALPHA = max(a, dot_);
+	ALPHA = clamp(0.5 + chevron * 0.4 + edge * 0.45, 0.0, 0.95) * (1.0 - smoothstep(0.97, 1.0, across));
 }

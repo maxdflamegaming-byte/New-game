@@ -309,4 +309,5 @@ const T := {
 	"Story scenes: off": "Hikâye sahneleri: kapalı",
 	"🎬 Watch the story again": "🎬 Hikâyeyi yeniden izle",
 	"Press back again to leave the game": "Oyundan çıkmak için tekrar geri tuşuna basın",
+	"Daily": "Günlük",
 }

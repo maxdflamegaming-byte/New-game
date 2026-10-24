@@ -354,7 +354,7 @@ func _cutscenes() -> void:
 func _graphics() -> void:
 	# Graphics settings
 	main.set_gfx("low")
-	ok("Low graphics: no smoothing, no soldier shadows", main.world.quality == 0 and not main.world.soldier_shadows.visible and get_root().msaa_3d == Viewport.MSAA_DISABLED)
+	ok("Low graphics: full resolution with light smoothing, no soldier shadows", main.world.quality == 0 and not main.world.soldier_shadows.visible and get_root().msaa_3d == Viewport.MSAA_2X and is_equal_approx(get_root().scaling_3d_scale, 1.0))
 	main.set_gfx("high")
 	ok("High graphics: full resolution", main.world.quality == 2 and is_equal_approx(get_root().scaling_3d_scale, 1.0) and main.world.soldier_shadows.visible)
 	main.set_gfx("auto")

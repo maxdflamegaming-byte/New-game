@@ -309,4 +309,5 @@ const T := {
 	"Story scenes: off": "Adegan cerita: mati",
 	"🎬 Watch the story again": "🎬 Tonton ceritanya lagi",
 	"Press back again to leave the game": "Tekan kembali sekali lagi untuk keluar dari game",
+	"Daily": "Harian",
 }

@@ -309,4 +309,5 @@ const T := {
 	"Story scenes: off": "Escenas de historia: no",
 	"🎬 Watch the story again": "🎬 Ver la historia otra vez",
 	"Press back again to leave the game": "Pulsa atrás otra vez para salir del juego",
+	"Daily": "Diario",
 }

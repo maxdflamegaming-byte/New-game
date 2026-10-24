@@ -147,15 +147,19 @@ func _font(path: String) -> Font:
 
 
 # ---------- Style ----------
+## A plain rounded box (rows, cards, badges): a thin outline in a darker shade of its colour
+## (or the one given) and a soft shadow under it
 func box(bg: Color, border := INK, radius := 18, width := 3, shadow := 4) -> StyleBoxFlat:
 	var s := StyleBoxFlat.new()
 	s.bg_color = bg
-	s.border_color = border
-	s.set_border_width_all(width)
+	s.border_color = bg.darkened(0.32) if border == INK else border
+	s.set_border_width_all(mini(width, 2) if border == INK else width)
+	s.border_width_bottom = s.border_width_top + (2 if shadow > 0 else 0)
 	s.set_corner_radius_all(radius)
-	s.shadow_color = border
-	s.shadow_offset = Vector2(0, shadow)
-	s.shadow_size = 0
+	s.shadow_color = Color(0.04, 0.1, 0.28, 0.25 if shadow > 0 else 0.0)
+	s.shadow_offset = Vector2(0, mini(shadow, 3))
+	s.shadow_size = 4 if shadow > 0 else 0
+	s.anti_aliasing = true
 	s.content_margin_left = 16
 	s.content_margin_right = 16
 	s.content_margin_top = 8
@@ -169,14 +173,14 @@ func _make_theme() -> Theme:
 	t.default_font_size = 26
 	t.set_color("font_color", "Label", WHITE)
 	t.set_color("font_outline_color", "Label", INK)
-	t.set_constant("outline_size", "Label", 8)
+	t.set_constant("outline_size", "Label", 7)
 	t.set_color("font_color", "Button", WHITE)
 	t.set_color("font_hover_color", "Button", WHITE)
 	t.set_color("font_pressed_color", "Button", WHITE)
 	t.set_color("font_disabled_color", "Button", Color(1, 1, 1, 0.6))
 	t.set_color("font_outline_color", "Button", INK)
-	t.set_constant("outline_size", "Button", 8)
-	_button_style(t, "Button", PANEL_LIGHT)
+	t.set_constant("outline_size", "Button", 7)
+	_button_style(t, "Button", "blue")
 	t.set_stylebox("normal", "LineEdit", box(WHITE, INK, 14, 3, 0))
 	t.set_stylebox("focus", "LineEdit", box(WHITE, INK, 14, 3, 0))
 	t.set_color("font_color", "LineEdit", INK)
@@ -185,44 +189,39 @@ func _make_theme() -> Theme:
 	return t
 
 
-func _button_style(t: Theme, type: String, bg: Color) -> void:
-	t.set_stylebox("normal", type, box(bg))
-	t.set_stylebox("hover", type, box(bg.lightened(0.1)))
-	var p := box(bg.darkened(0.06))
-	p.shadow_offset = Vector2(0, 1)
-	p.content_margin_top = 11
-	p.content_margin_bottom = 7
-	t.set_stylebox("pressed", type, p)
-	t.set_stylebox("disabled", type, box(Color("#a9c6e8")))
+func _button_style(t: Theme, type: String, color: String) -> void:
+	for state in ["normal", "hover", "pressed", "disabled"]:
+		t.set_stylebox(state, type, UISkin.button(color, state))
 	t.set_stylebox("focus", type, StyleBoxEmpty.new())
+	t.set_color("font_outline_color", type, Color(UISkin.COLORS[color].text))
 
 
 func button(text: String, kind := "blue", size := 26, on_press := Callable()) -> Button:
 	var b := Button.new()
 	b.text = text
 	b.add_theme_font_size_override("font_size", size)
-	var bg: Color = {"blue": PANEL_LIGHT, "yellow": YELLOW, "red": RED, "green": GREEN, "white": WHITE}.get(kind, PANEL_LIGHT)
-	if kind != "blue":
-		b.add_theme_stylebox_override("normal", box(bg))
-		b.add_theme_stylebox_override("hover", box(bg.lightened(0.08)))
-		var p := box(bg.darkened(0.06))
-		p.shadow_offset = Vector2(0, 1)
-		b.add_theme_stylebox_override("pressed", p)
-	if kind == "yellow":
-		b.add_theme_color_override("font_outline_color", Color("#b06a00"))
-	elif kind == "red":
-		b.add_theme_color_override("font_outline_color", Color("#a3202b"))
-	elif kind == "green":
-		b.add_theme_color_override("font_outline_color", Color("#2a7a2a"))
-	elif kind == "white":
-		b.add_theme_color_override("font_color", INK)
-		b.add_theme_constant_override("outline_size", 0)
+	set_kind(b, kind)
 	if on_press.is_valid():
 		b.pressed.connect(func():
 			main.play_sound("tap")
 			on_press.call())
 	squishy(b)
 	return b
+
+
+## A button's colour (UISkin.COLORS): its glossy look in every state and its text outline
+func set_kind(b: Button, kind: String) -> void:
+	if not UISkin.COLORS.has(kind):
+		kind = "blue"
+	for state in ["normal", "hover", "pressed", "disabled"]:
+		b.add_theme_stylebox_override(state, UISkin.button(kind, state))
+	b.add_theme_color_override("font_outline_color", Color(UISkin.COLORS[kind].text))
+	if kind == "white":
+		b.add_theme_color_override("font_color", INK)
+		b.add_theme_color_override("font_hover_color", INK)
+		b.add_theme_color_override("font_pressed_color", INK)
+		b.add_theme_constant_override("outline_size", 0)
+	b.set_meta("kind", kind)
 
 
 ## Pressing squashes a control a little; letting go springs it back
@@ -256,10 +255,17 @@ func wrapped(l: Label, width: float) -> Label:
 	return l
 
 
-func ribbon(text: String, color := ORANGE) -> Control:
+## A screen's title on a glossy banner. color: one of UISkin.COLORS, or one of the UI colours
+func ribbon(text: String, color: Variant = "orange") -> Control:
+	if color is Color:
+		color = {ORANGE: "orange", GREEN: "green", RED: "red", YELLOW: "yellow"}.get(color, "purple")
 	var p := PanelContainer.new()
-	p.add_theme_stylebox_override("panel", box(color, INK, 14, 3, 5))
-	var l := label(text, 44)
+	var sb: StyleBoxTexture = UISkin.button(color).duplicate()
+	sb.content_margin_left = 34
+	sb.content_margin_right = 34
+	p.add_theme_stylebox_override("panel", sb)
+	var l := label(text, 46)
+	l.add_theme_color_override("font_outline_color", Color(UISkin.COLORS[color].text))
 	p.add_child(l)
 	p.rotation_degrees = -1.5
 	p.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -268,12 +274,7 @@ func ribbon(text: String, color := ORANGE) -> Control:
 
 func panel() -> PanelContainer:
 	var p := PanelContainer.new()
-	var s := box(PANEL, INK, 26, 4, 6)
-	s.content_margin_left = 22
-	s.content_margin_right = 22
-	s.content_margin_top = 20
-	s.content_margin_bottom = 24
-	p.add_theme_stylebox_override("panel", s)
+	p.add_theme_stylebox_override("panel", UISkin.panel())
 	p.custom_minimum_size.x = 600
 	p.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	# A finger dragging on a panel scrolls the screen (a panel would stop the drag otherwise)
@@ -492,7 +493,7 @@ func _build_hud() -> void:
 
 func _pill(text: String) -> Label:
 	var p := PanelContainer.new()
-	p.add_theme_stylebox_override("panel", box(PANEL, INK, 16, 3, 0))
+	p.add_theme_stylebox_override("panel", UISkin.pill("blue"))
 	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var l := label(text, 26)
 	p.add_child(l)
@@ -628,53 +629,105 @@ func toast(text: String, seconds := 2.2) -> void:
 
 
 # ---------- Menu ----------
+var menu_badges := {}            # tile id -> its little red badge (Label inside a panel)
+
+
 func _build_menu() -> void:
-	var col := screen("menu", Color(0.55, 0.82, 1.0, 0.25))
+	var col := screen("menu", Color(0.1, 0.25, 0.55, 0.18))
 	var coins_row := hbox()
 	coins_row.alignment = BoxContainer.ALIGNMENT_END
 	menu_coins = _pill("0")
+	menu_coins.add_theme_font_size_override("font_size", 30)
 	coins_row.add_child(menu_coins.get_parent())
 	col.add_child(coins_row)
-	var t1 := label("TOWER", 120, YELLOW, 18)
-	title_labels.append(t1)
-	t1.add_theme_constant_override("line_spacing", -30)
-	var t2 := label("SIEGE", 120, Color("#ff7ad1"), 18)
-	title_labels.append(t2)
-	col.add_child(t1)
-	col.add_child(t2)
-	var tag := PanelContainer.new()
-	tag.add_theme_stylebox_override("panel", box(Color(1, 1, 1, 0.88), Color(INK, 0.4), 18, 0, 4))
-	tag.add_child(wrapped(label("Drag roads between towers, march your army and take every building on the map.", 22, INK, 0, font_m), 560))
-	tag.custom_minimum_size.x = 600
-	col.add_child(tag)
-	col.add_child(spacer(30))
-	play_btn = button("PLAY", "yellow", 52, func(): main.start_level(mini(main.save.level, Levels.LAST_LEVEL)))
-	play_btn.custom_minimum_size = Vector2(440, 110)
+	# The title: big, chunky letters with a deep outline and a drop shadow
+	var title := vbox(0)
+	for part in [["TOWER", YELLOW, Color("#b35a00")], ["SIEGE", Color("#ff6fb5"), Color("#8a1f5a")]]:
+		var t := label(part[0], 128, part[1], 22)
+		t.add_theme_color_override("font_outline_color", part[2])
+		t.add_theme_color_override("font_shadow_color", Color(0.05, 0.1, 0.3, 0.45))
+		t.add_theme_constant_override("shadow_offset_y", 9)
+		t.add_theme_constant_override("shadow_outline_size", 22)
+		t.add_theme_constant_override("line_spacing", -34)
+		title_labels.append(t)
+		title.add_child(t)
+	col.add_child(title)
+	col.add_child(spacer(18))
+	play_btn = button("PLAY", "yellow", 54, func(): main.start_level(mini(main.save.level, Levels.LAST_LEVEL)))
+	play_btn.custom_minimum_size = Vector2(470, 124)
 	play_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	col.add_child(play_btn)
 	var pvp := button("⚔ PvP", "red", 40, func(): main.net.open_pvp())
-	pvp.custom_minimum_size = Vector2(440, 84)
+	pvp.custom_minimum_size = Vector2(470, 92)
 	pvp.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	col.add_child(pvp)
-	var row0 := hbox(10)
-	daily_btn = button("📅 Daily", "green", 24, func(): main.start_daily())
-	missions_btn = button("🎁 Missions", "blue", 24, func(): show_screen("missions"))
-	row0.add_child(daily_btn)
-	row0.add_child(missions_btn)
-	row0.add_child(button("🎨 Looks", "blue", 24, func(): show_screen("looks")))
-	col.add_child(row0)
-	var row := hbox()
-	row.add_child(button("Levels", "blue", 28, func(): show_screen("levels")))
-	row.add_child(button("Upgrades", "blue", 28, func(): show_screen("shop")))
-	col.add_child(row)
-	var row2 := hbox()
-	row2.add_child(button("🏆 Leaderboard", "blue", 26, func(): main.net.open_board()))
-	row2.add_child(button("🛡 Clans", "blue", 26, func(): main.net.open_clans()))
-	col.add_child(row2)
-	var row3 := hbox()
-	row3.add_child(button("⚙ Settings", "blue", 24, func(): show_screen("settings")))
-	row3.add_child(button("?", "blue", 26, func(): show_screen("help")))
-	col.add_child(row3)
+	col.add_child(spacer(6))
+	# Everything else: a grid of picture tiles
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 14)
+	grid.add_theme_constant_override("v_separation", 14)
+	grid.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	daily_btn = tile("daily", "📅", "Daily", "green", func(): main.start_daily())
+	missions_btn = tile("missions", "🎁", "Missions", "orange", func(): show_screen("missions"))
+	for b in [daily_btn, missions_btn,
+			tile("looks", "🎨", "Looks", "purple", func(): show_screen("looks")),
+			tile("levels", "🗺", "Levels", "blue", func(): show_screen("levels")),
+			tile("shop", "🔨", "Upgrades", "blue", func(): show_screen("shop")),
+			tile("board", "🏆", "Leaderboard", "blue", func(): main.net.open_board()),
+			tile("clans", "🛡", "Clans", "blue", func(): main.net.open_clans()),
+			tile("settings", "⚙", "Settings", "white", func(): show_screen("settings")),
+			tile("help", "❓", "How to play", "white", func(): show_screen("help"))]:
+		grid.add_child(b)
+	col.add_child(grid)
+
+
+## A menu tile: a big picture over its name, and a little red badge for news (hidden)
+func tile(id: String, icon: String, text: String, kind: String, on_press: Callable) -> Button:
+	var b := button(text, kind, 21, on_press)
+	b.custom_minimum_size = Vector2(196, 132)
+	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	b.vertical_icon_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	for state in ["normal", "hover", "pressed", "disabled"]:
+		var sb: StyleBoxTexture = (b.get_theme_stylebox(state) as StyleBoxTexture).duplicate()
+		sb.content_margin_top += 58
+		sb.content_margin_left = 8
+		sb.content_margin_right = 8
+		b.add_theme_stylebox_override(state, sb)
+	var pic := label(icon, 50, INK if kind == "white" else WHITE, 0)
+	pic.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	pic.offset_top = 8
+	pic.offset_bottom = 72
+	pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pic.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	b.add_child(pic)
+	# Keep the picture with the face when the button is pressed down
+	b.button_down.connect(func(): pic.offset_top = 13)
+	b.button_up.connect(func(): pic.offset_top = 8)
+	var dot := PanelContainer.new()
+	var ds := box(RED, Color.WHITE, 18, 3, 3)
+	ds.set_content_margin_all(0)
+	ds.content_margin_left = 8
+	ds.content_margin_right = 8
+	dot.add_theme_stylebox_override("panel", ds)
+	dot.custom_minimum_size = Vector2(38, 38)
+	dot.position = Vector2(166, -12)
+	dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var n := label("", 20, WHITE, 5)
+	n.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	dot.add_child(n)
+	dot.visible = false
+	b.add_child(dot)
+	menu_badges[id] = n
+	return b
+
+
+## A tile's badge: a number or a tick, or "" to hide it
+func set_badge(id: String, text: String) -> void:
+	var n: Label = menu_badges.get(id)
+	if n:
+		n.text = text
+		n.get_parent().visible = text != ""
 
 
 func _toggles() -> HBoxContainer:
@@ -698,12 +751,10 @@ func refresh_toggles() -> void:
 		cutscenes_btn.text = "Story scenes: on" if main.save.cutscenes else "Story scenes: off"
 		for g in gfx_btns:
 			var on: bool = main.save.gfx == g
-			gfx_btns[g].add_theme_stylebox_override("normal", box(YELLOW if on else PANEL_LIGHT))
-			gfx_btns[g].add_theme_color_override("font_outline_color", Color("#b06a00") if on else INK)
+			set_kind(gfx_btns[g], "yellow" if on else "blue")
 		for code in lang_btns:
 			var on: bool = main.save.lang == code
-			lang_btns[code].add_theme_stylebox_override("normal", box(YELLOW if on else PANEL_LIGHT))
-			lang_btns[code].add_theme_color_override("font_outline_color", Color("#b06a00") if on else INK)
+			set_kind(lang_btns[code], "yellow" if on else "blue")
 
 
 # ---------- Daily reward ----------
@@ -746,7 +797,7 @@ func refresh_reward() -> void:
 		pc.custom_minimum_size = Vector2(74, 92)
 		var vv := vbox(0)
 		vv.add_child(label(tr("Day %d") % (i + 1), 15, WHITE, 4))
-		vv.add_child(label("✓" if i < got else "●", 26, WHITE, 6))
+		vv.add_child(label("✓" if i < got else "🪙", 26, WHITE, 6))
 		vv.add_child(label(str(Progress.STREAK_COINS[i]), 18, WHITE, 5))
 		pc.add_child(vv)
 		reward_days.add_child(pc)
@@ -800,7 +851,7 @@ func refresh_missions() -> void:
 		h.add_child(info)
 		var done: bool = int(m.have) >= int(m.goal)
 		var idx := i
-		var b := button("✓" if m.claimed else "● %d" % int(m.coins), "green" if done and not m.claimed else "blue", 24, func():
+		var b := button("✓" if m.claimed else "🪙 %d" % int(m.coins), "green" if done and not m.claimed else "blue", 24, func():
 			var coins := Progress.claim_mission(main.save, idx)
 			if coins > 0:
 				main.write_save()
@@ -849,7 +900,7 @@ func _make_pics() -> void:
 func refresh_looks() -> void:
 	if not _making_pics:
 		_make_pics()
-	looks_coins.text = "● %d" % main.save.coins
+	looks_coins.text = "🪙 %d" % main.save.coins
 	for kind in looks_lists:
 		var grid: GridContainer = looks_lists[kind]
 		for c in grid.get_children():
@@ -875,7 +926,7 @@ func refresh_looks() -> void:
 			else:
 				card.add_child(label(item.icon, 52, WHITE, 0))
 			card.add_child(label(item.name, 22))
-			card.add_child(label(state if owned else "● %d" % item.cost, 20, WHITE, 6))
+			card.add_child(label(state if owned else "🪙 %d" % item.cost, 20, WHITE, 6))
 			for c in card.get_children():
 				c.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			b.add_child(card)
@@ -946,12 +997,11 @@ func _build_settings() -> void:
 
 
 func refresh_menu() -> void:
-	menu_coins.text = "● %d" % main.save.coins
+	menu_coins.text = "🪙 %d" % main.save.coins
 	play_btn.text = tr("PLAY  ·  Level %d") % mini(main.save.level, Levels.LAST_LEVEL)
 	var n := Progress.claimable(main.save) + (1 if Progress.reward_ready(main.save) else 0)
-	missions_btn.text = tr("🎁 Missions") + (" (%d)" % n if n > 0 else "")
-	missions_btn.add_theme_stylebox_override("normal", box(ORANGE if n > 0 else PANEL_LIGHT))
-	daily_btn.text = tr("📅 Daily") + (" ✓" if int(main.save.daily_won) == Progress.today() else "")
+	set_badge("missions", str(n) if n > 0 else "")
+	set_badge("daily", "✓" if int(main.save.daily_won) == Progress.today() else "")
 	refresh_toggles()
 
 
@@ -975,7 +1025,7 @@ func refresh_levels() -> void:
 	for c in level_grid.get_children():
 		c.queue_free()
 	var total := 0
-	var colors := {"grass": Color("#4caf3c"), "desert": Color("#d99a3a"), "snow": Color("#4a9fd6"), "beach": Color("#2ec3e0")}
+	var kinds := {"grass": "green", "desert": "orange", "snow": "blue", "beach": "purple"}
 	# The 60 levels, then the endless levels reached so far (in full rows)
 	var shown := maxi(Levels.MAX_LEVEL, ceili((int(main.save.level) + 1) / 6.0) * 6)
 	for n in range(1, mini(shown, Levels.LAST_LEVEL) + 1):
@@ -984,8 +1034,7 @@ func refresh_levels() -> void:
 		var locked: bool = n > main.save.level
 		var b := button("%d\n%s" % [n, "🔒" if locked else "★".repeat(st) + "☆".repeat(3 - st)], "blue", 22)
 		b.custom_minimum_size = Vector2(84, 84)
-		var bg: Color = YELLOW if n == main.save.level else RED if Levels.is_boss(n) else colors[Levels.theme_for(n)]
-		b.add_theme_stylebox_override("normal", box(bg))
+		set_kind(b, "yellow" if n == main.save.level else "red" if Levels.is_boss(n) else kinds[Levels.theme_for(n)])
 		b.disabled = locked
 		var level_n := n
 		b.pressed.connect(func(): main.start_level(level_n))
@@ -1010,7 +1059,7 @@ func _build_shop() -> void:
 		var packs := hbox(12)
 		for product in Services.COIN_PACKS:
 			var pk: String = product
-			packs.add_child(button("● %d" % Services.COIN_PACKS[pk], "yellow", 24, func():
+			packs.add_child(button("🪙 %d" % Services.COIN_PACKS[pk], "yellow", 24, func():
 				Services.buy(pk, func(ok: bool):
 					if ok:
 						main.save.coins += Services.COIN_PACKS[pk]
@@ -1021,7 +1070,7 @@ func _build_shop() -> void:
 
 
 func refresh_shop() -> void:
-	shop_coins.text = "● %d" % main.save.coins
+	shop_coins.text = "🪙 %d" % main.save.coins
 	for c in shop_list.get_children():
 		c.queue_free()
 	for u in main.UPGRADES:
@@ -1051,7 +1100,7 @@ func refresh_shop() -> void:
 		h.add_child(info)
 		var cost: int = 0 if maxed else u.cost[lv]
 		var id: String = u.id
-		var b := button("MAX" if maxed else "● %d" % cost, "green", 24, func():
+		var b := button("MAX" if maxed else "🪙 %d" % cost, "green", 24, func():
 			main.buy(id)
 			refresh_shop())
 		b.disabled = maxed or main.save.coins < cost
@@ -1124,7 +1173,7 @@ func _build_win() -> void:
 			if watched:
 				main.save.coins += _win_coins
 				main.write_save()
-				win_coins.text = "● +%d" % (_win_coins * 2)
+				win_coins.text = "🪙 +%d" % (_win_coins * 2)
 				main.play_sound("coin")
 			ad_btn.visible = false))
 	ad_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
@@ -1159,12 +1208,12 @@ func show_win(stars: int, coins: int, unlock: String, time: float, stats: Dictio
 	win_stats.add_child(_stat("%d:%02d" % [floori(time / 60), floori(fmod(time, 60))], "Time"))
 	win_stats.add_child(_stat(str(stats.captured), "Captured"))
 	win_stats.add_child(_stat(str(stats.killed), "Beaten"))
-	win_coins.text = "● +0"
+	win_coins.text = "🪙 +0"
 	_win_coins = coins
 	var count := create_tween()
 	count.tween_interval(0.5)
 	count.tween_method(func(v: float):
-		win_coins.text = "● +%d" % roundi(v)
+		win_coins.text = "🪙 +%d" % roundi(v)
 		main.play_sound("tick"), 0.0, float(coins), minf(1.2, 0.3 + coins * 0.01))
 	ad_btn.visible = coins > 0 and Services.rewarded_ready()
 	ad_btn.disabled = false
