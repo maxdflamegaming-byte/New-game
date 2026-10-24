@@ -38,8 +38,21 @@ var menu_coins: Label
 var play_btn: Button
 var sound_btns: Array[Button] = []
 var music_btns: Array[Button] = []
-var level_grid: GridContainer
+var level_map: VBoxContainer       # the campaign map: a card for each chapter
+var map_buttons := {}              # level -> its button on the map
 var levels_stars: Label
+var objective: Label               # the mission's goal, under the HUD bar
+var brief_n := 1                   # the mission the briefing is about
+var brief_from := "menu"           # where the briefing's Back goes
+var brief_chapter: Label
+var brief_title: Label
+var brief_goal: Label
+var brief_text: Label
+var brief_stars: Label
+var brief_start: Button
+var brief_face: TextureRect         # Captain Skye's portrait (drawn the first time)
+var _drawing_face := false
+var lose_reason: Label
 var shop_list: VBoxContainer
 var shop_coins: Label
 var win_stars: Array[Label] = []
@@ -83,6 +96,7 @@ func build() -> void:
 	_build_hud()
 	_build_menu()
 	_build_levels()
+	_build_brief()
 	_build_shop()
 	_build_help()
 	_build_settings()
@@ -125,6 +139,7 @@ func fit_safe(top: float, bottom: float) -> void:
 	safe_bottom = bottom
 	var bar: Control = hud.get_child(0)
 	bar.offset_top = 14 + top
+	objective.get_parent().offset_top = 90 + top
 	abilities.offset_bottom = -18 - bottom
 	abilities.offset_top = -122 - bottom
 	hint_panel.offset_bottom = -150 - bottom
@@ -445,6 +460,15 @@ func _build_hud() -> void:
 	bar.add_child(bar_frame)
 	time_label = _pill("0:00")
 	bar.add_child(time_label.get_parent())
+	# The mission's goal, under the bar: "🛡 Hold your HQ: 0:42"
+	objective = _pill("")
+	objective.add_theme_font_size_override("font_size", 22)
+	var op: Control = objective.get_parent()
+	op.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	op.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	op.offset_top = 90
+	op.visible = false
+	hud.add_child(op)
 	speed_btn = button("1×", "blue", 26, func(): main.toggle_speed())
 	speed_btn.custom_minimum_size = Vector2(64, 64)
 	bar.add_child(speed_btn)
@@ -513,6 +537,12 @@ func start_hud(title: String, campaign: bool) -> void:
 		var t2 := c.create_tween()
 		t2.tween_property(c, "position:y", y, 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	level_label.text = title
+	var goal: Dictionary = main.goal
+	var op: Control = objective.get_parent()
+	op.visible = campaign and not goal.is_empty()
+	if op.visible:
+		op.add_theme_stylebox_override("panel", UISkin.pill(Missions.GOALS[goal.goal].color))
+		objective.text = Missions.objective(goal, main.battle)
 	abilities.visible = campaign
 	speed_btn.visible = campaign
 	for c in power_bar.get_children():
@@ -581,6 +611,10 @@ func update_hud() -> void:
 	var t: float = b.time if main.mode == "campaign" else maxf(0, Net.PVP_TIME - b.time)
 	time_label.text = "%d:%02d" % [floori(t / 60), floori(fmod(t, 60))]
 	time_label.add_theme_color_override("font_color", Color("#fff3a0") if main.mode != "campaign" and t < 20 else WHITE)
+	if objective.get_parent().visible and not main.goal.is_empty():
+		objective.text = Missions.objective(main.goal, b)
+		var hurry := Missions.urgent(main.goal, b)
+		objective.add_theme_color_override("font_color", Color("#ffe14d") if hurry and int(b.time * 2) % 2 == 0 else WHITE)
 	refresh_abilities()
 
 
@@ -621,9 +655,11 @@ func toast(text: String, seconds := 2.2) -> void:
 	if _toast_tween:
 		_toast_tween.kill()
 	_toast_tween = create_tween()
-	toast_panel.offset_top = 70 + safe_top
+	# Under the top bar, and under the mission's goal when it shows
+	var y := (150.0 if objective.get_parent().is_visible_in_tree() else 104.0) + safe_top
+	toast_panel.offset_top = y - 34
 	_toast_tween.tween_property(toast_panel, "modulate:a", 1.0, 0.2)
-	_toast_tween.parallel().tween_property(toast_panel, "offset_top", 104.0 + safe_top, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_toast_tween.parallel().tween_property(toast_panel, "offset_top", y, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	_toast_tween.tween_interval(seconds)
 	_toast_tween.tween_property(toast_panel, "modulate:a", 0.0, 0.3)
 
@@ -653,7 +689,7 @@ func _build_menu() -> void:
 		title.add_child(t)
 	col.add_child(title)
 	col.add_child(spacer(18))
-	play_btn = button("PLAY", "yellow", 54, func(): main.start_level(mini(main.save.level, Levels.LAST_LEVEL)))
+	play_btn = button("PLAY", "yellow", 54, func(): show_brief(mini(main.save.level, Levels.LAST_LEVEL), "menu"))
 	play_btn.custom_minimum_size = Vector2(470, 124)
 	play_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	col.add_child(play_btn)
@@ -672,7 +708,7 @@ func _build_menu() -> void:
 	missions_btn = tile("missions", "🎁", "Missions", "orange", func(): show_screen("missions"))
 	for b in [daily_btn, missions_btn,
 			tile("looks", "🎨", "Looks", "purple", func(): show_screen("looks")),
-			tile("levels", "🗺", "Levels", "blue", func(): show_screen("levels")),
+			tile("levels", "🗺", "Campaign", "blue", func(): show_screen("levels")),
 			tile("shop", "🔨", "Upgrades", "blue", func(): show_screen("shop")),
 			tile("board", "🏆", "Leaderboard", "blue", func(): main.net.open_board()),
 			tile("clans", "🛡", "Clans", "blue", func(): main.net.open_clans()),
@@ -1005,45 +1041,252 @@ func refresh_menu() -> void:
 	refresh_toggles()
 
 
-# ---------- Levels ----------
+# ---------- The campaign map ----------
+## The campaign as a map: a card for each chapter (its land, title and story) with its five
+## missions on a winding trail, the boss's castle at the end
 func _build_levels() -> void:
 	var col := screen("levels")
-	col.add_child(ribbon("Levels"))
+	col.add_child(ribbon("Campaign"))
 	levels_stars = label("", 24)
 	col.add_child(levels_stars)
-	var p := panel()
-	level_grid = GridContainer.new()
-	level_grid.columns = 6
-	level_grid.add_theme_constant_override("h_separation", 10)
-	level_grid.add_theme_constant_override("v_separation", 10)
-	p.add_child(level_grid)
-	col.add_child(p)
+	level_map = vbox(22)
+	col.add_child(level_map)
 	col.add_child(back_button())
 
 
+const LAND_COLORS := {"grass": "#3f9e3a", "desert": "#d18a2c", "snow": "#4f8fd0", "beach": "#1ea7a8"}
+## Where a chapter's five missions sit on its card (fractions of its width, and pixels down)
+const TRAIL := [Vector2(0.15, 78), Vector2(0.5, 52), Vector2(0.85, 96), Vector2(0.64, 226), Vector2(0.27, 236)]
+const TRAIL_W := 560.0
+const TRAIL_H := 320.0
+
+
+## A chapter's trail: dots from mission to mission
+class Trail:
+	extends Control
+	var points := PackedVector2Array()
+	var reached := 0         # missions reached so far on this trail (the trail to them is bright)
+
+	func _draw() -> void:
+		for i in points.size() - 1:
+			var a := points[i]
+			var b := points[i + 1]
+			# A gentle curve between the two
+			var mid := (a + b) / 2 + Vector2(0, -26 if i % 2 == 0 else 26)
+			var steps := int(a.distance_to(b) / 22)
+			for k in range(1, steps):
+				var f := float(k) / steps
+				var p := a.lerp(mid, f).lerp(mid.lerp(b, f), f)
+				var lit := i + 1 < reached
+				draw_circle(p + Vector2(0, 2), 7, Color(0, 0, 0, 0.18))
+				draw_circle(p, 6.5, Color.WHITE if lit else Color(1, 1, 1, 0.45))
+
+
 func refresh_levels() -> void:
-	for c in level_grid.get_children():
+	for c in level_map.get_children():
 		c.queue_free()
+	map_buttons.clear()
+	var reached: int = main.save.level
 	var total := 0
-	var kinds := {"grass": "green", "desert": "orange", "snow": "blue", "beach": "purple"}
-	# The 60 levels, then the endless levels reached so far (in full rows)
-	var shown := maxi(Levels.MAX_LEVEL, ceili((int(main.save.level) + 1) / 6.0) * 6)
-	for n in range(1, mini(shown, Levels.LAST_LEVEL) + 1):
-		var st := int(main.save.stars.get(str(n), 0))
-		total += st
-		var locked: bool = n > main.save.level
-		var b := button("%d\n%s" % [n, "🔒" if locked else "★".repeat(st) + "☆".repeat(3 - st)], "blue", 22)
-		b.custom_minimum_size = Vector2(84, 84)
-		set_kind(b, "yellow" if n == main.save.level else "red" if Levels.is_boss(n) else kinds[Levels.theme_for(n)])
-		b.disabled = locked
-		var level_n := n
-		b.pressed.connect(func(): main.start_level(level_n))
-		level_grid.add_child(b)
-		b.modulate.a = 0.0
-		var tw := b.create_tween()
-		tw.tween_interval(minf(0.6, n * 0.012))
-		tw.tween_property(b, "modulate:a", 1.0, 0.15)
+	for n in range(1, Levels.LAST_LEVEL + 1):
+		total += int(main.save.stars.get(str(n), 0))
+	# The 12 chapters, then the endless ones reached so far
+	var chapters := maxi(Levels.MAX_LEVEL / Missions.PER_CHAPTER, Missions.chapter_of(mini(reached, Levels.LAST_LEVEL)))
+	var here: Control = null
+	for c in range(1, chapters + 1):
+		var card := _chapter_card(c, reached)
+		level_map.add_child(card)
+		if Missions.chapter_of(reached) == c:
+			here = card
+		card.modulate.a = 0.0
+		var tw := card.create_tween()
+		tw.tween_interval(minf(0.5, c * 0.05))
+		tw.tween_property(card, "modulate:a", 1.0, 0.2)
 	levels_stars.text = tr("%d ★ collected") % total
+	# Open the map at the chapter you're playing
+	if here != null:
+		await get_tree().process_frame
+		await get_tree().process_frame
+		var scroll: ScrollContainer = screens.levels.get_child(1)
+		if is_instance_valid(here) and main.screen_open == "levels":
+			scroll.scroll_vertical = int(here.get_global_rect().position.y - scroll.get_child(0).get_global_rect().position.y - 120)
+
+
+func _chapter_card(c: int, reached: int) -> Control:
+	var first := (c - 1) * Missions.PER_CHAPTER + 1
+	var theme := Levels.theme_for(first)
+	var locked := first > reached
+	var p := PanelContainer.new()
+	var bg := Color(LAND_COLORS[theme])
+	var sb := box(bg if not locked else bg.lerp(Color("#7d8aa3"), 0.6), Color.WHITE, 26, 4, 6)
+	sb.set_content_margin_all(16)
+	p.add_theme_stylebox_override("panel", sb)
+	p.custom_minimum_size.x = 600
+	p.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	p.mouse_filter = Control.MOUSE_FILTER_PASS
+	var v := vbox(4)
+	p.add_child(v)
+	var head := label(tr("Chapter %d") % c + "  ·  " + tr(Story.LANDS[theme]), 20, WHITE, 6, font_m)
+	v.add_child(head)
+	v.add_child(label(Missions.chapter_title(c), 34, WHITE, 8))
+	var story := wrapped(label(Missions.chapter_story(c) if not locked else tr("Win the chapter before it to get here."), 19, WHITE, 5, font_m), 540)
+	v.add_child(story)
+	var trail := Trail.new()
+	trail.custom_minimum_size = Vector2(TRAIL_W, TRAIL_H)
+	trail.mouse_filter = Control.MOUSE_FILTER_PASS
+	trail.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	v.add_child(trail)
+	var pts := PackedVector2Array()
+	for i in Missions.PER_CHAPTER:
+		var n := first + i
+		if n > Levels.LAST_LEVEL:
+			break
+		var at := Vector2(TRAIL[i].x * TRAIL_W, TRAIL[i].y)
+		pts.append(at)
+		var b := _map_button(n, reached)
+		b.position = at - b.custom_minimum_size / 2
+		trail.add_child(b)
+	trail.points = pts
+	trail.reached = clampi(reached - first + 1, 0, Missions.PER_CHAPTER)
+	return p
+
+
+## A mission on the map: its number and goal, and the stars you've won there
+func _map_button(n: int, reached: int) -> Button:
+	var boss := Levels.is_boss(n)
+	var locked := n > reached
+	var g := Missions.goal_for(n)
+	var b := button("🔒" if locked else str(n), "blue", 34 if not boss else 40)
+	var size := 124.0 if boss else 104.0
+	b.custom_minimum_size = Vector2(size, size)
+	b.size = b.custom_minimum_size
+	set_kind(b, "gray" if locked else "yellow" if n == reached else "red" if boss else "white")
+	b.disabled = locked
+	b.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	# The goal's picture in a badge of its colour on the corner, and the stars under it
+	var badge := PanelContainer.new()
+	var bs := box(Color(UISkin.COLORS[Missions.GOALS[g].color].bottom), Color.WHITE, 22, 3, 2)
+	bs.set_content_margin_all(0)
+	badge.add_theme_stylebox_override("panel", bs)
+	badge.custom_minimum_size = Vector2(44, 44)
+	badge.position = Vector2(size - 30, -14)
+	badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var ic := label("🏰" if boss else Missions.icon(g), 24, WHITE, 0)
+	ic.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	ic.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	badge.add_child(ic)
+	b.add_child(badge)
+	if not locked:
+		var st := int(main.save.stars.get(str(n), 0))
+		var stars := label("★".repeat(st) + "☆".repeat(3 - st), 24, Color("#ffd23f"), 6)
+		stars.add_theme_color_override("font_outline_color", Color("#8a4d00"))
+		stars.position = Vector2(0, size - 8)
+		stars.size = Vector2(size, 30)
+		stars.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		b.add_child(stars)
+	if n == reached:
+		# The mission you're on bobs gently
+		b.pivot_offset = b.size / 2
+		var tw := b.create_tween().set_loops()
+		tw.tween_property(b, "scale", Vector2.ONE * 1.08, 0.5).set_trans(Tween.TRANS_SINE)
+		tw.tween_property(b, "scale", Vector2.ONE, 0.5).set_trans(Tween.TRANS_SINE)
+	var level_n := n
+	b.pressed.connect(func(): show_brief(level_n, "levels"))
+	map_buttons[n] = b
+	return b
+
+
+# ---------- The briefing ----------
+## Before a mission: its code name, its goal, and Captain Skye's briefing
+func _build_brief() -> void:
+	var col := screen("brief")
+	var p := panel()
+	var v := vbox(14)
+	p.add_child(v)
+	brief_chapter = label("", 20, WHITE, 6, font_m)
+	v.add_child(brief_chapter)
+	v.add_child(ribbon("Mission briefing", "orange"))
+	brief_title = label("", 40)
+	v.add_child(brief_title)
+	brief_goal = _pill("")
+	brief_goal.add_theme_font_size_override("font_size", 26)
+	brief_goal.get_parent().size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	v.add_child(brief_goal.get_parent())
+	# Captain Skye's words, in a speech card
+	var talk := PanelContainer.new()
+	var ts := box(WHITE, INK, 20, 3, 4)
+	ts.set_content_margin_all(16)
+	talk.add_theme_stylebox_override("panel", ts)
+	talk.mouse_filter = Control.MOUSE_FILTER_PASS
+	var row := hbox(14)
+	row.alignment = BoxContainer.ALIGNMENT_BEGIN
+	talk.add_child(row)
+	var face := PanelContainer.new()
+	var fs := box(Color("#cfe9ff"), Color("#3a9df3"), 50, 3, 0)
+	fs.set_content_margin_all(0)
+	face.add_theme_stylebox_override("panel", fs)
+	face.custom_minimum_size = Vector2(100, 100)
+	face.clip_children = CanvasItem.CLIP_CHILDREN_AND_DRAW
+	face.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	face.mouse_filter = Control.MOUSE_FILTER_PASS
+	var helmet := label("🪖", 50, WHITE, 0)
+	helmet.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	helmet.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	face.add_child(helmet)
+	brief_face = TextureRect.new()
+	brief_face.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	brief_face.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	brief_face.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	face.add_child(brief_face)
+	row.add_child(face)
+	var words := vbox(4)
+	words.alignment = BoxContainer.ALIGNMENT_BEGIN
+	var who := label("Captain Skye", 22, INK, 0)
+	who.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	words.add_child(who)
+	brief_text = wrapped(label("", 22, Color("#24324d"), 0, font_m), 430)
+	brief_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	words.add_child(brief_text)
+	row.add_child(words)
+	v.add_child(talk)
+	brief_stars = label("", 40, Color("#ffd23f"), 8)
+	brief_stars.add_theme_color_override("font_outline_color", Color("#8a4d00"))
+	v.add_child(brief_stars)
+	brief_start = button("Start", "yellow", 46, func(): main.start_level(brief_n))
+	brief_start.custom_minimum_size = Vector2(400, 100)
+	brief_start.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	v.add_child(brief_start)
+	v.add_child(button("Back", "blue", 26, func(): show_screen(brief_from) if brief_from == "levels" else main.open_menu()))
+	col.add_child(p)
+
+
+func show_brief(n: int, from := "menu") -> void:
+	brief_n = n
+	brief_from = from
+	var g := Missions.goal_for(n)
+	var c := Missions.chapter_of(n)
+	brief_chapter.text = tr("Chapter %d") % c + "  ·  " + Missions.chapter_title(c)
+	brief_title.text = Missions.title(n)
+	brief_goal.text = Missions.icon(g) + "  " + Missions.goal_name(g) + "  ·  " + tr("Level %d") % n
+	brief_goal.get_parent().add_theme_stylebox_override("panel", UISkin.pill(Missions.GOALS[g].color))
+	brief_text.text = Missions.brief(n, Levels.data(n).towers.size())
+	var st := int(main.save.stars.get(str(n), 0))
+	brief_stars.text = "★".repeat(st) + "☆".repeat(3 - st)
+	brief_stars.visible = n < int(main.save.level)
+	show_screen("brief")
+	pop(brief_start, 0.15, 0.6)
+	_skye_face()
+
+
+## Captain Skye's face on the briefing: the cut scenes' portrait of her (a helmet until it's drawn)
+func _skye_face() -> void:
+	var cut: Cutscene = main.cutscene
+	if not cut.portraits.has("skye") and not _drawing_face:
+		_drawing_face = true
+		cut.portraits["skye"] = await cut._portrait("skye")
+		_drawing_face = false
+	brief_face.texture = cut.portraits.get("skye")
+	brief_face.get_parent().get_child(0).visible = brief_face.texture == null
 
 
 # ---------- Upgrades ----------
@@ -1178,7 +1421,7 @@ func _build_win() -> void:
 			ad_btn.visible = false))
 	ad_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	v.add_child(ad_btn)
-	next_btn = button("Next level", "yellow", 40, func(): main.start_level(mini(main.level + 1, Levels.LAST_LEVEL)))
+	next_btn = button("Next level", "yellow", 40, func(): show_brief(mini(main.level + 1, Levels.LAST_LEVEL), "win"))
 	next_btn.custom_minimum_size = Vector2(400, 90)
 	next_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	v.add_child(next_btn)
@@ -1245,7 +1488,8 @@ func _build_lose() -> void:
 	p.add_child(v)
 	lose_ribbon = ribbon("Defeat", Color("#9a8cff"))
 	v.add_child(lose_ribbon)
-	v.add_child(label("Your last building has fallen.", 26, WHITE, 6, font_m))
+	lose_reason = wrapped(label("Your last building has fallen.", 26, WHITE, 6, font_m), 540)
+	v.add_child(lose_reason)
 	lose_tip = wrapped(label("", 22, WHITE, 5, font_m), 540)
 	v.add_child(lose_tip)
 	var r := button("Try again", "yellow", 40, func(): main.restart())
@@ -1259,8 +1503,9 @@ func _build_lose() -> void:
 	col.add_child(p)
 
 
-func show_lose(tip: String) -> void:
+func show_lose(tip: String, why := "Your last building has fallen.") -> void:
 	hide_hud()
+	lose_reason.text = why
 	lose_tip.text = tr("Tip: %s") % tr(tip)
 	show_screen("lose")
 	pop(lose_ribbon, 0.05, 0.3)

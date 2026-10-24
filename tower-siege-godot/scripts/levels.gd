@@ -53,18 +53,21 @@ static func data(n: int) -> Dictionary:
 	return extras(gen(n), n)
 
 
+## Every chapter (five levels, one land) ends with a boss: General Grumble's castle
 static func is_boss(n: int) -> bool:
-	return n >= 10 and n % 10 == 0
+	return n >= 5 and n % 5 == 0
 
 
-## What this version adds to a generated campaign level: a boss Castle every 10th level,
+## What this version adds to a generated campaign level: a boss Castle every 5th level,
 ## Training Camps, enemies that upgrade their buildings from level 25, and endless levels
 ## (after 60) whose enemies keep getting stronger
 static func extras(d: Dictionary, n: int) -> Dictionary:
 	var towers: Array = d.towers
 	if is_boss(n):
 		towers[1][4] = "castle"
-		towers[1][3] = int(towers[1][3]) + 5 + n / 6
+		# The first castle (level 5) starts as strong as your base; the later ones stronger
+		if n >= 10:
+			towers[1][3] = int(towers[1][3]) + 5 + n / 6
 		d.hint = "Boss level! Attack the Castle from several buildings at once, and stay clear of its circle until you do."
 	# Training Camps: the first pair of gray towers (they come in mirrored pairs) on some levels
 	if n >= 15 and (n * 37) % 5 < 2:

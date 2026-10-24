@@ -214,7 +214,7 @@ func _run() -> void:
 	clear_of_notch(ui.menu_coins.get_parent(), "The coins")
 
 	# ----- Every menu screen, and back -----
-	for item in [["levels", "Levels"], ["shop", "Upgrades"], ["missions", "Missions"], ["looks", "Looks"], ["settings", "Settings"], ["help", "How to play"]]:
+	for item in [["levels", "Campaign"], ["shop", "Upgrades"], ["missions", "Missions"], ["looks", "Looks"], ["settings", "Settings"], ["help", "How to play"]]:
 		await tap(find_button(item[1], ui.screens.menu), item[1])
 		await _seconds(0.6)
 		ok("%s opens" % item[1], main.screen_open == item[0], "screen %s" % main.screen_open)
@@ -230,14 +230,16 @@ func _run() -> void:
 	# ----- A long list scrolls with a finger, even when the drag starts on a button -----
 	var had: int = main.save.level
 	main.save.level = 150
-	await tap(find_button("Levels", ui.screens.menu), "Levels")
+	await tap(find_button("Campaign", ui.screens.menu), "Campaign")
 	await _seconds(1.0)
 	var scroll: ScrollContainer = ui.screens.levels.get_child(1)
-	var grid_btn: Control = ui.level_grid.get_child(20)
-	var from := grid_btn.get_global_rect().get_center()
-	await drag(0, from, from - Vector2(0, 500), 10)
+	var opened_at := scroll.scroll_vertical
+	ok("The campaign map opens at the chapter you're on", opened_at > 2000, "at %d" % opened_at)
+	var map_btn: Control = ui.map_buttons[147]
+	var from := map_btn.get_global_rect().get_center()
+	await drag(0, from, from + Vector2(0, 500), 10)
 	await _seconds(0.6)
-	ok("A finger drag on the level buttons scrolls the list", scroll.scroll_vertical > 200, "scrolled %d" % scroll.scroll_vertical)
+	ok("A finger drag on the map's buttons scrolls it", opened_at - scroll.scroll_vertical > 200, "scrolled from %d to %d" % [opened_at, scroll.scroll_vertical])
 	ok("...without starting a level", main.screen_open == "levels" and main.state == "menu", "screen %s state %s" % [main.screen_open, main.state])
 	await shot("levels-scrolled")
 	await back_button()
@@ -261,6 +263,10 @@ func _run() -> void:
 
 	# ----- Level 1, the way a new player meets it -----
 	await tap(ui.play_btn, "PLAY")
+	await _seconds(0.6)
+	ok("PLAY opens the mission briefing", main.screen_open == "brief", "screen %s" % main.screen_open)
+	await shot("briefing")
+	await tap(ui.brief_start, "Start")
 	await _frames(10)
 	var waited := await watch_cutscene("intro", 120.0)
 	print("INFO the story before level 1 took %.0f s with a tap every 1.5 s" % waited)
@@ -278,6 +284,9 @@ func _run() -> void:
 
 	# ----- Level 2: pause with the back button, the app going to the background -----
 	await tap(ui.next_btn, "Next level")
+	await _seconds(0.6)
+	ok("Next level shows its briefing", main.screen_open == "brief" and ui.brief_n == 2, "screen %s" % main.screen_open)
+	await tap(ui.brief_start, "Start")
 	await _frames(10)
 	await watch_cutscene("level2", 60.0)
 	ok("Level 2 starts", main.state == "play" and main.level == 2, "state %s level %d" % [main.state, main.level])

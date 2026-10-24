@@ -33,6 +33,7 @@ func _draw() -> void:
 	var b: Battle = main.battle
 	var w: World = main.world
 	if show_labels and main.state != "menu" and main.state != "cutscene" and main.screen_open == "" and not main.cutscene.playing():
+		_marks(w)
 		for t in b.towers:
 			_label(t, w)
 	# Swipe trail
@@ -124,6 +125,39 @@ func _label(t, w: World) -> void:
 		var c := Vector2(s.top_x + (i - (m - 1) / 2.0) * dr * 2.9, r.end.y + dr + 3)
 		draw_circle(c, dr + 1.5, side.dark)
 		draw_circle(c, dr, Color.WHITE if i < m - t.roads.size() else Color(1, 1, 1, 0.35))
+
+
+## The buildings a mission is about: a pulsing ring on the ground around each, and its picture
+## over its badge (your headquarters 🛡, Grumble's castle 🎯, the radar stations 📡)
+func _marks(w: World) -> void:
+	var g: Dictionary = main.goal
+	if g.is_empty():
+		return
+	var marked := []
+	if g.hq != null:
+		marked.append([g.hq, "🛡" if g.goal == "defend" else "🎯", Color("#ffd23f") if g.goal == "defend" else Color("#ff4a3a")])
+	for t in g.targets:
+		marked.append([t, "📡", main.SIDES[t.owner].color if t.owner == Battle.PLAYER else Color("#ff9a2e")])
+	var k := 0.5 + 0.5 * sin(Time.get_ticks_msec() / 260.0)
+	for m in marked:
+		var t = m[0]
+		var col: Color = m[2]
+		var r: float = t.radius() + 16 + 8 * k
+		var ring := PackedVector2Array()
+		for i in 33:
+			var a := TAU * i / 32.0
+			ring.append(w.project(t.x + cos(a) * r, t.y + sin(a) * r, 2))
+		draw_polyline(ring, Color(0.05, 0.1, 0.2, 0.35), 9, true)
+		draw_polyline(ring, Color(col, 0.6 + 0.4 * k), 5, true)
+		var s := w.tower_screen(t)
+		var size := clampf(w.px_per_unit(t.x, t.y) * 50, 18, 42)
+		var c := Vector2(s.top_x, s.top_y - size * 1.18 - size * (1.25 if t.stars > 0 else 0.7))
+		draw_circle(c + Vector2(0, 3), size * 0.62, Color(0.05, 0.1, 0.2, 0.3))
+		draw_circle(c, size * 0.62, Color.WHITE)
+		draw_arc(c, size * 0.62, 0, TAU, 32, col, 3.5, true)
+		var fs := int(size * 0.66)
+		var tw := font.get_string_size(m[1], HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		draw_string(font, c + Vector2(-tw / 2, fs * 0.36), m[1], HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
 
 
 var _badges := {}

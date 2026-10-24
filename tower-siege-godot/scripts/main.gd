@@ -10,7 +10,9 @@ const SIDES := [
 	{"name": "Yellow", "color": Color("#ffc21f"), "dark": Color("#d98a00"), "light": Color("#ffe796")},
 	{"name": "Green", "color": Color("#45d35a"), "dark": Color("#22963a"), "light": Color("#b3f2bb")},
 ]
-const HUD_TOP := 92.0
+const CAMPAIGN_PACE := 1.5      # campaign buildings train and send this much faster than PvP
+const CAMPAIGN_MARCH := 1.3     # and soldiers march this much faster
+const HUD_TOP := 136.0         # the top bar and the mission's goal under it
 const HUD_BOTTOM := 130.0
 const SAVE_PATH := "user://tower_siege.json"
 const UPGRADES := [
@@ -43,6 +45,8 @@ var state := "menu"            # menu, play, paused, over, cutscene
 var mode := "campaign"         # campaign, online, duo, practice
 var level := 1
 var daily := false             # playing today's daily challenge
+var goal := {}                 # the campaign mission being played (Missions.setup), or {}
+var lost_why := ""             # how the last mission was lost (Missions.result)
 var upgrade_offer := {}        # {t, life}: the ⬆ button over one of your buildings
 var reward_shown_day := -1
 var cinematics := true         # cut scenes play (the tests switch them off to go faster)
@@ -305,6 +309,13 @@ func _connect_battle() -> void:
 func load_battle(data: Dictionary, n: int, theme := "") -> void:
 	battle.mode = mode
 	battle.boost = {"drill": save.up.drill, "boots": save.up.boots}
+	# The campaign plays faster and more decisively than PvP (whose rules match the web version)
+	var campaign := mode == "campaign"
+	battle.pace = CAMPAIGN_PACE if campaign else 1.0
+	battle.march = CAMPAIGN_MARCH if campaign else 1.0
+	battle.momentum = campaign
+	battle.frozen = false
+	goal = {}
 	battle.landscape = landscape
 	battle.flipped = net.is_guest()
 	battle.load_map(data, 3 * save.up.garrison if mode == "campaign" and state != "menu" else 0)
@@ -327,11 +338,15 @@ func start_level(n: int) -> void:
 	for side in [2, 3, 4]:
 		if battle.towers.any(func(t): return t.owner == side):
 			battle.ai_sides.append({"side": side, "timer": 2.5 + (side - 2) * 0.7, "cfg": data.ai})
+	goal = Missions.setup(n, battle)
 	armed = ""
 	shake = 0.0
 	hand_shown = data.get("hand", false)
 	charges = {"strike": 1 + save.up.armory if n >= 3 else 0, "rally": 1 + save.up.armory if n >= 6 else 0}
-	_begin(data, tr("Level %d") % n + ("  ·  " + tr("Boss") if Levels.is_boss(n) else ""), n)
+	# The fly-in shows the mission's code name and its goal
+	var g: String = goal.goal
+	_begin(data, tr("Level %d") % n + ("  ·  " + tr("Boss") if Levels.is_boss(n) else ""), n,
+		Missions.title(n), Missions.icon(g) + "  " + Missions.goal_name(g))
 
 
 ## Today's challenge: the same map for everyone, a big prize the first time you win it
@@ -346,6 +361,7 @@ func start_daily() -> void:
 	for side in [2, 3, 4]:
 		if battle.towers.any(func(t): return t.owner == side):
 			battle.ai_sides.append({"side": side, "timer": 2.5, "cfg": data.ai})
+	goal = Missions.setup(0, battle, "conquer")
 	armed = ""
 	shake = 0.0
 	hand_shown = false
@@ -354,7 +370,7 @@ func start_daily() -> void:
 
 
 ## Before a level: its cut scenes (story, boss, the fly-in), then the HUD, hints and music
-func _begin(data: Dictionary, title: String, n: int) -> void:
+func _begin(data: Dictionary, title: String, n: int, banner := "", sub := "") -> void:
 	world.drift = false
 	upgrade_offer = {}
 	clear_pointers()
@@ -366,7 +382,7 @@ func _begin(data: Dictionary, title: String, n: int) -> void:
 		state = "cutscene"
 		music.play_track("boss" if boss else "game")
 		var r := cutscene.begin(not save.cutscenes)
-		await story.level_start(r, 0 if daily else n, title)
+		await story.level_start(r, 0 if daily else n, banner if banner != "" else title, sub)
 		if not cutscene.current(r):
 			return # something else started meanwhile
 		cutscene.finish(r)
@@ -465,14 +481,18 @@ func check_end() -> void:
 	if mode != "campaign":
 		net.check_end()
 		return
-	if not battle.alive(Battle.PLAYER):
-		end_game(false)
-	elif battle.ai_sides.all(func(a): return a.side == Battle.PLAYER or not battle.alive(a.side)):
+	var r := Missions.result(goal if not goal.is_empty() else {"goal": "conquer"}, battle)
+	if r == "won":
 		end_game(true)
+	elif r != "":
+		lost_why = r
+		end_game(false)
 
 
 func end_game(won: bool) -> void:
 	state = "over"
+	if won:
+		lost_why = ""
 	upgrade_offer = {}
 	mission("beat", battle.stats.killed)
 	clear_pointers()
@@ -505,13 +525,8 @@ func end_game(won: bool) -> void:
 		show_lose()
 
 
-func stars_for(time: float) -> int:
-	var par := 30.0 + battle.towers.size() * 7
-	return 3 if time <= par else 2 if time <= par * 1.8 else 1
-
-
 func show_win() -> void:
-	var stars := stars_for(battle.time)
+	var stars := Missions.stars(goal, battle)
 	mission("win")
 	if stars == 3:
 		mission("stars3")
@@ -548,7 +563,7 @@ func show_win() -> void:
 
 
 func show_lose() -> void:
-	ui.show_lose(TIPS[(level + int(battle.time)) % TIPS.size()])
+	ui.show_lose(TIPS[(level + int(battle.time)) % TIPS.size()], Missions.lost_text(lost_why))
 
 
 # ---------- Abilities ----------

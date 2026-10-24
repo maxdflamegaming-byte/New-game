@@ -111,6 +111,12 @@ var next_unit_id := 0
 var landscape := false
 var flipped := false         # an online guest sees the field turned around
 var struck: Array = []       # the soldiers the last airstrike knocked out: [[x, y, owner, tank]]
+# Campaign only (PvP keeps the web version's rules, so the two can play each other):
+var pace := 1.0              # buildings train and send this much faster, and the AI thinks faster
+var march := 1.0             # soldiers and tanks march this much faster
+var momentum := false        # the army holding more buildings trains faster, so battles don't stall
+var _mom := {}               # side -> its training factor this moment (see _update_momentum)
+var frozen := false          # nothing trains (a "no reinforcements" mission)
 
 
 func load_map(data: Dictionary, garrison := 0) -> void:
@@ -172,7 +178,31 @@ func boosted(side: int) -> bool:
 
 
 func prod_rate(t: Tower) -> float:
-	return (0.55 + 0.2 * t.level()) * TYPES[t.type].prod * (1 + 0.08 * boost.drill if boosted(t.owner) else 1.0) * (1 + STAR_BONUS * t.stars)
+	return (0.55 + 0.2 * t.level()) * TYPES[t.type].prod * (1 + 0.08 * boost.drill if boosted(t.owner) else 1.0) * (1 + STAR_BONUS * t.stars) \
+		* pace * float(_mom.get(t.owner, 1.0))
+
+
+## Momentum: when you hold more buildings than the average army you train faster (up to 1.35
+## times), so a battle you're winning ends quickly; an enemy army holding fewer than the
+## average trains slower (down to 0.7). It never works against you: a battle you're losing
+## doesn't snowball, so you can still turn it around.
+func _update_momentum() -> void:
+	_mom.clear()
+	if not momentum:
+		return
+	var count := {}
+	for t in towers:
+		if t.owner != NEUTRAL:
+			count[t.owner] = int(count.get(t.owner, 0)) + 1
+	if count.size() < 2:
+		return
+	var avg := 0.0
+	for side in count:
+		avg += count[side]
+	avg /= count.size()
+	for side in count:
+		var k := 1.0 + 0.55 * (float(count[side]) - avg) / maxf(avg, 1.0)
+		_mom[side] = clampf(k, 1.0, 1.35) if side == PLAYER else clampf(k, 0.7, 1.0)
 
 
 func sends_tanks(t: Tower) -> bool:
@@ -180,11 +210,11 @@ func sends_tanks(t: Tower) -> bool:
 
 
 func send_interval(t: Tower) -> float:
-	return (2.4 if sends_tanks(t) else 1.0) / (1.6 + 0.4 * t.level()) / (2.0 if boosted(t.owner) and rally > 0 else 1.0)
+	return (2.4 if sends_tanks(t) else 1.0) / (1.6 + 0.4 * t.level()) / (2.0 if boosted(t.owner) and rally > 0 else 1.0) / pace
 
 
 func unit_speed(u: Unit) -> float:
-	var s := UNIT_SPEED * (0.8 if u.power > 1 else 1.0)
+	var s := UNIT_SPEED * march * (0.8 if u.power > 1 else 1.0)
 	if boosted(u.owner):
 		s *= (1 + 0.07 * boost.boots) * (1.4 if rally > 0 else 1.0)
 	return s
@@ -291,9 +321,10 @@ func update(dt: float, run_ai := true) -> void:
 	time += dt
 	if rally > 0:
 		rally = maxf(0, rally - dt)
+	_update_momentum()
 
 	for t in towers:
-		if t.owner != NEUTRAL and t.units < CAP:
+		if t.owner != NEUTRAL and t.units < CAP and not frozen:
 			t.units = minf(CAP, t.units + prod_rate(t) * dt)
 		t.flash = maxf(0, t.flash - dt * 3)
 		t.pop = maxf(0, t.pop - dt * 4)
@@ -329,7 +360,7 @@ func update(dt: float, run_ai := true) -> void:
 		for a in ai_sides:
 			a.timer -= dt
 			if a.timer <= 0:
-				a.timer = a.cfg.think * (0.8 + randf() * 0.4)
+				a.timer = a.cfg.think * (0.8 + randf() * 0.4) / pace
 				ai_think(a.side, a.cfg)
 	_update_strikes(dt)
 
@@ -499,8 +530,8 @@ func ai_think(side: int, cfg: Dictionary) -> void:
 		if sources.is_empty():
 			continue
 		sources.sort_custom(func(a, b): return dist(a.x, a.y, tgt.x, tgt.y) < dist(b.x, b.y, tgt.x, tgt.y))
-		var travel := dist(sources[0].x, sources[0].y, tgt.x, tgt.y) / UNIT_SPEED
-		var grow := 0.0 if tgt.owner == NEUTRAL else prod_rate(tgt) * travel
+		var travel := dist(sources[0].x, sources[0].y, tgt.x, tgt.y) / (UNIT_SPEED * march)
+		var grow := 0.0 if tgt.owner == NEUTRAL or frozen else prod_rate(tgt) * travel
 		# Watchtowers shoot some of the attackers on the way in
 		var guard := 0
 		for w in towers:
@@ -519,7 +550,8 @@ func ai_think(side: int, cfg: Dictionary) -> void:
 		var dsum := 0.0
 		for s in used:
 			dsum += dist(s.x, s.y, tgt.x, tgt.y)
-		var value: float = 1.0 + (cfg.bold if tgt.owner == PLAYER else 0.0) + (0.4 if tgt.type == "factory" or tgt.type == "camp" else 0.0) + (0.2 if tgt.owner != NEUTRAL else 0.0)
+		var value: float = 1.0 + (cfg.bold if tgt.owner == PLAYER else 0.0) + (0.4 if tgt.type == "factory" or tgt.type == "camp" else 0.0) + (0.2 if tgt.owner != NEUTRAL else 0.0) \
+			+ (float(cfg.get("focus_bonus", 0.0)) if tgt.id == int(cfg.get("focus", -1)) else 0.0)
 		var score := value / (maxf(1, need) + dsum / used.size() / 22)
 		if best.is_empty() or score > best.score:
 			best = {"score": score, "tgt": tgt, "used": used}

@@ -10,24 +10,43 @@ extends RefCounted
 ##  - after level 60: the ending
 
 const LANDS := {"grass": "Green Valley", "desert": "Sunny Desert", "snow": "Frosty Peaks", "beach": "Palm Beach"}
+## What Grumble says from his castle at the end of each chapter (5, 10 ... 60), then in the
+## endless levels
 const BOSS_TAUNTS := [
+	"You took my valley? Fine! My castle will stop you!",
 	"Welcome to my castle! Its walls have never fallen, and they never will!",
+	"Brrr! Even the snow is on my side. My castle is frozen solid!",
 	"Back for more? My new castle is even tougher!",
+	"A bigger army needs a bigger castle! Bwahaha!",
 	"I've added more cannons. Lots more cannons!",
+	"My castle has a moat now. Well, a puddle. A big puddle!",
 	"My finest castle yet! You'll never take it!",
+	"My generals failed, so I'll do it myself!",
 	"This castle is made of pure stubbornness!",
+	"Only two castles left? Then this one will never fall!",
 	"My last and greatest castle! If it falls... I give up!",
 	"Endless castles! Endless Grumble! Bwahaha!",
 ]
 const BOSS_DEFEATS := [
+	"Grr! That was just my little castle!",
 	"My castle! Grr... You haven't seen the last of me!",
+	"Too cold! I'm off somewhere sunny!",
 	"Not again! Retreat! RETREAT!",
+	"Fine! I'll build a castle in the desert!",
 	"My cannons! My beautiful cannons!",
+	"My puddle! My beautiful puddle!",
 	"This isn't over, Commander! I'll be back!",
+	"Ow! I should have let my generals do it!",
 	"Stubbornness... not... enough...",
+	"One castle left. You'll never take that one!",
 	"",
 	"I'll build another one! And another!",
 ]
+
+## The boss line for level n (one per chapter, then the endless one)
+static func boss_line(lines: Array, n: int) -> String:
+	return lines[mini(n / 5 - 1, lines.size() - 1)] if n <= Levels.MAX_LEVEL else lines[-1]
+
 
 var main
 var c: Cutscene
@@ -133,11 +152,11 @@ func _to_char(r: Cutscene.Run, id: String, secs := 0.7, pitch := 0.42) -> void:
 
 # ---------- Before a level ----------
 ## Everything before a level starts: its story scene (once), the boss's taunt, then the fly-in
-func level_start(r: Cutscene.Run, n: int, title: String) -> void:
+func level_start(r: Cutscene.Run, n: int, title: String, sub := "") -> void:
 	var told := false
 	if main.save.cutscenes and n > 0:
 		var key := "story_%d" % n
-		if not main.save.seen.has(key) and n in [1, 6, 8, 11, 12, 16, 21, 25, 31, 41, 51]:
+		if not main.save.seen.has(key) and n in [1, 6, 8, 11, 12, 16, 21, 25, 26, 31, 36, 41, 46, 51, 56]:
 			main.save.seen[key] = true
 			main.write_save()
 			await beat(r, n)
@@ -154,7 +173,7 @@ func level_start(r: Cutscene.Run, n: int, title: String) -> void:
 		_go(r)
 		await r.wait(0.35)
 	else:
-		await level_intro(r, title, land(n) if n > 0 else "")
+		await level_intro(r, title, sub if sub != "" else land(n) if n > 0 else "")
 
 
 ## The quick fly-in: from the enemy's base over yours to the battle camera
@@ -184,10 +203,7 @@ func beat(r: Cutscene.Run, n: int) -> void:
 		1:
 			await intro(r)
 		6, 11, 16, 21:
-			r.fade_from_black(0.6)
-			r.cam_cut(_wide(r))
-			r.banner(land(n), I18n.t("Chapter %d") % ((n - 1) / 5 + 1), UI.GREEN, 1.6)
-			await r.wait(1.0)
+			await _chapter_card(r, n)
 			if n == 21:
 				await _enter(r, "grumble", foe, false)
 				r.act("grumble", "laugh")
@@ -214,6 +230,14 @@ func beat(r: Cutscene.Run, n: int) -> void:
 						await r.say("skye", "Grumble's toughest castle is near. Let's push him into the sea!")
 			r.act("skye", "cheer")
 			await r.wait(0.5)
+		26, 36, 46, 56:
+			# A new chapter: its title, then Skye tells you what's going on
+			await _chapter_card(r, n)
+			await _enter(r, "skye", me)
+			r.act("skye", "point")
+			await r.say("skye", Missions.chapter_story(Missions.chapter_of(n)))
+			r.act("skye", "cheer")
+			await r.wait(0.4)
 		8:
 			await _enter(r, "skye", me)
 			r.act("skye", "wave")
@@ -250,6 +274,15 @@ func beat(r: Cutscene.Run, n: int) -> void:
 			await r.say("skye", "The final stretch! Grumble's last castle waits at level 60.")
 
 
+## A chapter's title over the whole field
+func _chapter_card(r: Cutscene.Run, n: int) -> void:
+	var c := Missions.chapter_of(n)
+	r.fade_from_black(0.6)
+	r.cam_cut(_wide(r))
+	r.banner(Missions.chapter_title(c), I18n.t("Chapter %d") % c + "  ·  " + I18n.t(land(n)), UI.GREEN, 1.8)
+	await r.wait(1.1)
+
+
 ## The opening: the valley, Captain Skye, General Grumble
 func intro(r: Cutscene.Run) -> void:
 	var me = _base(1)
@@ -257,7 +290,7 @@ func intro(r: Cutscene.Run) -> void:
 	r.short = false
 	r.fade_from_black(1.2)
 	r.cam_cut(_wide(r))
-	r.banner(land(1), I18n.t("Chapter %d") % 1, UI.GREEN, 1.8)
+	r.banner(Missions.chapter_title(1), I18n.t("Chapter %d") % 1 + "  ·  " + I18n.t(land(1)), UI.GREEN, 1.8)
 	await r.wait(1.4)
 	await _enter(r, "skye", me, true, 0.3, 1.6)
 	r.act("skye", "wave")
@@ -294,9 +327,9 @@ func boss_intro(r: Cutscene.Run, n: int) -> void:
 	await _enter(r, "grumble", castle, false, 0.3, 0.8)
 	r.act("grumble", "laugh")
 	r.sfx("roar")
-	await r.say("grumble", BOSS_TAUNTS[mini(n / 10 - 1, BOSS_TAUNTS.size() - 1)])
+	await r.say("grumble", boss_line(BOSS_TAUNTS, n))
 	r.act("grumble", "angry")
-	if n == 10:
+	if n == 5:
 		await _enter(r, "skye", _base(1), true, 0.3, 1.0)
 		r.act("skye", "point")
 		await r.say("skye", "That castle is tough and it shoots. Attack it from several buildings at once!")
@@ -338,7 +371,7 @@ func _boss_down(r: Cutscene.Run, n: int) -> void:
 	r.short = false
 	await _enter(r, "grumble", castle, false, 0.3, 1.0)
 	r.act("grumble", "angry")
-	var line: String = BOSS_DEFEATS[mini(n / 10 - 1, BOSS_DEFEATS.size() - 1)]
+	var line := boss_line(BOSS_DEFEATS, n)
 	if line != "":
 		await r.say("grumble", line)
 	# He runs off the field, away from the camera

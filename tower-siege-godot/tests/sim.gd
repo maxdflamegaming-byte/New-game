@@ -206,7 +206,8 @@ func _initialize() -> void:
 	ok("You can't upgrade someone else's building", b.upgrade(b.towers[3], 1) == "not yours")
 	b.capture(me, 2)
 	ok("A captured building loses its upgrades", me.stars == 0)
-	ok("Boss castles every 10th level", [10, 20, 50, 70].all(func(n): return Levels.data(n).towers[1][4] == "castle") and Levels.data(11).towers[1][4] != "castle")
+	ok("Every chapter ends with a boss castle", [5, 10, 15, 20, 50, 70].all(func(n): return Levels.data(n).towers[1][4] == "castle") and Levels.data(11).towers[1][4] != "castle")
+	_missions()
 	ok("Levels 1-60 are still made the same way as the web version (only types and soldiers change)", Levels.data(20).towers.map(func(t): return [t[0], t[1]]) == Levels.gen(20).towers.map(func(t): return [t[0], t[1]]))
 	var endless_ok := true
 	for n in range(61, 160, 7):
@@ -258,5 +259,122 @@ func _initialize() -> void:
 	var ms := Time.get_ticks_msec() - started
 	ok("The battle runs fast enough", ms < 60000, "%d ms for 6 games" % ms)
 
+	_pace()
+
 	print("SIM DONE %d failed" % fails)
 	quit(1 if fails else 0)
+
+
+## A campaign level's battle with its enemies and its mission's goal: [battle, mission]
+func mission_battle(n: int) -> Array:
+	var b := Battle.new()
+	b.mode = "campaign"
+	var d := Levels.data(n)
+	b.load_map(d)
+	for side in [2, 3, 4]:
+		if b.towers.any(func(t): return t.owner == side):
+			b.ai_sides.append({"side": side, "timer": 2.5, "cfg": d.ai})
+	return [b, Missions.setup(n, b)]
+
+
+func _missions() -> void:
+	var chapters_ok := true
+	for c in range(2, 14):
+		var first := (c - 1) * 5 + 1
+		var kinds := {}
+		for n in range(first, first + 4):
+			kinds[Missions.goal_for(n)] = true
+		if kinds.size() < 3 or Missions.goal_for(first + 4) != "hq" or kinds.has("hq"):
+			chapters_ok = false
+	ok("Every chapter has at least three kinds of mission, then the boss", chapters_ok)
+	ok("Every mission has a goal, a code name and a briefing", range(1, 80).all(func(n): return Missions.GOALS.has(Missions.goal_for(n)) and Missions.title(n).begins_with("Operation ") and Missions.brief(n).length() > 20))
+	ok("The first levels teach the basics with plain battles", range(1, 4).all(func(n): return Missions.goal_for(n) == "conquer"))
+
+	var r := mission_battle(4)
+	var b: Battle = r[0]
+	var m: Dictionary = r[1]
+	ok("Defend: your HQ is one of your buildings", m.goal == "defend" and m.hq != null and m.hq.owner == Battle.PLAYER and Missions.result(m, b) == "")
+	ok("Defend: Grumble's army goes for it", b.ai_sides[0].cfg.focus == m.hq.id)
+	b.time = m.time
+	ok("Defend: holding out until the clock runs out wins", Missions.result(m, b) == "won")
+	b.time = 1.0
+	b.capture(m.hq, 2)
+	ok("Defend: losing the HQ loses", Missions.result(m, b) == "hq")
+
+	r = mission_battle(6)
+	b = r[0]
+	m = r[1]
+	var ids := {}
+	for t in m.targets:
+		ids[t.id] = true
+	ok("Capture: two or three radar stations, none of them yours yet", m.goal == "capture" and m.targets.size() >= 2 and ids.size() == m.targets.size() and m.targets.all(func(t): return t.owner != Battle.PLAYER))
+	for t in m.targets.slice(1):
+		t.owner = Battle.PLAYER
+	ok("Capture: not all of them isn't enough", Missions.result(m, b) == "")
+	m.targets[0].owner = Battle.PLAYER
+	ok("Capture: holding them all at once wins", Missions.result(m, b) == "won")
+
+	r = mission_battle(7)
+	b = r[0]
+	m = r[1]
+	var before: Array = b.totals()
+	b.update(2.0, false)
+	ok("No reinforcements: nobody trains", m.goal == "puzzle" and b.frozen and b.totals() == before)
+	ok("No reinforcements: you get enough soldiers to win", before[1] >= m.start - 2 and m.start > 0)
+	for t in b.towers:
+		if t.owner == Battle.PLAYER:
+			t.units = 1
+	ok("No reinforcements: too few soldiers left loses", Missions.result(m, b) == "soldiers")
+
+	r = mission_battle(9)
+	b = r[0]
+	m = r[1]
+	ok("Blitz: a clock", m.goal == "blitz" and m.time > 30 and Missions.result(m, b) == "")
+	b.time = m.time + 0.1
+	ok("Blitz: running out of time loses", Missions.result(m, b) == "time")
+
+	r = mission_battle(10)
+	b = r[0]
+	m = r[1]
+	ok("Boss: the target is Grumble's castle", m.goal == "hq" and m.hq != null and m.hq.type == "castle" and m.hq.owner == 2)
+	b.capture(m.hq, Battle.PLAYER)
+	ok("Boss: taking the castle wins", Missions.result(m, b) == "won")
+	b.time = 5.0
+	ok("A quick win earns 3 stars", Missions.stars(m, b) == 3)
+	b.time = 1000.0
+	ok("A slow one fewer", Missions.stars(m, b) == 1)
+
+	r = mission_battle(12)
+	b = r[0]
+	m = r[1]
+	for t in b.towers:
+		if t.owner >= 2:
+			t.owner = Battle.PLAYER
+	b.units.clear()
+	ok("Conquer: taking every enemy building wins", Missions.result(m, b) == "won")
+
+
+## The campaign plays faster than PvP, and an army that's winning finishes the job
+func _pace() -> void:
+	var pvp := Battle.new()
+	ok("PvP keeps the web version's speed and rules", pvp.pace == 1.0 and pvp.march == 1.0 and not pvp.momentum and not pvp.frozen)
+	var b := Battle.new()
+	b.mode = "campaign"
+	b.load_map(Levels.data(12))
+	var mine: Battle.Tower = b.towers.filter(func(t): return t.owner == Battle.PLAYER)[0]
+	var slow := b.prod_rate(mine)
+	b.pace = 1.5
+	ok("Campaign buildings train faster", is_equal_approx(b.prod_rate(mine), slow * 1.5))
+	b.momentum = true
+	for t in b.towers:
+		if t.owner == Battle.NEUTRAL:
+			t.owner = Battle.PLAYER
+	b._update_momentum()
+	var foe: Battle.Tower = b.towers.filter(func(t): return t.owner == 2)[0]
+	ok("Momentum: holding more buildings than the enemy trains faster", b.prod_rate(mine) > slow * 1.5 * 1.1)
+	ok("Momentum: an enemy holding fewer trains slower", b.prod_rate(foe) < 1.5 * (0.55 + 0.2 * foe.level()) * Battle.TYPES[foe.type].prod)
+	for t in b.towers:
+		if t != mine and t.owner == Battle.PLAYER:
+			t.owner = 2
+	b._update_momentum()
+	ok("Momentum never works against you", is_equal_approx(b.prod_rate(mine), slow * 1.5) and is_equal_approx(b.prod_rate(foe), 1.5 * (0.55 + 0.2 * foe.level()) * Battle.TYPES[foe.type].prod * (1 + Battle.STAR_BONUS * foe.stars)))

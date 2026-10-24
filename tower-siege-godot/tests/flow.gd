@@ -196,6 +196,39 @@ func _run() -> void:
 	mine.stars = 0
 	ok("An upgraded building trains faster", rate1 > main.battle.prod_rate(mine) * 1.25)
 
+	# Missions: the briefing, the goal on the HUD, and the ways a mission is lost
+	main.open_menu()
+	main.ui.play_btn.pressed.emit()
+	await _frames(2)
+	ok("PLAY opens the mission briefing", main.screen_open == "brief" and main.ui.brief_n == 9 and main.ui.brief_title.text.begins_with("Operation") and main.ui.brief_text.text.length() > 20)
+	main.ui.brief_start.pressed.emit()
+	await _frames(3)
+	ok("Start begins the mission", main.state == "play" and main.level == 9 and main.goal.goal == Missions.goal_for(9))
+	main.start_level(4)
+	await _frames(3)
+	ok("The HUD shows the mission's goal", main.ui.objective.get_parent().visible and main.ui.objective.text.contains("0:"), main.ui.objective.text)
+	for side in main.battle.ai_sides:
+		side.timer = 1e9
+	main.battle.capture(main.goal.hq, 2)
+	await _frames(3)
+	await create_timer(1.5).timeout
+	ok("Losing the HQ loses a defend mission, and the defeat screen says why", main.screen_open == "lose" and main.ui.lose_reason.text == "Your headquarters has fallen.", main.ui.lose_reason.text)
+	main.start_level(9)
+	await _frames(3)
+	main.battle.time = main.goal.time + 1
+	await _frames(3)
+	await create_timer(1.5).timeout
+	ok("A blitz is lost when the clock runs out", main.screen_open == "lose" and main.ui.lose_reason.text.begins_with("Time's up"), main.ui.lose_reason.text)
+	main.start_level(7)
+	await _frames(3)
+	var t7: Array = main.battle.totals()
+	await create_timer(1.0).timeout
+	ok("No reinforcements: nobody trains", main.battle.frozen and main.battle.totals()[1] <= t7[1] + 0.01)
+	main.net.start_pvp("practice", 778)
+	await _frames(2)
+	ok("PvP has no mission goal and plays at the web version's speed", main.goal.is_empty() and not main.ui.objective.get_parent().visible and main.battle.pace == 1.0 and not main.battle.frozen)
+	main.open_menu()
+
 	# Boss levels, endless levels and the daily challenge
 	main.start_level(10)
 	await _frames(3)
@@ -203,7 +236,7 @@ func _run() -> void:
 	main.save.level = 64
 	main.ui.show_screen("levels")
 	await _frames(2)
-	ok("Endless levels show up after 60", main.ui.level_grid.get_child_count() == 66, str(main.ui.level_grid.get_child_count()))
+	ok("Endless levels show up after 60, in chapters of 5", main.ui.map_buttons.size() == 65 and main.ui.level_map.get_child_count() == 13, "%d levels" % main.ui.map_buttons.size())
 	main.start_level(64)
 	await _frames(3)
 	ok("An endless level plays", main.state == "play" and main.battle.towers.size() >= 8)
@@ -329,7 +362,7 @@ func _cutscenes() -> void:
 	main.battle.units.clear()
 	ok("Winning a boss level: Grumble runs off, then the celebration", await _until(func(): return main.cutscene.actors.has("grumble"), 10) and await _until(func(): return main.cutscene.stage.get_child_count() >= 12, 15))
 	ok("... then the results", await _until(func(): return main.screen_open == "win", 15))
-	main.start_level(5)
+	main.start_level(7)
 	await _until(func(): return main.state == "play", 6)
 	for t in main.battle.towers:
 		if t.owner == 1:
