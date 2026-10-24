@@ -1,8 +1,10 @@
 class_name World
 extends Node3D
-## The 3D look of Tower Siege: a high camera over a clean, bright battlefield (scenery only
-## around its edge), round castle towers that grow with every level, toy soldiers marching
-## three abreast, tanks, and roads with chevrons that flow toward their target. Every model is built in code from simple shapes
+## The 3D look of Tower Siege, an army game: a high camera over a clean, bright battlefield
+## (trees, sandbags, oil drums and tank traps only around its edge), military buildings in the
+## armies' colours that grow with every level (concrete outposts with sandbags, bunkers,
+## hangars, gun towers, tents, the enemy headquarters), army men marching three abreast,
+## tanks, and roads with chevrons that flow toward their target. Every model is built in code from simple shapes
 ## (see mesh_kit.gd), so there are no model or texture files. It draws a Battle; it doesn't
 ## change it. Field (x, y) is (x, 0, y) here.
 
@@ -227,7 +229,8 @@ func build(seed_value: int, theme_name: String, battle: Battle) -> void:
 
 	# Scenery: only outside the board, so the battlefield stays clean and easy to read.
 	# A ring of trees close to the edge frames it; a few more stand further out.
-	var props := {"tree": [], "pine": [], "snowpine": [], "cactus": [], "palm": [], "bush": [], "rock": [], "w_crate": [], "w_ice": [], "w_hedge": [], "w_toy": []}
+	var props := {"tree": [], "pine": [], "snowpine": [], "cactus": [], "palm": [], "bush": [], "rock": [], "drum": [], "sandbags": [], "hedgehog": [],
+		"w_crate": [], "w_ice": [], "w_hedge": [], "w_toy": []}
 	for i in 150:
 		var side := rng.randi_range(0, 3)
 		var out := 95 + pow(rng.randf(), 1.6) * 300
@@ -248,7 +251,8 @@ func build(seed_value: int, theme_name: String, battle: Battle) -> void:
 		if th.get("water", false) and (x < -110 or x > fw + 110 or z < -110 or z > fh + 110):
 			continue # that's the sea
 		var k := rng.randf()
-		var kind: String = th.props if k < 0.68 else ("bush" if th.props == "tree" or th.props == "palm" else th.props) if k < 0.88 else "rock"
+		var kind: String = th.props if k < 0.6 else ("bush" if th.props == "tree" or th.props == "palm" else th.props) if k < 0.74 else "rock" if k < 0.82 \
+			else ["drum", "sandbags", "hedgehog"][int(k * 997) % 3]
 		props[kind].append([x, z, 0.85 + rng.randf() * 0.55, rng.randf() * TAU, rng.randf()])
 	for w in battle.rocks:
 		var n := maxi(2, roundi(w.r / 18))
@@ -336,17 +340,25 @@ func _add_props(P: Dictionary) -> void:
 	_instanced(palm.mesh(), P.palm, func(c): return Color.from_hsv(0.3, 0.7, 0.7 + c * 0.1), true, 0.7)
 	# Rocks
 	_instanced(MeshKit.new().sphere(14, Vector3(0, 6, 0), T, Vector3(1, 0.7, 1), false, 7, 4).mesh(), P.rock, func(c): return Color.from_hsv(0.6, 0.06, 0.78 + c * 0.12))
-	# Wall pieces: crates, ice blocks, hedges or toy blocks, depending on the map
-	_instanced(MeshKit.new().box(24, 22, 24, Vector3(0, 11, 0), T).box(25, 2.5, 4, Vector3(0, 11, 12.2), MeshKit.DARK).box(25, 2.5, 4, Vector3(0, 11, -12.2), MeshKit.DARK)
-		.box(4, 2.5, 25, Vector3(12.2, 11, 0), MeshKit.DARK).box(4, 2.5, 25, Vector3(-12.2, 11, 0), MeshKit.DARK).mesh(), P.w_crate, func(c): return Color.from_hsv(0.08, 0.62, 0.8 + c * 0.1))
-	_instanced(MeshKit.new().box(25, 20, 25, Vector3(0, 10, 0), T).box(26, 3, 26, Vector3(0, 21.5, 0), Color("#f2fbff")).mesh(), P.w_ice, func(c): return Color.from_hsv(0.55, 0.45, 0.95 + c * 0.05))
-	# On grass the walls are piles of big boulders
-	_instanced(MeshKit.new().sphere(17, Vector3(0, 9, 0), T, Vector3(1.1, 0.8, 1), false, 9, 5).sphere(10, Vector3(11, 6, 7), T, Vector3(1, 0.8, 1), false, 8, 4).mesh(),
-		P.w_hedge, func(c): return Color.from_hsv(0.08, 0.1, 0.72 + c * 0.12))
-	var toy := MeshKit.new().box(24, 22, 24, Vector3(0, 11, 0), T)
-	for p in [Vector3(-6, 24, -6), Vector3(6, 24, -6), Vector3(-6, 24, 6), Vector3(6, 24, 6)]:
-		toy.cyl(4, 4, 4, 10, p, T)
-	_instanced(toy.mesh(), P.w_toy, func(c): return Color(BRIGHT[int(c * BRIGHT.size()) % BRIGHT.size()]))
+	# Wall pieces (they block roads): sandbag lines on grass, ammo crates in the desert,
+	# concrete barriers in the snow and steel tank traps on the beach
+	var bags := MeshKit.new()
+	for p in [Vector3(-9, 4, 0), Vector3(0, 4, 0), Vector3(9, 4, 0), Vector3(-4.5, 10.5, 0), Vector3(4.5, 10.5, 0)]:
+		bags.sphere(6, p, T, Vector3(1.25, 0.6, 0.9), false, 7, 3)
+	_instanced(bags.mesh(), P.w_hedge, func(c): return Color.from_hsv(0.11, 0.33, 0.8 + c * 0.08))
+	_instanced(bags.mesh(), P.sandbags, func(c): return Color.from_hsv(0.11, 0.33, 0.78 + c * 0.08))
+	_instanced(MeshKit.new().box(24, 18, 22, Vector3(0, 9, 0), T).box(25, 3, 23, Vector3(0, 18.5, 0), MeshKit.DARK).box(6, 6, 1, Vector3(0, 10, 11.2), Color("#e8e0b0")).mesh(),
+		P.w_crate, func(c): return Color.from_hsv(0.2, 0.42, 0.66 + c * 0.08))
+	_instanced(MeshKit.new().box(28, 16, 12, Vector3(0, 8, 0), T).box(20, 6, 9, Vector3(0, 19, 0), T).box(28.5, 2, 12.5, Vector3(0, 13, 0), Color("#e2b33c")).box(21, 2, 10, Vector3(0, 23, 0), Color.WHITE).mesh(),
+		P.w_ice, func(c): return Color.from_hsv(0.6, 0.06, 0.78 + c * 0.08))
+	var hog := MeshKit.new()
+	for b in [Basis(Vector3.BACK, 0.8), Basis(Vector3.BACK, -0.8) * Basis(Vector3.UP, PI / 2), Basis(Vector3.RIGHT, 0.8)]:
+		hog.add(_box_mesh(3.5, 30, 3.5), Transform3D(b, Vector3(0, 10, 0)), T)
+	_instanced(hog.mesh(), P.w_toy, func(c): return Color.from_hsv(0.6, 0.12, 0.42 + c * 0.1))
+	_instanced(hog.mesh(), P.hedgehog, func(c): return Color.from_hsv(0.6, 0.12, 0.42 + c * 0.1))
+	# Oil drums, in army green or red
+	_instanced(MeshKit.new().cyl(7, 7, 18, 12, Vector3(0, 9, 0), T).cyl(7.5, 7.5, 1.6, 12, Vector3(0, 5, 0), MeshKit.DARK).cyl(7.5, 7.5, 1.6, 12, Vector3(0, 13, 0), MeshKit.DARK).mesh(),
+		P.drum, func(c): return Color("#5f7a3a") if c < 0.6 else Color("#c9483c"))
 
 
 func _box_mesh(w: float, h: float, d: float) -> BoxMesh:
@@ -359,161 +371,181 @@ func _box_mesh(w: float, h: float, d: float) -> BoxMesh:
 func _build_model(t, lv: int) -> Dictionary:
 	var k := MeshKit.new()
 	var info := {"top": 60.0, "smoke": [], "flag_at": Vector3.ZERO, "muzzle": Vector3(0, 30, 0), "range": false}
-	var W := Color("#ffffff")
-	var SH := Color("#cfdaea")
-	var DK := Color("#46506b")
-	var METAL := Color("#8792a6")
-	var STONE := Color("#f3eee4")
+	var CON := Color("#d2d7dd")      # concrete
+	var CON_D := Color("#a7afba")    # darker concrete
+	var DK := Color("#3a4257")       # slits, doors, guns
+	var STEEL := Color("#7d8798")
+	var BAG := Color("#cdb68a")      # sandbags
+	var OLIVE := Color("#7f8c4c")
 	if t.type == "barracks":
-		# A round castle tower: a stone base with the army's trim, a body that gets taller and
-		# wider with every level, a gallery with battlements and a pointed roof in army colours
+		# A military outpost: an eight-sided concrete blockhouse with the army's stripe, gun slits
+		# and a steel door, sandbags on the roof, and more on top with every level: a lookout
+		# post, a machine gun, a radio mast and a radar dish
 		var R := 25.0 + lv * 2.5
-		var h := 14.0 + lv * 11.0
-		k.cyl(R + 9, R + 11, 6, 28, Vector3(0, 3, 0), SH)
-		k.cyl(R + 9.6, R + 9.6, 2.2, 28, Vector3(0, 6.6, 0), MeshKit.TEAM)
-		k.cyl(R, R + 2.5, h, 28, Vector3(0, 6 + h / 2, 0), STONE)
-		# Stone courses
-		var y := 17.0
-		while y < 6 + h - 4:
-			var r_at := R + 2.5 - 2.5 * (y - 6) / h
-			k.cyl(r_at + 0.6, r_at + 0.6, 1.3, 28, Vector3(0, y, 0), SH)
-			y += 11.0
-		# An arched door facing the camera, and window slits up the tower
-		k.box(11, 12, 4, Vector3(0, 12, R + 1.2), DK)
-		k.cyl(5.5, 5.5, 4, 14, Vector3(0, 18, R + 1.2), DK, Basis(Vector3.RIGHT, PI / 2))
-		for f in lv:
-			var wy := 30.0 + f * 11.0
-			if wy > 6 + h - 7:
-				break
-			for a in [-0.75, 0.75]:
-				var r_at := R + 2.5 - 2.5 * (wy - 6) / h
-				k.box(3, 6, 3, Vector3(sin(a) * r_at, wy, cos(a) * r_at), DK, a)
-		var top := 6.0 + h
-		k.cyl(R + 5.5, R + 1, 5, 28, Vector3(0, top + 2.5, 0), SH)
-		k.cyl(R + 5.5, R + 5.5, 3, 28, Vector3(0, top + 6.5, 0), MeshKit.TEAM)
-		var n_m := 10 + lv * 2
-		for i in n_m:
-			var a := i * TAU / n_m
-			k.box(6, 7, 4.5, Vector3(sin(a) * (R + 3.6), top + 11.5, cos(a) * (R + 3.6)), STONE, a)
-		var rh := 20.0 + lv * 3.0
-		k.cone(R + 1.5, rh, 28, Vector3(0, top + 8 + rh / 2, 0), MeshKit.TEAM)
-		k.cyl(R + 2, R + 2, 2.2, 28, Vector3(0, top + 9, 0), MeshKit.DARK)
-		info.flag_at = Vector3(0, top + 8 + rh - 1, 0)
-		info.top = top + 8 + rh + 4
+		var h := 16.0 + lv * 6.0
+		k.cyl(R + 9, R + 11, 5, 8, Vector3(0, 2.5, 0), CON_D, Basis(Vector3.UP, PI / 8))
+		k.cyl(R + 9.6, R + 9.6, 1.6, 8, Vector3(0, 5.2, 0), MeshKit.TEAM, Basis(Vector3.UP, PI / 8))
+		k.cyl(R, R + 1.5, h, 8, Vector3(0, 5 + h / 2, 0), CON, Basis(Vector3.UP, PI / 8))
+		k.cyl(R + 0.8, R + 0.8, 7, 8, Vector3(0, 5 + h - 6, 0), MeshKit.TEAM, Basis(Vector3.UP, PI / 8))
+		var face := (R + 0.7) * cos(PI / 8)
+		k.box(12, 13, 3, Vector3(0, 11.5, face), DK).box(15, 2.2, 3.4, Vector3(0, 18.6, face), STEEL)
+		for a in [-PI / 4, PI / 4]:
+			k.box(10, 2.6, 3, Vector3(sin(a) * face, 5 + h * 0.55, cos(a) * face), DK, a)
+		var top := 5.0 + h
+		k.cyl(R + 2.5, R + 2.5, 3, 8, Vector3(0, top + 1.5, 0), CON_D, Basis(Vector3.UP, PI / 8))
+		k.cyl(R - 3, R - 3, 1.2, 8, Vector3(0, top + 3.4, 0), MeshKit.TEAM, Basis(Vector3.UP, PI / 8))
+		var n := 10 + lv * 2
+		for i in n:
+			var a := i * TAU / n
+			k.sphere(4.2, Vector3(sin(a) * (R - 1), top + 5.2, cos(a) * (R - 1)), BAG, Vector3(1.35, 0.62, 0.9), false, 6, 3)
+		var y := top + 3.0
+		if lv >= 2:
+			# A lookout post with a roof in the army's colour
+			k.box(20, 12, 20, Vector3(0, y + 6, -2), CON)
+			k.box(14, 3, 3, Vector3(0, y + 8, 8.2), DK)
+			k.box(25, 3, 25, Vector3(0, y + 13.5, -2), MeshKit.TEAM)
+			y += 15.0
+		if lv >= 3:
+			# A machine gun at the front and a radio mast
+			k.box(5, 4, 7, Vector3(9, top + 5, R - 6), DK)
+			k.cyl(0.9, 0.9, 12, 6, Vector3(9, top + 6, R + 1), DK, Basis(Vector3.RIGHT, PI / 2))
+			k.cyl(0.8, 0.8, 26, 6, Vector3(-9, y + 13, -9), STEEL)
+			k.sphere(1.6, Vector3(-9, y + 26, -9), Color("#ff5a5a"), Vector3.ONE, false, 6, 3)
+		if lv >= 4:
+			# A radar dish
+			var dish := Basis(Vector3.RIGHT, -0.9)
+			k.cyl(0.9, 0.9, 7, 6, Vector3(9, y + 3.5, -6), STEEL)
+			k.add(_dish_mesh(), Transform3D(dish * Basis.from_scale(Vector3(1, 0.3, 1)), Vector3(9, y + 9, -6)), CON)
+		info.flag_at = Vector3(0, y, -2)
+		info.top = y + 30
 	elif t.type == "fort":
-		# Bunker: a squat round fortress with thick buttresses, battlements and a gun dome
-		var R := 36.0 + lv * 2.0
-		var h := 16.0 + lv * 4.0
-		k.cyl(R + 8, R + 11, 6, 28, Vector3(0, 3, 0), SH)
-		k.cyl(R + 8.6, R + 8.6, 2.2, 28, Vector3(0, 6.6, 0), MeshKit.TEAM)
-		k.cyl(R, R + 3, h, 28, Vector3(0, 6 + h / 2, 0), STONE)
-		for i in 8:
-			var a := i * TAU / 8 + PI / 8
-			k.box(9, h + 2, 9, Vector3(sin(a) * (R + 2.5), 6 + h / 2 + 1, cos(a) * (R + 2.5)), SH, a)
-		k.box(13, 11, 4, Vector3(0, 11.5, R + 2.6), DK)
-		var top := 6.0 + h
-		k.cyl(R + 3, R + 3, 4, 28, Vector3(0, top + 2, 0), MeshKit.TEAM)
-		for i in 16:
-			var a := i * TAU / 16
-			k.box(7, 6, 5, Vector3(sin(a) * (R + 0.5), top + 7, cos(a) * (R + 0.5)), STONE, a)
-		k.sphere(R * 0.52, Vector3(0, top + 3, 0), MeshKit.TEAM, Vector3(1, 0.75, 1), true, 20, 6)
+		# A heavy bunker: a concrete dome ringed with sandbags, gun slits all round, and a gun for
+		# every level
+		var R := 34.0 + lv * 2.0
+		k.cyl(R + 12, R + 14, 4, 20, Vector3(0, 2, 0), CON_D)
+		for i in 22:
+			var a := i * TAU / 22
+			k.sphere(5, Vector3(sin(a) * (R + 9), 6, cos(a) * (R + 9)), BAG, Vector3(1.4, 0.65, 0.95), false, 6, 3)
+		k.cyl(R, R + 1, 10, 20, Vector3(0, 9, 0), CON)
+		k.cyl(R + 0.6, R + 0.6, 3, 20, Vector3(0, 12.5, 0), MeshKit.TEAM)
+		k.sphere(R, Vector3(0, 14, 0), CON, Vector3(1, 0.55, 1), true, 20, 5)
+		for i in 6:
+			var a := i * TAU / 6 + 0.25
+			k.box(11, 3, 3, Vector3(sin(a) * (R - 1), 10, cos(a) * (R - 1)), DK, a)
 		for i in lv:
-			var a := i * TAU / lv + 0.4
-			var b := Basis(Vector3.UP, a) * Basis(Vector3.RIGHT, PI / 2)
-			k.cyl(2.4, 2.8, 18, 8, Basis(Vector3.UP, a) * Vector3(0, 0, R * 0.5 + 6) + Vector3(0, top + 8, 0), METAL, b)
-		info.flag_at = Vector3(0, top + 3 + R * 0.39, 0)
-		info.top = top + 3 + R * 0.39 + 6
+			var a := i * TAU / lv + 0.6
+			var b := Basis(Vector3.UP, a) * Basis(Vector3.RIGHT, PI / 2 - 0.15)
+			k.cyl(2.3, 2.8, 22, 8, Basis(Vector3.UP, a) * Vector3(0, 0, R * 0.55 + 6) + Vector3(0, 14 + R * 0.38, 0), DK, b)
+		k.cyl(R * 0.46, R * 0.5, 6, 14, Vector3(0, 14 + R * 0.5, 0), MeshKit.TEAM)
+		k.cyl(R + 1.2, R + 1.2, 2.5, 20, Vector3(0, 15, 0), MeshKit.TEAM)
+		info.flag_at = Vector3(0, 17 + R * 0.55, 0)
+		info.top = 17 + R * 0.55 + 30
 	elif t.type == "factory":
-		# Tank factory: a hall with a big garage door and smoking chimneys
-		var h := 26.0 + lv * 2
-		k.box(84, 6, 70, Vector3(0, 3, 0), SH)
-		k.box(70, h, 54, Vector3(0, 6 + h / 2, 0), W)
-		k.box(74, 7, 58, Vector3(0, 6 + h + 3.5, 0), MeshKit.TEAM)
-		k.box(74, 3, 58, Vector3(0, 6 + h - 0.5, 0), MeshKit.DARK)
-		k.box(34, 20, 2, Vector3(0, 16, 27.5), DK)
+		# Tank factory: an arched hangar with big doors in the army's colour, and chimneys
+		var L := 64.0 + lv * 4
+		var r := 30.0
+		k.box(84, 4, L + 22, Vector3(0, 2, 0), CON_D)
+		k.cyl(r, r, L, 18, Vector3(0, 3, 0), Color("#b8c0ca"), Basis(Vector3.RIGHT, PI / 2))
 		for i in 4:
-			k.box(34, 1.2, 2.4, Vector3(0, 9 + i * 4.5, 28), SH)
-		k.box(38, 3, 3, Vector3(0, 27.5, 28), MeshKit.TEAM)
+			k.cyl(r + 0.8, r + 0.8, 2.4, 18, Vector3(0, 3, -L / 2 + 8 + i * (L - 16) / 3), CON_D, Basis(Vector3.RIGHT, PI / 2))
+		var front := L / 2 + 0.6
+		k.box(38, 26, 2, Vector3(0, 16, front), MeshKit.TEAM)
+		for i in 4:
+			k.box(38, 1.2, 2.4, Vector3(0, 7 + i * 6, front + 0.3), MeshKit.DARK)
+		k.box(44, 4, 3, Vector3(0, 31, front), STEEL)
 		for i in mini(3, lv):
-			var b := Basis(Vector3.RIGHT, PI / 2)
-			k.cyl(4, 4, 14, 10, Vector3(-20 + i * 13, 6 + h + 10, 22), METAL, b)
-		for i in mini(3, lv):
-			var ch := 44.0 + i * 6
-			var x := 22.0 - i * 10
-			k.cyl(4.5, 5.5, ch, 10, Vector3(x, 6 + ch / 2, -16), METAL)
-			k.cyl(5.5, 5.5, 3, 10, Vector3(x, 6 + ch, -16), DK)
-			info.smoke.append(Vector3(x, 6 + ch + 3, -16))
-		info.flag_at = Vector3(-26, 6 + h + 7, 18)
-		info.top = 6 + h + 12
+			var ch := 40.0 + i * 6
+			var x := 18.0 - i * 12
+			k.cyl(3.8, 4.6, ch, 10, Vector3(x, ch / 2, -L / 2 + 6), STEEL)
+			k.cyl(4.8, 4.8, 3, 10, Vector3(x, ch, -L / 2 + 6), DK)
+			info.smoke.append(Vector3(x, ch + 3, -L / 2 + 6))
+		info.flag_at = Vector3(0, r + 3, 0)
+		info.top = r + 3 + 30
 	elif t.type == "castle":
-		# Boss castle: walls with battlements, round corner towers and a tall keep that shoots
-		var wh := 30.0
-		k.box(108, 6, 108, Vector3(0, 3, 0), SH)
-		for s in [-1, 1]:
-			k.box(84, wh, 10, Vector3(0, 6 + wh / 2, s * 40), W)
-			k.box(10, wh, 84, Vector3(s * 40, 6 + wh / 2, 0), W)
-			for i in 5:
-				var o := -32.0 + i * 16
-				k.box(8, 7, 11, Vector3(o, 6 + wh + 3.5, s * 40), MeshKit.TEAM)
-				k.box(11, 7, 8, Vector3(s * 40, 6 + wh + 3.5, o), MeshKit.TEAM)
-		var th := 44.0 + lv * 3
-		for p in [Vector2(-42, -42), Vector2(42, -42), Vector2(-42, 42), Vector2(42, 42)]:
-			k.cyl(14, 15, th, 10, Vector3(p.x, 6 + th / 2, p.y), W)
-			k.cyl(15.5, 15.5, 4, 10, Vector3(p.x, 6 + th - 4, p.y), MeshKit.DARK)
-			k.cone(18, 24, 10, Vector3(p.x, 6 + th + 12, p.y), MeshKit.TEAM)
-		var kh := 52.0 + lv * 6
-		k.box(42, kh, 42, Vector3(0, 6 + kh / 2, -4), W)
-		k.box(46, 6, 46, Vector3(0, 6 + kh - 3, -4), MeshKit.TEAM)
-		for i in 4:
-			var a := i * PI / 2
-			k.box(10, 7, 10, Vector3(sin(a) * 18, 6 + kh + 3.5, cos(a) * 18 - 4), MeshKit.TEAM)
-		for yy in [kh * 0.45, kh * 0.75]:
-			k.box(8, 9, 2, Vector3(-10, 6 + yy, 18), DK).box(8, 9, 2, Vector3(10, 6 + yy, 18), DK)
-		k.box(24, 22, 2, Vector3(0, 17, 45.5), DK)
-		k.box(28, 3, 3, Vector3(0, 29, 46), MeshKit.TEAM)
-		info.flag_at = Vector3(0, 6 + kh + 7, -4)
-		info.top = 6 + kh + 12
-		info.muzzle = Vector3(0, 6 + kh, 10)
+		# The enemy headquarters: concrete walls with sandbags, a round gun tower at each corner,
+		# and a command building with a radar and a big gun that shoots
+		var wh := 26.0
+		k.box(112, 5, 112, Vector3(0, 2.5, 0), CON_D)
+		for sd in [-1, 1]:
+			k.box(86, wh, 10, Vector3(0, 5 + wh / 2, sd * 41), CON)
+			k.box(10, wh, 86, Vector3(sd * 41, 5 + wh / 2, 0), CON)
+			k.box(86, 3, 11, Vector3(0, 5 + wh - 3, sd * 41), MeshKit.TEAM)
+			k.box(11, 3, 86, Vector3(sd * 41, 5 + wh - 3, 0), MeshKit.TEAM)
+			for i in 7:
+				var o := -36.0 + i * 12
+				k.sphere(4, Vector3(o, 5 + wh + 2, sd * 41), BAG, Vector3(1.4, 0.6, 1), false, 6, 3)
+				k.sphere(4, Vector3(sd * 41, 5 + wh + 2, o), BAG, Vector3(1, 0.6, 1.4), false, 6, 3)
+		var th := 38.0 + lv * 3
+		for p in [Vector2(-43, -43), Vector2(43, -43), Vector2(-43, 43), Vector2(43, 43)]:
+			k.cyl(13, 14, th, 8, Vector3(p.x, 5 + th / 2, p.y), CON, Basis(Vector3.UP, PI / 8))
+			k.cyl(14.5, 14.5, 4, 8, Vector3(p.x, 5 + th - 3, p.y), MeshKit.TEAM, Basis(Vector3.UP, PI / 8))
+			k.cyl(10, 10, 5, 10, Vector3(p.x, 5 + th + 2.5, p.y), CON_D)
+			k.cyl(1.6, 1.8, 14, 6, Vector3(p.x, 5 + th + 3, p.y + 8), DK, Basis(Vector3.RIGHT, PI / 2))
+		var kh := 44.0 + lv * 5
+		k.box(44, kh, 40, Vector3(0, 5 + kh / 2, -4), CON)
+		k.box(48, 5, 44, Vector3(0, 5 + kh + 2.5, -4), MeshKit.TEAM)
+		for yy in [kh * 0.4, kh * 0.72]:
+			k.box(30, 4, 2, Vector3(0, 5 + yy, 16.2), DK)
+		k.box(22, 20, 2, Vector3(0, 15, 45.5), DK).box(26, 3, 3, Vector3(0, 26, 46), MeshKit.TEAM)
+		k.cyl(9, 10, 6, 12, Vector3(0, 5 + kh + 8, 4), DK)
+		k.cyl(2.6, 3, 26, 8, Vector3(0, 5 + kh + 9, 18), DK, Basis(Vector3.RIGHT, PI / 2))
+		k.cyl(0.9, 0.9, 22, 6, Vector3(-16, 5 + kh + 16, -18), STEEL)
+		k.add(_dish_mesh(), Transform3D(Basis(Vector3.RIGHT, -0.8) * Basis.from_scale(Vector3(1, 0.3, 1)), Vector3(14, 5 + kh + 12, -16)), CON)
+		info.flag_at = Vector3(-16, 5 + kh + 5, -4)
+		info.top = 5 + kh + 40
+		info.muzzle = Vector3(0, 5 + kh + 9, 30)
 		info.range = true
 	elif t.type == "camp":
-		# Training camp: a big striped tent, a small one, and targets for practice
-		var h := 34.0 + lv * 3
-		k.box(80, 4, 70, Vector3(0, 2, 0), SH)
-		k.cone(36, h, 4, Vector3(0, 4 + h / 2, -4), MeshKit.TEAM, Basis(Vector3.UP, PI / 4))
-		k.cone(26, h * 0.62, 4, Vector3(0, 4 + h * 0.5, -4), W, Basis(Vector3.UP, PI / 4))
-		k.box(12, 15, 2, Vector3(0, 11.5, 20), DK)
-		k.cone(18, 22, 4, Vector3(26, 15, -24), MeshKit.LIGHT, Basis(Vector3.UP, PI / 4))
-		for x in [-30.0, -14.0]:
-			k.box(2, 14, 2, Vector3(x, 11, 28), METAL)
-			k.cyl(7, 7, 2, 10, Vector3(x, 20, 28), W, Basis(Vector3.RIGHT, PI / 2))
-			k.cyl(4.5, 4.5, 2.2, 10, Vector3(x, 20, 28.2), MeshKit.TEAM, Basis(Vector3.RIGHT, PI / 2))
-			k.cyl(1.8, 1.8, 2.4, 8, Vector3(x, 20, 28.4), W, Basis(Vector3.RIGHT, PI / 2))
+		# Training camp: army tents with the army's colour, sandbags and practice targets
+		var h := 30.0 + lv * 3
+		k.box(84, 3, 72, Vector3(0, 1.5, 0), Color("#b89a6a"))
+		k.cone(34, h, 4, Vector3(0, 3 + h / 2, -6), OLIVE, Basis(Vector3.UP, PI / 4))
+		k.cone(35, h * 0.28, 4, Vector3(0, 3 + h * 0.86, -6), MeshKit.TEAM, Basis(Vector3.UP, PI / 4))
+		k.box(11, 13, 2, Vector3(0, 9.5, 17), DK)
+		k.cone(20, 22, 4, Vector3(27, 14, -26), OLIVE.darkened(0.1), Basis(Vector3.UP, PI / 4))
+		for x in [-32.0, -16.0]:
+			k.box(2, 14, 2, Vector3(x, 10, 30), STEEL)
+			k.cyl(7, 7, 2, 10, Vector3(x, 19, 30), Color.WHITE, Basis(Vector3.RIGHT, PI / 2))
+			k.cyl(4.5, 4.5, 2.2, 10, Vector3(x, 19, 30.2), MeshKit.TEAM, Basis(Vector3.RIGHT, PI / 2))
 		for i in 6:
-			k.box(2, 9, 2, Vector3(16 + i * 4.5, 8.5, 30), SH)
-		k.box(26, 2, 2, Vector3(27, 10, 30), SH)
-		info.flag_at = Vector3(0, 4 + h, -4)
-		info.top = 4 + h + 8
+			k.sphere(4.2, Vector3(14 + i * 6.5, 5, 32), BAG, Vector3(1.4, 0.65, 0.95), false, 6, 3)
+		info.flag_at = Vector3(0, 3 + h - 2, -6)
+		info.top = 3 + h + 30
 	else:
-		# Watchtower: a lookout on four legs with a pointed roof; it shoots enemies in its circle
-		var leg_h := 34.0 + lv * 4
+		# Gun tower: a steel tower on four legs with a sandbagged nest and a gun that turns on
+		# enemies in its circle
+		var leg_h := 32.0 + lv * 4
 		for p in [Vector2(-14, -14), Vector2(14, -14), Vector2(-14, 14), Vector2(14, 14)]:
-			k.box(4.5, leg_h, 4.5, Vector3(p.x, leg_h / 2, p.y), W)
-		for yy in [leg_h * 0.35, leg_h * 0.7]:
-			k.box(30, 2.5, 2.5, Vector3(0, yy, 14), SH).box(30, 2.5, 2.5, Vector3(0, yy, -14), SH)
-			k.box(2.5, 2.5, 30, Vector3(14, yy, 0), SH).box(2.5, 2.5, 30, Vector3(-14, yy, 0), SH)
-		k.box(40, 4, 40, Vector3(0, leg_h + 2, 0), W)
-		k.box(40, 9, 3, Vector3(0, leg_h + 8.5, 18.5), MeshKit.TEAM).box(40, 9, 3, Vector3(0, leg_h + 8.5, -18.5), MeshKit.TEAM)
-		k.box(3, 9, 40, Vector3(18.5, leg_h + 8.5, 0), MeshKit.TEAM).box(3, 9, 40, Vector3(-18.5, leg_h + 8.5, 0), MeshKit.TEAM)
-		for p in [Vector2(-17, -17), Vector2(17, -17), Vector2(-17, 17), Vector2(17, 17)]:
-			k.box(3, 14, 3, Vector3(p.x, leg_h + 11, p.y), W)
-		k.cone(33, 22, 4, Vector3(0, leg_h + 29, 0), MeshKit.TEAM, Basis(Vector3.UP, PI / 4))
-		k.box(46, 2, 46, Vector3(0, leg_h + 18, 0), MeshKit.DARK)
-		info.flag_at = Vector3(0, leg_h + 38, 0)
-		info.top = leg_h + 42
-		info.muzzle = Vector3(0, leg_h + 10, 0)
+			k.box(4, leg_h, 4, Vector3(p.x, leg_h / 2, p.y), STEEL)
+		for yy in [leg_h * 0.33, leg_h * 0.66]:
+			for b in [Basis(Vector3.BACK, 0.9), Basis(Vector3.BACK, -0.9)]:
+				k.add(_box_mesh(2, leg_h * 0.5, 2), Transform3D(b, Vector3(0, yy, 14)), STEEL)
+		k.box(38, 4, 38, Vector3(0, leg_h + 2, 0), CON_D)
+		for i in 16:
+			var a := i * TAU / 16
+			k.sphere(4, Vector3(sin(a) * 15, leg_h + 6.5, cos(a) * 15), BAG, Vector3(1.4, 0.65, 0.95), false, 6, 3)
+		k.cyl(8, 9, 6, 12, Vector3(0, leg_h + 8, 0), MeshKit.TEAM)
+		k.cyl(2, 2.4, 20, 8, Vector3(0, leg_h + 9, 10), DK, Basis(Vector3.RIGHT, PI / 2))
+		k.box(30, 2, 30, Vector3(0, leg_h + 24, 0), MeshKit.TEAM)
+		for p in [Vector2(-13, -13), Vector2(13, -13), Vector2(-13, 13), Vector2(13, 13)]:
+			k.box(2, 12, 2, Vector3(p.x, leg_h + 17, p.y), STEEL)
+		info.flag_at = Vector3(0, leg_h + 25, 0)
+		info.top = leg_h + 25 + 30
+		info.muzzle = Vector3(0, leg_h + 9, 18)
 		info.range = true
 	info.mesh = k.mesh()
 	return info
+
+
+## A radar dish (a half sphere, squashed flat when it's added)
+func _dish_mesh() -> SphereMesh:
+	var d := SphereMesh.new()
+	d.radius = 10
+	d.height = 10
+	d.is_hemisphere = true
+	d.radial_segments = 12
+	d.rings = 3
+	return d
 
 
 ## The flag on your buildings can be decorated (bought under Looks)
@@ -668,8 +700,8 @@ func _make_units() -> void:
 	tanks = _unit_mm(tk.mesh(), MAX_TANKS, false)
 
 
-## A toy soldier: a tunic and arms in the army's colour, a belt, a rifle on the shoulder,
-## marching legs and a hat (a helmet, or the hat picked under Looks)
+## An army man: a tunic and arms in the army's colour, a belt, a backpack, a rifle on the
+## shoulder, marching legs and a hat (a helmet, or the hat picked under Looks)
 func _soldier_mesh(hat: String) -> ArrayMesh:
 	var T := MeshKit.TEAM
 	var k := MeshKit.new()
@@ -682,8 +714,7 @@ func _soldier_mesh(hat: String) -> ArrayMesh:
 	k.box(2.5, 8, 2.8, Vector3(-5.4, 12, 0.4), T).box(2.5, 8, 2.8, Vector3(5.4, 12, 0.4), T)
 	k.box(1.7, 1.9, 17, Vector3(6.6, 15.5, 2.5), Color("#4a3a2e"))
 	k.sphere(4.5, Vector3(0, 20.6, 0.2), Color("#ffd3a8"), Vector3.ONE, false, 8, 4)
-	k.box(1.2, 1.5, 0.6, Vector3(-1.6, 20.6, 4.5), Color("#27304a"))
-	k.box(1.2, 1.5, 0.6, Vector3(1.6, 20.6, 4.5), Color("#27304a"))
+	k.box(6.5, 7.5, 3.4, Vector3(0, 13.5, -5.6), MeshKit.DARK)
 	var gold := Color("#ffd23f")
 	match hat:
 		"beret":
