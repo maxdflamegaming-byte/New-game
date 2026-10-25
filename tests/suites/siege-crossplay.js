@@ -53,7 +53,8 @@ const { chromium, ROOT, OUT } = require('../lib');
     };
 
     // The web player
-    const browser = await chromium.launch();
+    // PW_CHROME: use a Chrome that's already installed (CI runners have one)
+    const browser = await chromium.launch(process.env.PW_CHROME ? { executablePath: process.env.PW_CHROME } : {});
     const page = await browser.newPage({ viewport: { width: 420, height: 860 } });
     page.on('pageerror', e => errors.push(e.message));
     await page.goto(`file://${ROOT}/tower-siege/index.html?server=ws://127.0.0.1:${PORT}`);
