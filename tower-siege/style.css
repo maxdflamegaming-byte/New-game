@@ -543,6 +543,8 @@ button.big.pvp {
 .lb-name small { display: block; font: 700 12px Nunito, system-ui, sans-serif; color: #6b7fa6; }
 .lb-score { font: 400 17px var(--title); white-space: nowrap; }
 .lb-row .kick { padding: 2px 8px; font-size: 14px; border-radius: 10px; background: var(--red); box-shadow: 0 2px 0 var(--ink); border-width: 2px; }
+.lb-row .report, #clan-head .report { padding: 2px 6px; font-size: 14px; border-radius: 10px; background: #fff; box-shadow: 0 2px 0 var(--ink); border-width: 2px; margin-left: 6px; }
+.lb-row .report:disabled, #clan-head .report:disabled { opacity: 0.4; }
 .crown { font-size: 15px; }
 .empty { padding: 16px; opacity: 0.9; }
 .emblem {

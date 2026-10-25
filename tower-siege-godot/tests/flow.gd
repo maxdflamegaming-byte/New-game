@@ -16,7 +16,8 @@ func ok(name: String, cond: bool, extra := "") -> void:
 
 
 func _initialize() -> void:
-	DirAccess.remove_absolute(ProjectSettings.globalize_path("user://tower_siege.json"))
+	for f in ["user://tower_siege.json", "user://tower_siege.json.bak", "user://tower_siege.json.tmp"]:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(f))
 	main = load("res://scenes/main.tscn").instantiate()
 	root.add_child(main)
 	main.cinematics = false # tested on their own at the end
@@ -106,6 +107,18 @@ func _run() -> void:
 	await _frames(5)
 	await create_timer(1.5).timeout
 	ok("Losing every building shows Defeat", main.screen_open == "lose")
+
+	# A save cut off halfway (the phone killed the app mid-write) falls back to the backup
+	var level_before := int(main.save.level)
+	main.save.coins = 7
+	main.write_save()
+	main.save.coins = 8
+	main.write_save()
+	var broken := FileAccess.open("user://tower_siege.json", FileAccess.WRITE)
+	broken.store_string("{\"level\": 9, \"coi")
+	broken.close()
+	main.load_save()
+	ok("A broken save falls back to the last good one", int(main.save.level) == level_before and int(main.save.coins) == 7, "level %d coins %d" % [main.save.level, main.save.coins])
 
 	# Upgrades
 	main.save.coins = 500

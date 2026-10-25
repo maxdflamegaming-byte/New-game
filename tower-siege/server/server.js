@@ -17,16 +17,43 @@ const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 const { openStore } = require('./store');
 
-const PROTOCOL = 3;
+const PROTOCOL = 4;
 const PORT = Number(process.env.PORT) || 8090;
 const GRACE_MS = Number(process.env.RECONNECT_MS) || 15000; // how long a match waits for a dropped player
-const WIN = 30, LOSS = 15, MAX_START_TROPHIES = 300;
+const WIN = 30, LOSS = 15;
+const CONFIRM_MS = Number(process.env.CONFIRM_MS) || 8000; // how long a result waits for the other player's word
+const PAIR_LIMIT = 3;        // trophies change for the same two players at most this many times a day
 const CLAN_SIZE = 25, TOP = 50;
 const EMBLEMS = ['🦁', '🐺', '🦅', '🐉', '🦈', '🐻', '⚡', '🔥', '❄️', '🌟', '🚀', '🛡️', '⚔️', '👑', '🍀', '💎'];
 const COLORS = ['#3d9bff', '#ff5257', '#ffc21f', '#45d35a', '#a66bff', '#ff8a3d', '#2ec3e0', '#ff6fb5'];
 
 const clean = (s, max) => String(s || '').replace(/[^\p{L}\p{N} _.-]/gu, '').replace(/\s+/g, ' ').trim().slice(0, max);
 const hash = s => crypto.createHash('sha256').update(s).digest('hex');
+
+// Names everyone can see (players and clans) can't contain these. Names are checked with
+// spaces, dots and accents taken out and look-alike digits read as letters ("f.u.c.k",
+// "sh1t"). Only words that don't hide inside ordinary ones are listed.
+const BANNED = [
+  // English
+  'fuck', 'shit', 'bitch', 'cunt', 'nigger', 'nigga', 'faggot', 'whore', 'slut', 'pussy', 'bastard',
+  'retard', 'penis', 'vagina', 'porn', 'rapist', 'hitler', 'wanker', 'motherf',
+  // Spanish and Portuguese
+  'hijodeputa', 'putamadre', 'mierda', 'pendejo', 'cabron', 'gilipollas', 'caralho', 'buceta', 'foder', 'merda', 'viado', 'arrombado',
+  // Hindi (in Latin letters)
+  'chutiya', 'chutia', 'madarchod', 'bhenchod', 'behenchod', 'bhosdi', 'lavda',
+  // Indonesian
+  'bangsat', 'kontol', 'memek', 'ngentot', 'bajingan', 'jancok',
+  // Russian
+  'хуй', 'хуе', 'пизд', 'блять', 'бляд', 'ебан', 'ебат', 'сука', 'мудак', 'пидор', 'гандон',
+  // Turkish
+  'orospu', 'siktir', 'sikerim', 'yarrak', 'amcik', 'pezevenk',
+];
+const fold = s => String(s).toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+  .replace(/[\s_.-]/g, '').replace(/0/g, 'o').replace(/1/g, 'i').replace(/3/g, 'e').replace(/4/g, 'a').replace(/5/g, 's').replace(/7/g, 't');
+const rude = s => { const f = fold(s); return BANNED.some(w => f.includes(w)); };
+// A name as it's kept: cleaned, and '' if it's rude
+const allowedName = (s, max = 16) => { const n = clean(s, max); return n && !rude(n) ? n : ''; };
+const REPORTS = 3;           // different players reporting a name before it's replaced
 const newId = () => crypto.randomBytes(6).toString('hex');
 
 let store;
@@ -43,20 +70,35 @@ function publicPlayer(p) {
 }
 const tagOf = p => (p.clan && clans.get(p.clan)?.tag) || '';
 
-function login(msg) {
+// New accounts from one address: a phone network shares one address between many people,
+// so the limit is generous; it stops a script making thousands
+const NEW_PER_HOUR = Number(process.env.NEW_PER_HOUR) || 30;
+const made = new Map();       // address -> times accounts were made in the last hour
+function login(msg, ip) {
   let p = players.get(String(msg.id || ''));
-  if (p && p.tokenHash === hash(String(msg.token || ''))) return { p };
-  // A new account; a phone that played before this server keeps a little of what it had
+  if (p && p.tokenHash === hash(String(msg.token || ''))) {
+    p.seen = Date.now();
+    return { p };
+  }
+  const now = Date.now();
+  const recent = (made.get(ip) || []).filter(t => now - t < 3600e3);
+  if (recent.length >= NEW_PER_HOUR) return {};
+  recent.push(now);
+  made.set(ip, recent);
+  // A new account starts at 0 trophies (what the phone says it had isn't trusted)
   const token = crypto.randomBytes(18).toString('hex');
   p = {
-    id: newId(), tokenHash: hash(token), name: clean(msg.name, 16) || 'Player',
-    trophies: Math.max(0, Math.min(MAX_START_TROPHIES, Math.floor(Number(msg.trophies) || 0))),
-    wins: 0, losses: 0, clan: null, created: Date.now(),
+    id: newId(), tokenHash: hash(token), name: allowedName(msg.name) || 'Player',
+    trophies: 0, wins: 0, losses: 0, clan: null, created: now, seen: now,
   };
   players.set(p.id, p);
   savePlayer(p);
   return { p, token };
 }
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, list] of made) if (list.every(t => now - t >= 3600e3)) made.delete(ip);
+}, 600e3).unref();
 
 // ---------- Clans ----------
 const clanTrophies = c => c.members.reduce((a, id) => a + (players.get(id)?.trophies || 0), 0);
@@ -85,7 +127,8 @@ function leaveClan(p) {
 let topCache = null, topAt = 0;
 function top() {
   if (topCache && Date.now() - topAt < 5000) return topCache;
-  const ranked = [...players.values()].filter(p => p.wins + p.losses > 0 || p.trophies > 0).sort((a, b) => b.trophies - a.trophies || a.created - b.created);
+  // Only players who have finished a match
+  const ranked = [...players.values()].filter(p => p.wins + p.losses > 0).sort((a, b) => b.trophies - a.trophies || a.created - b.created);
   const rank = new Map(ranked.map((p, i) => [p.id, i + 1]));
   topCache = {
     rank,
@@ -121,7 +164,7 @@ function pair(host, guest) {
   unqueue(host);
   unqueue(guest);
   const seed = Math.floor(Math.random() * 1e9);
-  const match = { host, guest, done: false, seed, timers: {} };
+  const match = { host, guest, done: false, seed, timers: {}, claims: {} };
   host.peer = guest; guest.peer = host;
   host.match = guest.match = match;
   send(host, { t: 'match', role: 'host', seed, opp: info(guest) });
@@ -129,10 +172,56 @@ function pair(host, guest) {
   matches++;
 }
 
+// ---------- Results ----------
+// Both players say who won, each from its own copy of the battle (the host runs it; the guest
+// sees it through the host's updates, and gets a full one just before the result). Trophies
+// only change when they agree, so a changed app that just claims a win gets a draw.
+const other = role => (role === 'host' ? 'guest' : 'host');
+function claim(match, role, winner, why) {
+  if (match.done || match.claims[role]) return;
+  match.claims[role] = { winner, why };
+  if (match.claims[other(role)]) return decide(match);
+  // Wait for the other side's word; if it has gone, this one stands
+  match.confirmTimer = setTimeout(() => decide(match), CONFIRM_MS);
+}
+function decide(match) {
+  clearTimeout(match.confirmTimer);
+  if (match.done) return;
+  const h = match.claims.host, g = match.claims.guest;
+  if (h && g) return h.winner === g.winner && h.winner !== 'none' ? settle(match, h.winner, h.why || g.why) : settle(match, null, 'dispute');
+  const only = h || g;
+  if (only.winner === 'none') return settle(match, null, 'dispute');
+  const ws = match[h ? 'guest' : 'host'];
+  // Still connected but said nothing (or nothing that makes sense): no trophies change
+  if (ws.readyState === ws.OPEN) return settle(match, null, 'dispute');
+  settle(match, only.winner, only.why);
+}
+
+// The same two players only win and lose trophies against each other a few times a day
+// (so two accounts can't feed each other trophies)
+const pairs = new Map();      // "id1|id2" -> { day, n }
+function pairCounts(a, b) {
+  const key = [a.id, b.id].sort().join('|'), day = Math.floor(Date.now() / 864e5);
+  const e = pairs.get(key);
+  if (!e || e.day !== day) { pairs.set(key, { day, n: 1 }); return true; }
+  e.n++;
+  return e.n <= PAIR_LIMIT;
+}
+setInterval(() => {
+  const day = Math.floor(Date.now() / 864e5);
+  for (const [k, e] of pairs) if (e.day !== day) pairs.delete(k);
+}, 3600e3).unref();
+
 // Record a result: winner is 'host', 'guest' or null for a draw
 function settle(match, winner, why) {
   if (match.done) return;
   match.done = true;
+  clearTimeout(match.confirmTimer);
+  if (why === 'dispute') {
+    for (const ws of [match.host, match.guest]) ws.player.disputes = (ws.player.disputes || 0) + 1;
+    console.log(`[server] disputed result: ${match.host.player.id} vs ${match.guest.player.id}`);
+  }
+  if (winner && !pairCounts(match.host.player, match.guest.player)) { winner = null; why = 'again'; }
   for (const role of Object.keys(match.timers)) {
     clearTimeout(match.timers[role]);
     if (away.get(match[role].player.id)?.match === match) away.delete(match[role].player.id);
@@ -211,7 +300,9 @@ function newCode() {
 }
 
 // ---------- Messages ----------
-wss.on('connection', ws => {
+wss.on('connection', (ws, req) => {
+  // Behind the host's proxy, the phone's address is the first one it forwards
+  ws.ip = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '';
   ws.player = null;
   ws.peer = null;
   ws.match = null;
@@ -234,22 +325,31 @@ wss.on('connection', ws => {
       if (ws.peer && ws.peer.readyState === ws.OPEN) ws.peer.send(text);
       return;
     }
-    // Only the host says who won (it runs the battle)
+    // Who won, from each side's point of view: w 1 = me, 2 = the other player, 0 = a draw,
+    // anything else = the battle isn't over as far as I can see
     if (msg.t === 'end') {
-      const match = ws.match;
-      if (!match || match.host !== ws) return;
-      const peer = ws.peer;
-      if (peer) {
-        if (peer.readyState === peer.OPEN) peer.send(text);
-        peer.peer = null; peer.match = null;
+      const match = ws.match || ws.ending;
+      if (!match || match.done) return;
+      const role = match.host === ws ? 'host' : match.guest === ws ? 'guest' : null;
+      if (!role) return;
+      const w = Number(msg.w);
+      const winner = w === 1 ? role : w === 2 ? other(role) : w === 0 ? null : 'none';
+      const why = String(msg.why || '').slice(0, 10);
+      if (role === 'host') {
+        // The host ran the battle: the guest hears the result (and answers with its own word)
+        const peer = ws.peer;
+        if (peer) {
+          if (peer.readyState === peer.OPEN) peer.send(JSON.stringify({ t: 'end', w: msg.w, why }));
+          peer.peer = null; peer.match = null; peer.ending = match;
+        }
       }
-      ws.peer = null; ws.match = null;
-      settle(match, msg.w === 1 ? 'host' : msg.w === 2 ? 'guest' : null, String(msg.why || '').slice(0, 10));
+      ws.peer = null; ws.match = null; ws.ending = match;
+      claim(match, role, winner, why);
       return;
     }
 
     // Changes to names and clans: at most one every half second
-    const changes = ['name', 'mkclan', 'joinclan', 'leaveclan', 'kick'];
+    const changes = ['name', 'mkclan', 'joinclan', 'leaveclan', 'kick', 'report'];
     if (changes.includes(msg.t)) {
       if (Date.now() - ws.lastChange < 500) return send(ws, { t: 'clanerr', msg: 'Slow down a little.' });
       ws.lastChange = Date.now();
@@ -291,8 +391,31 @@ wss.on('connection', ws => {
 
       case 'name': {
         const name = clean(msg.name, 16);
+        if (name && rude(name)) return send(ws, { t: 'me', you: publicPlayer(p), rude: true });
         if (name) { p.name = name; savePlayer(p); dirtyTop(); }
         send(ws, { t: 'me', you: publicPlayer(p) });
+        break;
+      }
+      case 'report': {
+        // A player's or clan's name someone finds offensive. Once 3 different players (who have
+        // played a match, so new accounts can't gang up) report it, it's replaced.
+        const isClan = msg.kind === 'clan';
+        const target = isClan ? clans.get(String(msg.id || '')) : players.get(String(msg.id || ''));
+        if (target && target.id !== p.id && p.wins + p.losses > 0) {
+          target.reports = target.reports || [];
+          if (!target.reports.includes(p.id)) target.reports.push(p.id);
+          if (target.reports.length >= REPORTS) {
+            target.reports = [];
+            if (isClan) {
+              target.name = 'Clan ' + target.id.slice(0, 4);
+              target.tag = 'C' + target.id.slice(0, 3).toUpperCase();
+            } else target.name = 'Player ' + target.id.slice(0, 4);
+            console.log(`[server] reported ${isClan ? 'clan' : 'player'} ${target.id} renamed`);
+            dirtyTop();
+          }
+          if (isClan) saveClan(target); else savePlayer(target);
+        }
+        send(ws, { t: 'reported' });
         break;
       }
       case 'whoami':
@@ -319,6 +442,7 @@ wss.on('connection', ws => {
       case 'mkclan': {
         if (p.clan && clans.has(p.clan)) return send(ws, { t: 'clanerr', msg: 'Leave your clan first.' });
         const name = clean(msg.name, 20), tag = clean(msg.tag, 4).toUpperCase().replace(/[^A-Z0-9]/g, '');
+        if (rude(name) || rude(tag)) return send(ws, { t: 'clanerr', msg: 'Please pick a friendlier name.' });
         if (name.length < 3) return send(ws, { t: 'clanerr', msg: 'A clan name needs at least 3 letters.' });
         if (tag.length < 2) return send(ws, { t: 'clanerr', msg: 'A clan tag needs 2 to 4 letters or numbers.' });
         if ([...clans.values()].some(c => c.tag === tag)) return send(ws, { t: 'clanerr', msg: `The tag [${tag}] is taken. Try another.` });
@@ -378,9 +502,10 @@ wss.on('connection', ws => {
 function hello(ws, msg) {
   if (msg.v !== PROTOCOL) { send(ws, { t: 'old', v: PROTOCOL }); return; }
   if (ws.player) return;
-  const { p, token } = login(msg);
+  const { p, token } = login(msg, ws.ip);
+  if (!p) { send(ws, { t: 'busy' }); ws.close(); return; }
   // A name typed while offline is kept
-  const name = clean(msg.name, 16);
+  const name = allowedName(msg.name);
   if (name && name !== p.name) { p.name = name; savePlayer(p); }
   ws.player = p;
   send(ws, { t: 'welcome', online: wss.clients.size, you: publicPlayer(p), token });
@@ -415,6 +540,14 @@ async function start() {
   for (const [k, v] of store.all) {
     if (k.startsWith('p:')) players.set(v.id, v);
     else if (k.startsWith('c:')) clans.set(v.id, v);
+  }
+  // Forget accounts that never finished a match and haven't been back for 30 days
+  const old = Date.now() - 30 * 864e5;
+  for (const p of [...players.values()]) {
+    if (p.wins + p.losses === 0 && !p.clan && (p.seen || p.created || 0) < old) {
+      players.delete(p.id);
+      store.del('p:' + p.id);
+    }
   }
   server.listen(PORT, () => console.log(`[server] Tower Siege server on port ${PORT}, protocol ${PROTOCOL}, ${store.kind} storage, ${players.size} players, ${clans.size} clans`));
 }

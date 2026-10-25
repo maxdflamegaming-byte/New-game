@@ -6,7 +6,8 @@ extends SceneTree
 var main
 func _initialize() -> void:
 	DisplayServer.window_set_size(Vector2i(720, 1280))
-	DirAccess.remove_absolute(ProjectSettings.globalize_path("user://tower_siege.json"))
+	for f in ["user://tower_siege.json", "user://tower_siege.json.bak", "user://tower_siege.json.tmp"]:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(f))
 	main = load("res://scenes/main.tscn").instantiate()
 	root.add_child(main)
 	_run()

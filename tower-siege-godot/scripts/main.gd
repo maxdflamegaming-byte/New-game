@@ -132,16 +132,26 @@ func default_save() -> Dictionary:
 	return d
 
 
+## The save, or the backup made before the last write if the save is missing or broken
+## (the phone can kill the app halfway through writing it)
+func _read_save() -> Variant:
+	for path in [SAVE_PATH, SAVE_PATH + ".bak"]:
+		if FileAccess.file_exists(path):
+			var data = JSON.parse_string(FileAccess.get_file_as_string(path))
+			if data is Dictionary:
+				return data
+	return null
+
+
 func load_save() -> void:
 	save = default_save()
-	if FileAccess.file_exists(SAVE_PATH):
-		var data = JSON.parse_string(FileAccess.get_file_as_string(SAVE_PATH))
-		if data is Dictionary:
-			for k in data:
-				save[k] = data[k]
-			var up: Dictionary = default_save().up
-			up.merge(data.get("up", {}), true)
-			save.up = up
+	var data = _read_save()
+	if data is Dictionary:
+		for k in data:
+			save[k] = data[k]
+		var up: Dictionary = default_save().up
+		up.merge(data.get("up", {}), true)
+		save.up = up
 	# JSON gives back numbers as floats
 	save.level = int(save.level)
 	save.coins = int(save.coins)
@@ -153,10 +163,25 @@ func load_save() -> void:
 	save.looks = looks
 
 
+## Written to a new file first and then swapped in, so the app being killed mid-write
+## can't wipe the save; the last good save is kept as a backup
 func write_save() -> void:
-	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
-	if f:
-		f.store_string(JSON.stringify(save))
+	var tmp := SAVE_PATH + ".tmp"
+	var f := FileAccess.open(tmp, FileAccess.WRITE)
+	if f == null:
+		return
+	f.store_string(JSON.stringify(save))
+	f.flush()
+	var ok := f.get_error() == OK
+	f.close()
+	if not ok:
+		return
+	var dir := DirAccess.open("user://")
+	if dir == null:
+		return
+	if FileAccess.file_exists(SAVE_PATH):
+		dir.rename(SAVE_PATH.get_file(), SAVE_PATH.get_file() + ".bak")
+	dir.rename(tmp.get_file(), SAVE_PATH.get_file())
 
 
 # ---------- The phone ----------

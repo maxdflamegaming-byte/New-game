@@ -110,6 +110,26 @@ func _edit(placeholder: String, max_len: int, width: float) -> LineEdit:
 	return e
 
 
+var _reported := {}               # names we've reported this session ("player:id")
+
+
+## 🚩: report an offensive name (a player's or a clan's). Three reports from different
+## players and the server replaces it.
+func _report_button(kind: String, id: String) -> Button:
+	var key := kind + ":" + id
+	var b: Button = ui.button("🚩", "white", 18)
+	b.custom_minimum_size = Vector2(48, 48)
+	b.tooltip_text = "Report this name"
+	b.disabled = _reported.has(key)
+	b.pressed.connect(func():
+		_reported[key] = true
+		b.disabled = true
+		main.play_sound("tap")
+		net.send({"t": "report", "kind": kind, "id": id})
+		ui.toast("Thanks. Names reported by several players are replaced.", 2.6))
+	return b
+
+
 func _row(left: Control, middle: String, sub: String, right: String, me := false, data := "") -> PanelContainer:
 	var p := PanelContainer.new()
 	p.add_theme_stylebox_override("panel", ui.box(Color("#fff6c8") if me else Color(1, 1, 1, 0.93), UI.YELLOW_DARK if me else Color(UI.INK, 0.35), 14, 3, 0))
@@ -253,6 +273,10 @@ func _rename() -> void:
 		main.save.name = name
 		main.write_save()
 		net.send({"t": "name", "name": name})
+		var res: Dictionary = await net.request({"t": "whoami"}, ["me"])
+		if res.get("t") == "me" and main.save.name != name:
+			ui.toast("Please pick a friendlier name.", 2.6)
+			refresh_pvp_card()
 	refresh_pvp_card()
 
 
@@ -423,6 +447,11 @@ func show_trophy_change() -> void:
 			end_trophies.text = "🏆 …"
 		else:
 			end_trophies.text = I18n.t("🏆 %s%d   (%d total)") % ["+" if d >= 0 else "", d, int(main.save.trophies)] + ("   🪙 +20" if d > 0 else "")
+			var why: String = net.pvp.get("result_why", "")
+			if why == "dispute":
+				ui.toast("The two games saw different results, so no trophies changed.", 3.5)
+			elif why == "again":
+				ui.toast("No trophies: you've played each other a lot today.", 3.5)
 	end_league.text = I18n.t("%s league") % I18n.t(Net.league_of(int(main.save.trophies)).name) if main.mode == "online" else "Practice matches don't change your trophies" if main.mode == "practice" else ""
 
 
@@ -490,7 +519,10 @@ func render_board() -> void:
 			var left: HBoxContainer = ui.hbox(8)
 			left.add_child(_rank(i))
 			left.add_child(avatar(pl.name, main.SIDES[1 if me else 2].color, 48))
-			board_list.add_child(_row(left, ("[%s] " % pl.tag if pl.tag != "" else "") + pl.name, "", "🏆 %d" % int(pl.trophies), me))
+			var prow := _row(left, ("[%s] " % pl.tag if pl.tag != "" else "") + pl.name, "", "🏆 %d" % int(pl.trophies), me)
+			if not me:
+				prow.get_child(0).add_child(_report_button("player", pl.id))
+			board_list.add_child(prow)
 		if not shown_me:
 			var left: HBoxContainer = ui.hbox(8)
 			left.add_child(ui.label(str(int(board_data.rank)) if int(board_data.rank) > 0 else "–", 24, UI.INK, 0))
@@ -654,6 +686,8 @@ func _render_clan() -> void:
 	s.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	info.add_child(s)
 	clan_head.add_child(info)
+	if not mine:
+		clan_head.add_child(_report_button("clan", c.id))
 	for ch in clan_members.get_children():
 		ch.queue_free()
 	var list: Array = c.list
@@ -664,6 +698,8 @@ func _render_clan() -> void:
 		left.add_child(_rank(i))
 		left.add_child(avatar(m.name, main.SIDES[1 if me else 2].color, 48))
 		var row := _row(left, m.name + (" 👑" if m.leader else ""), "", "🏆 %d" % int(m.trophies), me)
+		if not me:
+			row.get_child(0).add_child(_report_button("player", m.id))
 		if leader and not m.leader:
 			var kick: Button = ui.button("✖", "red", 18, func(): _kick(m))
 			row.get_child(0).add_child(kick)

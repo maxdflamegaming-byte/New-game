@@ -379,4 +379,10 @@ const T := {
 	"Win the chapter before it to get here.": "Пройди предыдущую главу, чтобы попасть сюда.",
 	"Mission briefing": "Брифинг",
 	"Start": "Начать",
+	"The server is busy. Try again in a while.": "Сервер занят. Попробуй ещё раз чуть позже.",
+	"Please pick a friendlier name.": "Пожалуйста, выбери имя повежливее.",
+	"Thanks. Names reported by several players are replaced.": "Спасибо. Имена, на которые пожаловались несколько игроков, заменяются.",
+	"The two games saw different results, so no trophies changed.": "Две игры увидели разный итог, поэтому трофеи не изменились.",
+	"No trophies: you've played each other a lot today.": "Без трофеев: вы сегодня уже много играли друг с другом.",
+	"Report this name": "Пожаловаться на имя",
 }

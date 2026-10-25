@@ -379,4 +379,10 @@ const T := {
 	"Win the chapter before it to get here.": "Gana el capítulo anterior para llegar aquí.",
 	"Mission briefing": "Instrucciones",
 	"Start": "Empezar",
+	"The server is busy. Try again in a while.": "El servidor está ocupado. Inténtalo de nuevo más tarde.",
+	"Please pick a friendlier name.": "Elige un nombre más amable, por favor.",
+	"Thanks. Names reported by several players are replaced.": "Gracias. Los nombres que denuncian varios jugadores se sustituyen.",
+	"The two games saw different results, so no trophies changed.": "Las dos partidas vieron resultados distintos, así que los trofeos no cambian.",
+	"No trophies: you've played each other a lot today.": "Sin trofeos: hoy ya habéis jugado mucho entre vosotros.",
+	"Report this name": "Denunciar este nombre",
 }

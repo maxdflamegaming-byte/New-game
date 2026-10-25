@@ -42,7 +42,8 @@ func _initialize() -> void:
 	# (Godot counts one when it makes touches from the mouse; lists only drag-scroll then)
 	Input.emulate_touch_from_mouse = true
 	Input.emulate_mouse_from_touch = true
-	DirAccess.remove_absolute(ProjectSettings.globalize_path("user://tower_siege.json"))
+	for f in ["user://tower_siege.json", "user://tower_siege.json.bak", "user://tower_siege.json.tmp"]:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(f))
 	main = load("res://scenes/main.tscn").instantiate()
 	root.add_child(main)
 	# A phone with a camera notch at the top and a gesture bar at the bottom (drawn in red)

@@ -12,7 +12,7 @@ extends Node
 ## strength (the guest moves the rest along their roads itself), and the buildings that changed. If either connection drops, the match pauses for up
 ## to 15 seconds while that phone reconnects.
 
-const PROTOCOL := 3
+const PROTOCOL := 4
 const SERVER := "wss://tower-siege-server.onrender.com"
 const PVP_TIME := 180.0          # a match lasts at most 3 minutes; then the bigger army wins
 const SNAP_EVERY := 0.1
@@ -231,6 +231,10 @@ func _on_message(m: Dictionary) -> void:
 	if t == "old":
 		_old = true
 		return
+	if t == "busy":
+		# Too many new accounts from this network right now
+		main.ui.toast("The server is busy. Try again in a while.", 3.0)
+		return
 	# Answers to requests (leaderboard, clans)
 	for w in _waiters:
 		if w.reply == null and t in w.types:
@@ -249,6 +253,7 @@ func _on_message(m: Dictionary) -> void:
 				main.write_save()
 			if not pvp.is_empty():
 				pvp.result = int(m.delta)
+				pvp.result_why = str(m.get("why", ""))
 			screens.show_trophy_change()
 		"waiting":
 			screens.wait_text("Looking for an opponent…")
@@ -274,6 +279,9 @@ func _on_message(m: Dictionary) -> void:
 				_apply_cmd(m)
 		"end":
 			if is_guest() and not pvp.is_empty() and not pvp.over:
+				# Our own word on who won, from our copy of the battle (the host sent a full
+				# update just before this): the server only counts a result both sides agree on
+				send({"t": "end", "w": verdict(0.5), "why": m.get("why", "")})
 				finish(swap_side(int(m.w)), m.get("why", ""))
 		"wait":
 			# The other player's connection dropped: the match waits for them
@@ -682,23 +690,31 @@ func guest_update(dt: float) -> void:
 
 
 # ---------- The end of a match ----------
-func check_end() -> void:
-	if pvp.is_empty() or pvp.over or is_guest():
-		return
+## Who has won, as this copy of the battle shows it: 1 = us, 2 = them, 0 = a draw, -1 = not over
+func verdict(slack := 0.0) -> int:
 	var b: Battle = main.battle
 	var blue := b.alive(1)
 	var red := b.alive(2)
-	var winner := -1
-	var why := ""
 	if not blue or not red:
-		winner = 1 if blue else 2 if red else 0
-	elif b.time >= PVP_TIME:
+		return 1 if blue else 2 if red else 0
+	if b.time >= PVP_TIME - slack:
 		var tot := b.totals()
-		winner = 1 if tot[1] > tot[2] else 2 if tot[2] > tot[1] else 0
-		why = "time"
+		return 1 if tot[1] > tot[2] else 2 if tot[2] > tot[1] else 0
+	return -1
+
+
+func check_end() -> void:
+	if pvp.is_empty() or pvp.over or is_guest():
+		return
+	var winner := verdict()
 	if winner < 0:
 		return
+	var why := "time" if main.battle.alive(1) and main.battle.alive(2) else ""
 	if main.mode == "online":
+		# A full update first, so the guest sees exactly what we see when it gives its word
+		pvp.need_key = true
+		pvp.snap_t = 0.0
+		host_tick(0.0)
 		send({"t": "end", "w": winner, "why": why})
 	finish(winner, why)
 

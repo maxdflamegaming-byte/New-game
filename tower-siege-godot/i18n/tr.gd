@@ -379,4 +379,10 @@ const T := {
 	"Win the chapter before it to get here.": "Buraya gelmek için önceki bölümü kazan.",
 	"Mission briefing": "Görev brifingi",
 	"Start": "Başla",
+	"The server is busy. Try again in a while.": "Sunucu meşgul. Biraz sonra tekrar dene.",
+	"Please pick a friendlier name.": "Lütfen daha kibar bir ad seç.",
+	"Thanks. Names reported by several players are replaced.": "Teşekkürler. Birkaç oyuncunun bildirdiği adlar değiştirilir.",
+	"The two games saw different results, so no trophies changed.": "İki oyun farklı sonuç gördü, bu yüzden kupalar değişmedi.",
+	"No trophies: you've played each other a lot today.": "Kupa yok: bugün birbirinizle çok oynadınız.",
+	"Report this name": "Bu adı bildir",
 }

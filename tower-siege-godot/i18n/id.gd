@@ -379,4 +379,10 @@ const T := {
 	"Win the chapter before it to get here.": "Menangkan bab sebelumnya untuk sampai ke sini.",
 	"Mission briefing": "Pengarahan misi",
 	"Start": "Mulai",
+	"The server is busy. Try again in a while.": "Server sedang sibuk. Coba lagi nanti.",
+	"Please pick a friendlier name.": "Pilih nama yang lebih sopan, ya.",
+	"Thanks. Names reported by several players are replaced.": "Terima kasih. Nama yang dilaporkan beberapa pemain akan diganti.",
+	"The two games saw different results, so no trophies changed.": "Kedua permainan melihat hasil berbeda, jadi trofi tidak berubah.",
+	"No trophies: you've played each other a lot today.": "Tanpa trofi: kalian sudah sering bertanding hari ini.",
+	"Report this name": "Laporkan nama ini",
 }

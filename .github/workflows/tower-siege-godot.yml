@@ -19,6 +19,8 @@ on:
       - 'tower-siege-godot/**'
       - 'tower-siege/server/**'
       - 'tests/suites/siege-server.js'
+      - 'tests/suites/siege-crossplay.js'
+      - 'tower-siege/*.js'
       - '.github/workflows/tower-siege-godot.yml'
   workflow_dispatch:
 
@@ -79,6 +81,15 @@ jobs:
           ! grep -q "^FAIL" server-test.log
           tower-siege-godot/tests/online_match.sh "$HOME/godot" | tee match.log
           ! grep -q "^FAIL" match.log
+
+      - name: Cross-play between the web game and the Godot app (they share PvP rules by hand)
+        run: |
+          npm install --no-save --no-audit --no-fund playwright@1.56.1 > /dev/null
+          npx playwright install --with-deps chromium > /dev/null
+          GODOT="$HOME/godot" node tests/suites/siege-crossplay.js | tee crossplay.log
+          grep -q "^PASS" crossplay.log
+          ! grep -q "^FAIL" crossplay.log
+          ! grep -q "Skipped" crossplay.log
 
       # Everything below only runs when the workflow is started by hand
       - name: Get the Android export templates

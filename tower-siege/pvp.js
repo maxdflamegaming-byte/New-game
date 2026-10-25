@@ -10,7 +10,7 @@
 // strength (the guest moves the rest along their roads itself), and the buildings that changed. If either connection drops, the match pauses for up
 // to 15 seconds while that phone reconnects.
 
-const PVP_PROTOCOL = 3;
+const PVP_PROTOCOL = 4;
 const PVP_SERVER = new URLSearchParams(location.search).get('server') || 'wss://tower-siege-server.onrender.com';
 const PVP_TIME = 180;            // a match lasts at most 3 minutes; then the bigger army wins
 const SNAP_EVERY = 0.1;          // seconds between the host's updates
@@ -118,13 +118,16 @@ function onNet(msg) {
   switch (msg.t) {
     case 'me':
       applyYou(msg.you);
+      if (msg.rude) { toast('Please pick a friendlier name.', 2600); refreshPvpCard(); }
       break;
     case 'result':
       // The server keeps the trophies; it sends the change after every online match
       applyYou(msg.you);
       if (msg.delta > 0) { save.coins += 20; writeSave(); }
-      if (pvp) pvp.result = msg.delta;
+      if (pvp) { pvp.result = msg.delta; pvp.resultWhy = msg.why || ''; }
       showTrophyChange();
+      if (msg.why === 'dispute') toast('The two games saw different results, so no trophies changed.', 3500);
+      else if (msg.why === 'again') toast('No trophies: you\'ve played each other a lot today.', 3500);
       break;
     case 'waiting':
       $('wait-text').textContent = 'Looking for an opponent…';
@@ -154,7 +157,16 @@ function onNet(msg) {
       else if (mode === 'online' && Net.role === 'host' && pvp && !pvp.over) applyCmd(msg);
       break;
     case 'end':
-      if (isGuest() && pvp && !pvp.over) finishPvp(swapSide(msg.w), msg.why);
+      if (isGuest() && pvp && !pvp.over) {
+        // Our own word on who won, from our copy of the battle (the host sent a full update
+        // just before this): the server only counts a result both sides agree on
+        Net.send({ t: 'end', w: pvpVerdict(0.5), why: msg.why });
+        finishPvp(swapSide(msg.w), msg.why);
+      }
+      break;
+    case 'busy':
+      // Too many new accounts from this network right now
+      toast('The server is busy. Try again in a while.', 3000);
       break;
     case 'wait':
       // The other player's connection dropped: the match waits for them
@@ -467,18 +479,28 @@ function guestUpdate(dt) {
 }
 
 // ---------- The end of a match ----------
+// Who has won, as this copy of the battle shows it: 1 = us, 2 = them, 0 = a draw, -1 = not over
+function pvpVerdict(slack = 0) {
+  const blue = alive(1), red = alive(2);
+  if (!blue || !red) return blue ? 1 : red ? 2 : 0;
+  if (gameTime >= PVP_TIME - slack) {
+    const tot = sideTotals();
+    return tot[1] > tot[2] ? 1 : tot[2] > tot[1] ? 2 : 0;
+  }
+  return -1;
+}
 function pvpCheckEnd() {
   if (!pvp || pvp.over || isGuest()) return;
-  const blue = alive(1), red = alive(2);
-  let winner = null, why = '';
-  if (!blue || !red) winner = blue ? 1 : red ? 2 : 0;
-  else if (gameTime >= PVP_TIME) {
-    const tot = sideTotals();
-    winner = tot[1] > tot[2] ? 1 : tot[2] > tot[1] ? 2 : 0;
-    why = 'time';
+  const winner = pvpVerdict();
+  if (winner < 0) return;
+  const why = alive(1) && alive(2) ? 'time' : '';
+  if (mode === 'online') {
+    // A full update first, so the guest sees exactly what we see when it gives its word
+    pvp.needKey = true;
+    pvp.snapT = 0;
+    hostTick(0);
+    Net.send({ t: 'end', w: winner, why });
   }
-  if (winner === null) return;
-  if (mode === 'online') Net.send({ t: 'end', w: winner, why });
   finishPvp(winner, why);
 }
 

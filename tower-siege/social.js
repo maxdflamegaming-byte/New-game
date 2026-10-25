@@ -48,7 +48,7 @@ function renderBoard() {
     const rows = boardData.players.map((p, i) => `<div class="lb-row${p.id === save.pid ? ' me' : ''}">
       ${medal(i)}${avatarHtml(p.name, p.id === save.pid ? PLAYER : 2)}
       <div class="lb-name">${p.tag ? `<em>[${escapeHtml(p.tag)}]</em> ` : ''}${escapeHtml(p.name)}</div>
-      <div class="lb-score">🏆 ${p.trophies}</div></div>`);
+      <div class="lb-score">🏆 ${p.trophies}</div>${p.id === save.pid ? '' : reportButton('player', p.id, p.name)}</div>`);
     if (!boardData.players.some(p => p.id === save.pid)) {
       rows.push(`<div class="lb-row me">${boardData.rank ? `<span class="rank">${boardData.rank}</span>` : '<span class="rank">–</span>'}${avatarHtml(save.name, PLAYER)}
         <div class="lb-name">${save.clan ? `<em>[${escapeHtml(save.clan.tag)}]</em> ` : ''}${escapeHtml(save.name)}</div>
@@ -115,11 +115,11 @@ function renderClan() {
   $('clan-browse').classList.add('hidden');
   $('clan-mine').classList.remove('hidden');
   $('clan-head').innerHTML = `${emblemHtml(c)}<div><b>${escapeHtml(c.name)}</b> <em>[${escapeHtml(c.tag)}]</em>
-    <span>🏆 ${c.trophies} · ${c.members}/${CLAN_SIZE} members</span></div>`;
+    <span>🏆 ${c.trophies} · ${c.members}/${CLAN_SIZE} members</span></div>${mine ? '' : reportButton('clan', c.id, c.name)}`;
   $('clan-members').innerHTML = c.list.map((m, i) => `<div class="lb-row${m.id === save.pid ? ' me' : ''}">
     ${medal(i)}${avatarHtml(m.name, m.id === save.pid ? PLAYER : 2)}
     <div class="lb-name">${escapeHtml(m.name)}${m.leader ? ' <span class="crown" title="Leader">👑</span>' : ''}</div>
-    <div class="lb-score">🏆 ${m.trophies}</div>
+    <div class="lb-score">🏆 ${m.trophies}</div>${m.id === save.pid ? '' : reportButton('player', m.id, m.name)}
     ${leader && !m.leader ? `<button class="kick" data-kick="${m.id}" title="Remove from the clan" aria-label="Remove ${escapeHtml(m.name)}">✖</button>` : ''}</div>`).join('');
   $('clan-join').classList.toggle('hidden', mine);
   $('clan-join').disabled = c.members >= CLAN_SIZE;
@@ -190,6 +190,23 @@ $('clan-leave').addEventListener('click', () => {
   clanAction({ t: 'leaveclan' }, ['me'], () => browseClans());
 });
 $('clan-back').addEventListener('click', () => browseClans($('clan-search').value.trim()));
+// 🚩: report an offensive name (a player's or a clan's). Three reports from different players
+// and the server replaces it.
+const reported = new Set();
+function reportButton(kind, id, name) {
+  const key = kind + ':' + id;
+  return `<button class="report" data-report="${key}" title="Report this name" aria-label="Report ${escapeHtml(name)}"${reported.has(key) ? ' disabled' : ''}>🚩</button>`;
+}
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-report]');
+  if (!b || b.disabled) return;
+  e.stopPropagation();
+  const [kind, id] = b.dataset.report.split(':');
+  reported.add(b.dataset.report);
+  b.disabled = true;
+  Net.send({ t: 'report', kind, id });
+  toast('Thanks. Names reported by several players are replaced.', 2600);
+}, true);
 $('clan-members').addEventListener('click', e => {
   const b = e.target.closest('[data-kick]');
   if (!b) return;
