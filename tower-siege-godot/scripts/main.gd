@@ -12,6 +12,8 @@ const SIDES := [
 ]
 const CAMPAIGN_PACE := 1.5      # campaign buildings train and send this much faster than PvP
 const CAMPAIGN_MARCH := 1.3     # and soldiers march this much faster
+const FINAL_PUSH_AT := 120.0    # a campaign battle with no clock of its own gets a final push after this
+const FINAL_PUSH := 1.5         # ...in which your buildings train and send this much faster
 const HUD_TOP := 136.0         # the top bar and the mission's goal under it
 const HUD_BOTTOM := 130.0
 const SAVE_PATH := "user://tower_siege.json"
@@ -47,6 +49,10 @@ var level := 1
 var daily := false             # playing today's daily challenge
 var goal := {}                 # the campaign mission being played (Missions.setup), or {}
 var lost_why := ""             # how the last mission was lost (Missions.result)
+var last_change := 0.0         # battle time when a building last changed hands
+var stuck_tip := false         # the "gather your soldiers" tip has been shown this battle
+var analytics: Analytics
+var _level_open := -1          # the campaign level being played (for the stats), -1 = none
 var upgrade_offer := {}        # {t, life}: the ⬆ button over one of your buildings
 var reward_shown_day := -1
 var cinematics := true         # cut scenes play (the tests switch them off to go faster)
@@ -115,8 +121,12 @@ func _ready() -> void:
 	net = Net.new()
 	net.main = self
 	add_child(net)
+	analytics = Analytics.new()
+	analytics.main = self
+	add_child(analytics)
 	battle = Battle.new()
 	_connect_battle()
+	analytics.flush.call_deferred()  # stats left from the last time the game was played
 	get_viewport().size_changed.connect(_layout)
 	_layout()
 	apply_gfx()
@@ -127,7 +137,8 @@ func _ready() -> void:
 func default_save() -> Dictionary:
 	var d := {"level": 1, "stars": {}, "coins": 0, "up": {"drill": 0, "boots": 0, "garrison": 0, "armory": 0},
 		"seen": {}, "muted": false, "music": true, "name": "", "trophies": 0, "pvp_wins": 0, "pvp_losses": 0,
-		"pid": "", "token": "", "clan": null, "gfx": "auto", "vibrate": true, "lang": "", "cutscenes": true}
+		"pid": "", "token": "", "clan": null, "gfx": "auto", "vibrate": true, "lang": "", "cutscenes": true,
+		"stats": true, "stats_rows": []}
 	d.merge(Progress.defaults())
 	return d
 
@@ -340,7 +351,10 @@ func load_battle(data: Dictionary, n: int, theme := "") -> void:
 	battle.march = CAMPAIGN_MARCH if campaign else 1.0
 	battle.momentum = campaign
 	battle.frozen = false
+	battle.push = 1.0
 	goal = {}
+	last_change = 0.0
+	stuck_tip = false
 	battle.landscape = landscape
 	battle.flipped = net.is_guest()
 	battle.load_map(data, 3 * save.up.garrison if mode == "campaign" and state != "menu" else 0)
@@ -353,7 +367,17 @@ func load_battle(data: Dictionary, n: int, theme := "") -> void:
 	build_scene()
 
 
+## Stats: a campaign level left before it ended counts as given up
+func _left_unfinished() -> void:
+	if _level_open >= 0 and mode == "campaign" and state in ["play", "paused", "cutscene"]:
+		analytics.track(_level_open, "quit", battle.time)
+	_level_open = -1
+
+
 func start_level(n: int) -> void:
+	_left_unfinished()
+	_level_open = n
+	analytics.track(n, "start")
 	level = n
 	daily = false
 	mode = "campaign"
@@ -376,6 +400,9 @@ func start_level(n: int) -> void:
 
 ## Today's challenge: the same map for everyone, a big prize the first time you win it
 func start_daily() -> void:
+	_left_unfinished()
+	_level_open = 0
+	analytics.track(0, "start")
 	daily = true
 	level = maxi(int(save.level), 6)
 	mode = "campaign"
@@ -441,6 +468,7 @@ func mission(id: String, n := 1) -> void:
 
 
 func _on_captured(t, side: int, old: int) -> void:
+	last_change = battle.time
 	world.capture(t.x, t.y, side)
 	if side == Battle.PLAYER:
 		mission("capture")
@@ -518,6 +546,12 @@ func end_game(won: bool) -> void:
 	state = "over"
 	if won:
 		lost_why = ""
+	if mode == "campaign" and _level_open >= 0:
+		if won:
+			analytics.track(_level_open, "win", battle.time, Missions.stars(goal, battle))
+		else:
+			analytics.track(_level_open, "lose", battle.time, lost_why if lost_why != "" else "army")
+		_level_open = -1
 	upgrade_offer = {}
 	mission("beat", battle.stats.killed)
 	clear_pointers()
@@ -806,6 +840,7 @@ func highlight(t) -> String:
 
 # ---------- Screens and buttons ----------
 func open_menu() -> void:
+	_left_unfinished()
 	cutscene.abort()
 	state = "menu"
 	world.drift = true
@@ -923,6 +958,7 @@ func step(dt: float) -> void:
 		net.guest_update(dt)
 		return
 	battle.update(dt)
+	_final_push()
 	if hint_text != "" and armed == "":
 		hint_timer -= dt
 		if hint_timer <= 0 and not hand_shown:
@@ -930,6 +966,36 @@ func step(dt: float) -> void:
 	check_end()
 	if mode == "online":
 		net.host_tick(dt)
+
+
+## A long battle doesn't drag on: after two minutes your army gets a final push, and the enemy
+## stops hiding in its buildings and comes out to fight. (Missions with a clock, and ones
+## where nobody trains, end in their own way; PvP has its own time limit.)
+func _final_push() -> void:
+	if mode != "campaign" or quiet:
+		return
+	# With no reinforcements a battle can only stall if your soldiers are spread too thin:
+	# after 45 seconds with nothing changing hands, say how to gather them
+	if goal.get("goal", "") == "puzzle":
+		if not stuck_tip and battle.time - last_change > 45 and battle.time > 60:
+			stuck_tip = true
+			set_hint("Stuck? Send soldiers between your own buildings to gather them, then attack with one big army.", 12.0)
+		return
+	if battle.push > 1.0 or battle.time < FINAL_PUSH_AT:
+		return
+	if not goal.is_empty() and goal.goal in ["defend", "blitz"]:
+		return
+	battle.push = FINAL_PUSH
+	for a in battle.ai_sides:
+		a.cfg = a.cfg.duplicate()
+		a.cfg.bold = float(a.cfg.bold) + 0.5
+		a.cfg.margin = maxf(1.0, float(a.cfg.margin) - 3.0)
+	ui.toast("Final push! Your buildings train faster: finish the battle!", 3.5)
+	play_sound("speed")
+	vibrate(40)
+	for t in battle.towers:
+		if t.owner == Battle.PLAYER:
+			world.capture(t.x, t.y, Battle.PLAYER)
 
 
 func _update_effects(dt: float) -> void:

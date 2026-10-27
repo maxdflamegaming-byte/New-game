@@ -385,4 +385,10 @@ const T := {
 	"The two games saw different results, so no trophies changed.": "Os dois jogos viram resultados diferentes, então os troféus não mudaram.",
 	"No trophies: you've played each other a lot today.": "Sem troféus: vocês já jogaram muito um contra o outro hoje.",
 	"Report this name": "Denunciar este nome",
+	"Final push! Your buildings train faster: finish the battle!": "Ofensiva final! Seus prédios treinam mais rápido: termine a batalha!",
+	"Stuck? Send soldiers between your own buildings to gather them, then attack with one big army.": "Travou? Envie soldados entre seus próprios prédios para juntá-los e depois ataque com um grande exército.",
+	"Share anonymous level stats: on": "Compartilhar estatísticas anônimas: sim",
+	"Share anonymous level stats: off": "Compartilhar estatísticas anônimas: não",
+	"Only level numbers, times and results, to find levels that are too hard. Nothing about you or your phone.": "Só números de fase, tempos e resultados, para achar fases difíceis demais. Nada sobre você ou seu celular.",
+	"Privacy policy": "Política de privacidade",
 }

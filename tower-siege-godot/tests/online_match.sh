@@ -10,7 +10,7 @@ GODOT="$1"
 PORT="${2:-9091}"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 OUT="$(mktemp -d)"
-PORT=$PORT DATA_FILE="$OUT/data.json" DATABASE_URL= node "$ROOT/tower-siege/server/server.js" > "$OUT/server.log" 2>&1 &
+PORT=$PORT DATA_FILE="$OUT/data.json" DATABASE_URL= STATS_KEY=test node "$ROOT/tower-siege/server/server.js" > "$OUT/server.log" 2>&1 &
 SERVER=$!
 sleep 1
 # The first player starts searching, so it waits in the queue and hosts
@@ -29,6 +29,10 @@ run_pair() { # host-log host-args guest-log guest-args
 }
 run_pair cat "--name=Cat --clan=CC --peer-drops" dan "--name=Dan --clan=DD --drop"
 run_pair eve "--name=Eve --clan=EE --drop" fay "--name=Fay --clan=FF --peer-drops"
+# Level stats from the app reach the server's report
+timeout 60 "$GODOT" --headless --path "$ROOT/tower-siege-godot" -s tests/stats.gd -- --server=ws://127.0.0.1:$PORT > "$OUT/stats.log" 2>&1
+curl -s "http://127.0.0.1:$PORT/stats?key=test&format=json" > "$OUT/stats.json"
+curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:$PORT/stats" > "$OUT/stats-nokey.txt"
 kill $SERVER 2>/dev/null || true
 echo "--- host (Ann)"; grep -a "^GD" "$OUT/ann.log" | grep -v "^GD MAP"
 echo "--- guest (Bob)"; grep -a "^GD" "$OUT/bob.log" | grep -v "^GD MAP"
@@ -53,6 +57,9 @@ check fay "GD RESULT true title=Defeat" "The guest gets the result from the reco
 check bob "GD RESULT true title=Defeat trophies=0" "The guest sees Defeat"
 check ann "GD CLAN clan" "Clans work"
 [ "$(grep -a -h "^GD MAP" "$OUT/ann.log")" = "$(grep -a -h "^GD MAP" "$OUT/bob.log")" ] && echo "PASS Same map on both" || { echo "FAIL Same map on both"; fail=1; }
-LOGS="$OUT/ann.log $OUT/bob.log $OUT/cat.log $OUT/dan.log $OUT/eve.log $OUT/fay.log"
+grep -q '"1":{"start":1,"win":1' "$OUT/stats.json" && grep -q '"2":{"start":1,"win":0,"lose":0,"quit":1' "$OUT/stats.json" && grep -q "GD STATS LEFT 0" "$OUT/stats.log" \
+  && echo "PASS The app's level stats reach the server (a win on level 1, level 2 left unfinished)" || { echo "FAIL Level stats  $(cat "$OUT/stats.json") $(grep -a "GD STATS\|SCRIPT ERROR" "$OUT/stats.log")"; fail=1; }
+[ "$(cat "$OUT/stats-nokey.txt")" = "404" ] && echo "PASS The stats report needs its key" || { echo "FAIL The stats report is open without its key"; fail=1; }
+LOGS="$OUT/ann.log $OUT/bob.log $OUT/cat.log $OUT/dan.log $OUT/eve.log $OUT/fay.log $OUT/stats.log"
 if grep -a -q "SCRIPT ERROR" $LOGS; then echo "FAIL Script errors"; grep -a -A2 "SCRIPT ERROR" $LOGS | head -20; fail=1; fi
 exit $fail

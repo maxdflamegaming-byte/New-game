@@ -22,7 +22,7 @@ fs.mkdirSync(OUT, { recursive: true });
   const PORT = 8098;
   const dataFile = path.join(OUT, 'siege-server-data.json');
   fs.rmSync(dataFile, { force: true });
-  const server = spawn(process.execPath, [path.join(dir, 'server.js')], { env: { ...process.env, PORT: String(PORT), DATA_FILE: dataFile, DATABASE_URL: '', RECONNECT_MS: '1500', CONFIRM_MS: '700', NEW_PER_HOUR: '30' } });
+  const server = spawn(process.execPath, [path.join(dir, 'server.js')], { env: { ...process.env, PORT: String(PORT), DATA_FILE: dataFile, DATABASE_URL: '', RECONNECT_MS: '1500', CONFIRM_MS: '700', NEW_PER_HOUR: '30', STATS_KEY: 'k' } });
   await new Promise(r => setTimeout(r, 800));
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
@@ -197,6 +197,18 @@ fs.mkdirSync(OUT, { recursive: true });
     ws.close();
   }
   ok('Too many new accounts from one address are refused for a while', busy);
+
+  // ----- Level stats -----
+  const post = body => fetch(`http://127.0.0.1:${PORT}/stats`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.status);
+  ok('The app can send level stats', await post({ v: 1, rows: [[5, 'start', 0, ''], [5, 'win', 40, 3], [5, 'start', 0, ''], [5, 'lose', 30, 'hq'], [6, 'start', 0, ''], [6, 'quit', 12, '']] }) === 200);
+  await post({ v: 1, rows: [[5, 'hack', 1, ''], [-3, 'win', 1, 1], ['x', 'start', 0, ''], [5, 'win', 99999, 9]] });
+  ok('Nonsense in stats is turned away', await post({ nope: 1 }) === 400);
+  const json = await fetch(`http://127.0.0.1:${PORT}/stats?key=k&format=json`).then(r => r.json());
+  const L5 = json['5'];
+  ok('Stats are kept as totals per level, and bad rows are skipped', L5?.start === 2 && L5.win === 2 && L5.lose === 1 && L5.why.hq === 1 && L5.stars[2] === 1 && L5.winSecs === 40 + 3600 && json['6']?.quit === 1 && !json['-3'], JSON.stringify(json));
+  const page = await fetch(`http://127.0.0.1:${PORT}/stats?key=k`).then(r => r.text());
+  ok('The report shows each level', page.includes('<td>5</td><td>2</td>'));
+  ok('...and only with its key', (await fetch(`http://127.0.0.1:${PORT}/stats?key=wrong`)).status === 404);
 
   for (const c of [ann, cat, dan, liar, rude, eve]) c.ws.close();
   server.kill();

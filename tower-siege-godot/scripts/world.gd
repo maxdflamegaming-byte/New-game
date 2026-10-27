@@ -47,8 +47,14 @@ var tanks: MultiMeshInstance3D
 var quality := 1               # 0 low, 1 medium, 2 high (see set_quality)
 var bit_mm: MultiMeshInstance3D
 var bits: Array = []           # flying confetti / clash bits
-var puffs: Array[Sprite3D] = []
-var stars: Array[Sprite3D] = []
+# Soft puffs and twinkling stars: [{p, c, life, max, size, ...}], drawn as two MultiMeshes
+# (one draw call each, however many there are)
+var puffs: Array = []
+var stars: Array = []
+var _puff_mm: MultiMesh
+var _star_mm: MultiMesh
+const MAX_PUFFS := 160
+const MAX_STARS := 60
 var fires: Array[MeshInstance3D] = []
 var rings: Array[MeshInstance3D] = []
 var shells: Array[MeshInstance3D] = []
@@ -533,6 +539,9 @@ func _build_model(t, lv: int) -> Dictionary:
 		info.top = leg_h + 25 + 30
 		info.muzzle = Vector3(0, leg_h + 9, 18)
 		info.range = true
+	# The flagpole is part of the building (a draw call less for every building); only the
+	# flag on it is separate, so it can wave and be raised
+	k.cyl(0.9, 0.9, 22, 6, info.flag_at + Vector3(0, 11, 0), Color("#b4bdcc")).sphere(1.8, info.flag_at + Vector3(0, 23, 0), Color("#ffd23f"))
 	info.mesh = k.mesh()
 	return info
 
@@ -590,7 +599,6 @@ func _pole_mesh() -> ArrayMesh:
 
 var _flag_m: ArrayMesh
 var _flag_me: ArrayMesh
-var _pole_m: ArrayMesh
 var _ring_m: Mesh
 
 
@@ -623,13 +631,6 @@ func _sync_tower(t) -> Dictionary:
 		var mat := paint_material(_team_lin(old_side))
 		mi.material_override = mat
 		holder.add_child(mi)
-		if _pole_m == null:
-			_pole_m = _pole_mesh()
-		var pole := MeshInstance3D.new()
-		pole.mesh = _pole_m
-		pole.material_override = mat
-		pole.position = built.flag_at
-		holder.add_child(pole)
 		var flag := MeshInstance3D.new()
 		flag.mesh = _flag_for(old_side)
 		flag.material_override = mat
@@ -652,10 +653,10 @@ func _sync_tower(t) -> Dictionary:
 		ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		node.add_child(ring)
 		level_root.add_child(node)
-		info = {"node": node, "holder": holder, "mat": mat, "flag": flag, "pole": pole, "ring": ring, "range": range_ring,
+		info = {"node": node, "holder": holder, "mat": mat, "flag": flag, "ring": ring, "range": range_ring,
 			"lv": lv, "type": t.type, "side": old_side, "top": built.top * S, "smoke": built.smoke,
 			"muzzle": built.muzzle * S, "bounce": 0.0, "smoke_t": randf(), "kick": 0.0,
-			"pole_y": pole.position.y, "flag_y": flag.position.y, "raise": 0.0, "color_from": _team_lin(old_side), "color_t": 1.0}
+			"flag_y": flag.position.y, "raise": 0.0, "color_from": _team_lin(old_side), "color_t": 1.0}
 		models[t.id] = info
 		if grew:
 			info.bounce = 1.0
@@ -1029,27 +1030,33 @@ func _soft_texture(star := false) -> ImageTexture:
 	return ImageTexture.create_from_image(img)
 
 
-func _sprite(tex: Texture2D) -> Sprite3D:
-	var sp := Sprite3D.new()
-	sp.texture = tex
-	sp.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	sp.shaded = false
-	sp.transparent = true
-	sp.no_depth_test = false
-	sp.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	sp.visible = false
-	sp.pixel_size = 1.0 / 64.0
-	add_child(sp)
-	return sp
+## A layer of camera-facing sprites drawn all at once
+func _sprite_layer(tex: Texture2D, most: int) -> MultiMesh:
+	var quad := QuadMesh.new()
+	quad.size = Vector2.ONE
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	mm.use_custom_data = true
+	mm.mesh = quad
+	mm.instance_count = most
+	mm.visible_instance_count = 0
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/sprite.gdshader")
+	mat.set_shader_parameter("tex", tex)
+	var mi := MultiMeshInstance3D.new()
+	mi.multimesh = mm
+	mi.material_override = mat
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# Puffs fly anywhere over the field: never cull the layer by its (empty) starting box
+	mi.custom_aabb = AABB(Vector3(-4000, -500, -4000), Vector3(8000, 3000, 8000))
+	add_child(mi)
+	return mm
 
 
 func _make_fx() -> void:
-	var soft := _soft_texture()
-	var star := _soft_texture(true)
-	for i in 160:
-		puffs.append(_sprite(soft))
-	for i in 60:
-		stars.append(_sprite(star))
+	_puff_mm = _sprite_layer(_soft_texture(), MAX_PUFFS)
+	_star_mm = _sprite_layer(_soft_texture(true), MAX_STARS)
 	var ball := SphereMesh.new()
 	ball.radius = 1
 	ball.height = 2
@@ -1144,14 +1151,16 @@ func _take(pool: Array):
 
 
 func puff(x: float, y: float, z: float, color: Color, size: float, life: float, vy := 30.0) -> void:
-	var p: Sprite3D = _take(puffs)
-	if p == null:
+	if puffs.size() >= MAX_PUFFS:
 		return
-	p.visible = true
-	p.position = Vector3(x, y, z)
-	p.modulate = color
-	p.set_meta("fx", {"life": life, "max": life, "size": size, "vy": vy, "vx": (randf() - 0.5) * 14, "vz": (randf() - 0.5) * 14})
-	p.scale = Vector3.ONE * size * 0.4
+	puffs.append({"p": Vector3(x, y, z), "c": color, "life": life, "max": life, "size": size, "vy": vy,
+		"vx": (randf() - 0.5) * 14, "vz": (randf() - 0.5) * 14})
+
+
+## A twinkling star at p that grows, spins and floats up, then fades
+func star(p: Vector3, color: Color, life: float, size: float, most := 1.0) -> void:
+	if stars.size() < MAX_STARS:
+		stars.append({"p": p, "c": color, "life": life, "max": most if most > 1.0 else life, "size": size, "rot": 0.0})
 
 
 func fireball(x: float, y: float, z: float, size: float, color := Color("#ffb347")) -> void:
@@ -1187,14 +1196,8 @@ func burst(x: float, y: float, z: float, color: Color) -> void:
 	chunks(x, z, color, 16, 230, y, 1.3)
 	chunks(x, z, Color.WHITE, 5, 200, y, 1.1)
 	for i in 4:
-		var s: Sprite3D = _take(stars)
-		if s == null:
-			break
 		var a := randf() * TAU
-		s.visible = true
-		s.position = Vector3(x + cos(a) * 50, y + (randf() - 0.5) * 60, z + sin(a) * 30)
-		s.modulate = color.lightened(0.4)
-		s.set_meta("fx", {"life": 0.8, "max": 0.8, "size": 22})
+		star(Vector3(x + cos(a) * 50, y + (randf() - 0.5) * 60, z + sin(a) * 30), color.lightened(0.4), 0.8, 22)
 
 
 ## A soldier knocked out: its helmet flies off and tumbles, with a puff and a dizzy star.
@@ -1209,12 +1212,7 @@ func knock(x: float, z: float, side: int, tank := false) -> void:
 			"rot": Vector3(randf() * TAU, randf() * TAU, 0), "spin": Vector3((randf() - 0.5) * 24, (randf() - 0.5) * 12, (randf() - 0.5) * 24),
 			"life": 1.1, "c": sides[side].color.srgb_to_linear()})
 	puff(x, 24, z, Color.WHITE, 22, 0.4, 24)
-	var s: Sprite3D = _take(stars)
-	if s != null:
-		s.visible = true
-		s.position = Vector3(x, 50, z)
-		s.modulate = Color("#fff07a")
-		s.set_meta("fx", {"life": 0.6, "max": 0.6, "size": 14})
+	star(Vector3(x, 50, z), Color("#fff07a"), 0.6, 14)
 
 
 ## A bomb hits a building: fire bursts from its roof and walls, smoke rolls out and bits of it
@@ -1278,15 +1276,9 @@ func capture(x: float, y: float, side: int) -> void:
 ## Twinkling stars that float up from a building
 func sparkle(x: float, y: float, color: Color) -> void:
 	for i in 7:
-		var p: Sprite3D = _take(stars)
-		if p == null:
-			return
 		var a := randf() * TAU
 		var d := 20 + randf() * 40
-		p.visible = true
-		p.position = Vector3(x + cos(a) * d, 40 + randf() * 60, y + sin(a) * d)
-		p.modulate = color
-		p.set_meta("fx", {"life": 0.9 + randf() * 0.4, "max": 1.3, "size": 16 + randf() * 12})
+		star(Vector3(x + cos(a) * d, 40 + randf() * 60, y + sin(a) * d), color, 0.9 + randf() * 0.4, 16 + randf() * 12, 1.3)
 
 
 func muzzle(t, tx: float, ty: float) -> void:
@@ -1297,30 +1289,33 @@ func muzzle(t, tx: float, ty: float) -> void:
 
 
 func _update_fx(dt: float, towers: Array) -> void:
-	for p in puffs:
-		if not p.visible:
-			continue
-		var u: Dictionary = p.get_meta("fx")
+	# Puffs drift and grow as they fade; stars float up, spin and pop in and out
+	puffs = puffs.filter(func(u): return u.life > dt)
+	var n_fx := 0
+	for u in puffs:
 		u.life -= dt
-		if u.life <= 0:
-			p.visible = false
-			continue
 		var k: float = 1.0 - u.life / u.max
-		p.position += Vector3(u.vx, u.vy, u.vz) * dt
-		p.scale = Vector3.ONE * u.size * (0.4 + k * 0.9)
-		p.modulate.a = (1.0 - k) * 0.8
-	for p in stars:
-		if not p.visible:
-			continue
-		var u: Dictionary = p.get_meta("fx")
+		u.p += Vector3(u.vx, u.vy, u.vz) * dt
+		var c: Color = u.c
+		c.a = (1.0 - k) * 0.8
+		_puff_mm.set_instance_transform(n_fx, Transform3D(Basis.from_scale(Vector3.ONE * u.size * (0.4 + k * 0.9)), u.p))
+		_puff_mm.set_instance_color(n_fx, c.srgb_to_linear())
+		_puff_mm.set_instance_custom_data(n_fx, Color(0, 0, 0, 0))
+		n_fx += 1
+	_puff_mm.visible_instance_count = n_fx
+	stars = stars.filter(func(u): return u.life > dt)
+	n_fx = 0
+	for u in stars:
 		u.life -= dt
-		if u.life <= 0:
-			p.visible = false
-			continue
 		var k: float = 1.0 - u.life / u.max
-		p.position.y += 40 * dt
-		p.rotation.z += dt * 3
-		p.scale = Vector3.ONE * u.size * sin(minf(1.0, k * 1.4) * PI)
+		u.p.y += 40 * dt
+		u.rot += dt * 3
+		var size: float = maxf(0.001, u.size * sin(minf(1.0, k * 1.4) * PI))
+		_star_mm.set_instance_transform(n_fx, Transform3D(Basis.from_scale(Vector3.ONE * size), u.p))
+		_star_mm.set_instance_color(n_fx, (u.c as Color).srgb_to_linear())
+		_star_mm.set_instance_custom_data(n_fx, Color(u.rot, 0, 0, 0))
+		n_fx += 1
+	_star_mm.visible_instance_count = n_fx
 	for f in fires:
 		if not f.visible:
 			continue
@@ -1460,7 +1455,6 @@ func render(dt: float, battle: Battle, highlight: Callable, shells_list: Array) 
 		if info.raise > 0:
 			info.raise = maxf(0, info.raise - dt * 1.3)
 			var r: float = info.raise * info.raise
-			info.pole.position.y = info.pole_y - 22 * r
 			info.flag.position.y = info.flag_y - 36 * r
 			info.flag.scale = Vector3.ONE * (1.0 - r * 0.5)
 		info.flag.rotation.y = sin(time * 4 + t.id) * 0.4
@@ -1553,6 +1547,9 @@ func set_quality(q: int) -> void:
 	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
 	vp.scaling_3d_scale = 1.0
 	vp.msaa_3d = Viewport.MSAA_2X if quality == 0 else Viewport.MSAA_4X
+	# Low: no real-time shadows at all (they draw every building twice); the soldiers' cheap
+	# stand-in shadows are off too
+	sun.shadow_enabled = quality > 0
 	sun.shadow_blur = [0.0, 1.0, 1.5][quality]
 	RenderingServer.directional_shadow_atlas_set_size(1024 if quality == 0 else 2048, true)
 	soldier_shadows.visible = quality > 0

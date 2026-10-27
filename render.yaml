@@ -30,3 +30,6 @@ services:
       # works; see SERVER.md). Render's free disk is wiped on every restart, so set this.
       - key: DATABASE_URL
         sync: false
+      # Unlocks the level stats report at /stats?key=... (a long random password of your own)
+      - key: STATS_KEY
+        generateValue: true

@@ -12,6 +12,7 @@ const RED := Color("#ff5a5f")
 const GREEN := Color("#4cc94a")
 const ORANGE := Color("#ff8a3d")
 const WHITE := Color.WHITE
+const PRIVACY_URL := "https://maxdflamegaming-byte.github.io/New-game/tower-siege/privacy.html"
 
 var main
 var font_b: Font
@@ -67,6 +68,7 @@ var _win_coins := 0
 var lose_tip: Label
 var vibrate_btn: Button
 var cutscenes_btn: Button
+var stats_btn: Button
 var gfx_btns := {}
 var lang_btns := {}
 var missions_btn: Button
@@ -785,6 +787,7 @@ func refresh_toggles() -> void:
 	if vibrate_btn:
 		vibrate_btn.text = "Vibration: on" if main.save.vibrate else "Vibration: off"
 		cutscenes_btn.text = "Story scenes: on" if main.save.cutscenes else "Story scenes: off"
+		stats_btn.text = "Share anonymous level stats: on" if main.save.get("stats", true) else "Share anonymous level stats: off"
 		for g in gfx_btns:
 			var on: bool = main.save.gfx == g
 			set_kind(gfx_btns[g], "yellow" if on else "blue")
@@ -1028,6 +1031,19 @@ func _build_settings() -> void:
 		lang_btns[code] = b
 		grid.add_child(b)
 	v.add_child(grid)
+	# Anonymous level stats (see analytics.gd): which levels are too hard, so they can be fixed
+	stats_btn = button("Share anonymous level stats: on", "blue", 20, func():
+		main.save.stats = not main.save.get("stats", true)
+		if not main.save.stats:
+			main.save.stats_rows = []
+		main.write_save()
+		refresh_toggles())
+	stats_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	v.add_child(stats_btn)
+	v.add_child(wrapped(label("Only level numbers, times and results, to find levels that are too hard. Nothing about you or your phone.", 16, WHITE, 4, font_m), 540))
+	var policy := button("Privacy policy", "white", 20, func(): OS.shell_open(PRIVACY_URL))
+	policy.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	v.add_child(policy)
 	col.add_child(p)
 	col.add_child(back_button())
 

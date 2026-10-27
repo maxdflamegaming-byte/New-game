@@ -34,8 +34,7 @@ func _draw() -> void:
 	var w: World = main.world
 	if show_labels and main.state != "menu" and main.state != "cutscene" and main.screen_open == "" and not main.cutscene.playing():
 		_marks(w)
-		for t in b.towers:
-			_label(t, w)
+		_labels(b.towers, w)
 	# Swipe trail
 	for c in main.cut_marks:
 		var k: float = c.life / 0.35
@@ -96,35 +95,50 @@ func _upgrade_offer() -> void:
 		outlined(str(Battle.UPGRADE_COST[t.stars]), btn.c + Vector2(0, r * 0.5), int(r * 0.5), Color.WHITE, ink)
 
 
-# A building's badge: a rounded pill in its army's colour with the number of soldiers, gold
-# stars for its upgrades, and dots for its roads (white = free, faded = in use)
-func _label(t, w: World) -> void:
-	var s := w.tower_screen(t)
-	# The number swells when soldiers arrive or the building changes hands
-	var size := int(clampf(w.px_per_unit(t.x, t.y) * 50, 18, 42) * (1.0 + t.pop * 0.14))
-	var n := floori(maxf(0, t.units))
-	var text := "Max" if n >= Battle.CAP else str(n)
-	if t.type == "factory":
-		text = "⇡" + text
-	var tw := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
-	var bh := size * 1.18
-	var bw := maxf(tw + size * 0.75, bh * 1.25)
-	var cy: float = s.top_y - bh * 0.5
-	var r := Rect2(s.top_x - bw / 2, cy - bh / 2, bw, bh)
-	var side: Dictionary = main.SIDES[t.owner]
-	draw_style_box(_badge(t.owner), r)
-	var p := Vector2(s.top_x - tw / 2, cy + size * 0.36)
-	draw_string_outline(font, p, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, maxi(2, int(size * 0.16)), side.dark)
-	draw_string(font, p, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color.WHITE)
+# Each building's badge: a rounded pill in its army's colour with the number of soldiers, gold
+# stars for its upgrades, and dots for its roads (white = free, faded = in use). They're drawn
+# in layers (every badge, then every dot, then all the text) rather than building by
+# building, so the phone can draw each layer in one go.
+func _labels(towers: Array, w: World) -> void:
+	var list := []
+	for t in towers:
+		var s := w.tower_screen(t)
+		# The number swells when soldiers arrive or the building changes hands
+		var size := int(clampf(w.px_per_unit(t.x, t.y) * 50, 18, 42) * (1.0 + t.pop * 0.14))
+		var n := floori(maxf(0, t.units))
+		var text := "Max" if n >= Battle.CAP else str(n)
+		if t.type == "factory":
+			text = "⇡" + text
+		var tw := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+		var bh := size * 1.18
+		var bw := maxf(tw + size * 0.75, bh * 1.25)
+		var cy: float = s.top_y - bh * 0.5
+		list.append({"t": t, "s": s, "size": size, "text": text, "tw": tw, "cy": cy,
+			"r": Rect2(s.top_x - bw / 2, cy - bh / 2, bw, bh), "side": main.SIDES[t.owner]})
+	# Badges and dots are textured rectangles, which the phone draws together in one go
+	# (drawn shapes and circles would each take a draw call of their own)
+	var dot := _dot_tex()
+	for l in list:
+		_pill(dot, Rect2(l.r.position + Vector2(-1, 2), l.r.size + Vector2(2, 2)), Color(0.05, 0.1, 0.25, 0.3))
+		_pill(dot, l.r, Color.WHITE)
+		_pill(dot, l.r.grow(-3), (l.side.color as Color).darkened(0.06))
+	for l in list:
+		var m: int = l.t.max_roads()
+		var dr := maxf(3.0, l.size * 0.15)
+		for i in m:
+			var c := Vector2(l.s.top_x + (i - (m - 1) / 2.0) * dr * 2.9, l.r.end.y + dr + 3)
+			draw_texture_rect(dot, Rect2(c - Vector2.ONE * (dr + 1.5), Vector2.ONE * (dr + 1.5) * 2), false, l.side.dark)
+			draw_texture_rect(dot, Rect2(c - Vector2.ONE * dr, Vector2.ONE * dr * 2), false, Color.WHITE if i < m - l.t.roads.size() else Color(1, 1, 1, 0.35))
+	for l in list:
+		var p := Vector2(l.s.top_x - l.tw / 2, l.cy + l.size * 0.36)
+		draw_string_outline(font, p, l.text, HORIZONTAL_ALIGNMENT_LEFT, -1, l.size, maxi(2, int(l.size * 0.16)), l.side.dark)
+	for l in list:
+		var p := Vector2(l.s.top_x - l.tw / 2, l.cy + l.size * 0.36)
+		draw_string(font, p, l.text, HORIZONTAL_ALIGNMENT_LEFT, -1, l.size, Color.WHITE)
 	# Upgrades: a gold star for each, above the badge
-	if t.stars > 0:
-		outlined("★".repeat(t.stars), Vector2(s.top_x, r.position.y - size * 0.4), int(size * 0.62), Color("#ffd23f"), Color("#9a5b00"))
-	var m: int = t.max_roads()
-	var dr := maxf(3.0, size * 0.15)
-	for i in m:
-		var c := Vector2(s.top_x + (i - (m - 1) / 2.0) * dr * 2.9, r.end.y + dr + 3)
-		draw_circle(c, dr + 1.5, side.dark)
-		draw_circle(c, dr, Color.WHITE if i < m - t.roads.size() else Color(1, 1, 1, 0.35))
+	for l in list:
+		if l.t.stars > 0:
+			outlined("★".repeat(l.t.stars), Vector2(l.s.top_x, l.r.position.y - l.size * 0.4), int(l.size * 0.62), Color("#ffd23f"), Color("#9a5b00"))
 
 
 ## The buildings a mission is about: a pulsing ring on the ground around each, and its picture
@@ -158,6 +172,31 @@ func _marks(w: World) -> void:
 		var fs := int(size * 0.66)
 		var tw := font.get_string_size(m[1], HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 		draw_string(font, c + Vector2(-tw / 2, fs * 0.36), m[1], HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
+
+
+var _dot: Texture2D
+
+
+## A white dot with a soft edge: the badges' ends and the road dots are made from it
+func _dot_tex() -> Texture2D:
+	if _dot == null:
+		var n := 64
+		var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+		for y in n:
+			for x in n:
+				var d := Vector2(x + 0.5 - n / 2.0, y + 0.5 - n / 2.0).length() - (n / 2.0 - 1.0)
+				img.set_pixel(x, y, Color(1, 1, 1, clampf(0.5 - d, 0, 1)))
+		_dot = ImageTexture.create_from_image(img)
+	return _dot
+
+
+## A pill-shaped badge: the dot's left half, its middle stretched, and its right half
+func _pill(tex: Texture2D, r: Rect2, color: Color) -> void:
+	var h := r.size.y
+	var mid := maxf(0.0, r.size.x - h)
+	draw_texture_rect_region(tex, Rect2(r.position, Vector2(h / 2, h)), Rect2(0, 0, 32, 64), color)
+	draw_texture_rect_region(tex, Rect2(r.position + Vector2(h / 2, 0), Vector2(mid, h)), Rect2(31, 0, 2, 64), color)
+	draw_texture_rect_region(tex, Rect2(r.position + Vector2(h / 2 + mid, 0), Vector2(h / 2, h)), Rect2(32, 0, 32, 64), color)
 
 
 var _badges := {}

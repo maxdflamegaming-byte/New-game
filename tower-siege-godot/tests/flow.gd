@@ -237,9 +237,57 @@ func _run() -> void:
 	var t7: Array = main.battle.totals()
 	await create_timer(1.0).timeout
 	ok("No reinforcements: nobody trains", main.battle.frozen and main.battle.totals()[1] <= t7[1] + 0.01)
+	# Anonymous level stats: each level's start and how it ended, kept until they can be sent
+	main.open_menu()
+	main.save.stats_rows = []
+	main.start_level(3)
+	await _frames(2)
+	main.start_level(3)
+	await _frames(2)
+	for t in main.battle.towers:
+		if t.owner == 1:
+			t.owner = 2
+	main.battle.units.clear()
+	await _frames(5)
+	var kinds: Array = main.save.stats_rows.map(func(r): return "%d %s" % [r[0], r[1]])
+	ok("Level stats: a level left for another counts as quit, then start and how it ended", kinds == ["3 start", "3 quit", "3 start", "3 lose"], str(kinds))
+	ok("...and the tests send nothing anywhere", main.analytics._target() == "")
+	main.ui.show_screen("settings")
+	await _frames(2)
+	main.ui.stats_btn.pressed.emit()
+	ok("Settings can switch the stats off, which forgets what's waiting", not main.save.stats and main.save.stats_rows.is_empty())
+	main.start_level(3)
+	await _frames(2)
+	ok("...and then nothing is kept", main.save.stats_rows.is_empty())
+	main.ui.stats_btn.pressed.emit()
+	ok("...and back on", main.save.stats)
+	main.open_menu()
+
+	# A long battle gets a final push, so it can't drag on
+	main.start_level(12)
+	await _frames(3)
+	for side in main.battle.ai_sides:
+		side.timer = 1e9
+	main.battle.time = 119.0
+	main.step(0.05)
+	ok("No final push in the first two minutes", main.battle.push == 1.0)
+	var rate_before: float = main.battle.prod_rate(main.battle.towers[0])
+	main.battle.time = 121.0
+	main.step(0.05)
+	ok("After two minutes, a final push: your buildings train faster and the enemy attacks", main.battle.push > 1.0 and main.battle.prod_rate(main.battle.towers[0]) > rate_before * 1.3 and main.battle.ai_sides.all(func(a): return float(a.cfg.bold) >= 0.5))
+	main.start_level(4)
+	await _frames(3)
+	main.battle.time = main.goal.time - 1.0
+	main.step(0.05)
+	ok("A mission with its own clock has no final push", main.battle.push == 1.0)
+	main.start_level(7)
+	await _frames(3)
+	main.battle.time = 70.0
+	main.step(0.05)
+	ok("With no reinforcements and nothing happening, a tip says how to gather soldiers", main.battle.push == 1.0 and main.hint_text.begins_with("Stuck?"), main.hint_text)
 	main.net.start_pvp("practice", 778)
 	await _frames(2)
-	ok("PvP has no mission goal and plays at the web version's speed", main.goal.is_empty() and not main.ui.objective.get_parent().visible and main.battle.pace == 1.0 and not main.battle.frozen)
+	ok("PvP has no mission goal and plays at the web version's speed", main.goal.is_empty() and not main.ui.objective.get_parent().visible and main.battle.pace == 1.0 and not main.battle.frozen and main.battle.push == 1.0)
 	main.open_menu()
 
 	# Boss levels, endless levels and the daily challenge

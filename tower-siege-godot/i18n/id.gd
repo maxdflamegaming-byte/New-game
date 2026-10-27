@@ -385,4 +385,10 @@ const T := {
 	"The two games saw different results, so no trophies changed.": "Kedua permainan melihat hasil berbeda, jadi trofi tidak berubah.",
 	"No trophies: you've played each other a lot today.": "Tanpa trofi: kalian sudah sering bertanding hari ini.",
 	"Report this name": "Laporkan nama ini",
+	"Final push! Your buildings train faster: finish the battle!": "Serangan terakhir! Bangunanmu melatih lebih cepat: selesaikan pertempuran!",
+	"Stuck? Send soldiers between your own buildings to gather them, then attack with one big army.": "Buntu? Kirim prajurit antar bangunanmu sendiri untuk mengumpulkannya, lalu serang dengan satu pasukan besar.",
+	"Share anonymous level stats: on": "Kirim statistik level anonim: aktif",
+	"Share anonymous level stats: off": "Kirim statistik level anonim: mati",
+	"Only level numbers, times and results, to find levels that are too hard. Nothing about you or your phone.": "Hanya nomor level, waktu, dan hasil, untuk menemukan level yang terlalu sulit. Tidak ada tentang kamu atau ponselmu.",
+	"Privacy policy": "Kebijakan privasi",
 }

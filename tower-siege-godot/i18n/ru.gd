@@ -385,4 +385,10 @@ const T := {
 	"The two games saw different results, so no trophies changed.": "Две игры увидели разный итог, поэтому трофеи не изменились.",
 	"No trophies: you've played each other a lot today.": "Без трофеев: вы сегодня уже много играли друг с другом.",
 	"Report this name": "Пожаловаться на имя",
+	"Final push! Your buildings train faster: finish the battle!": "Последний рывок! Твои здания обучают быстрее: закончи битву!",
+	"Stuck? Send soldiers between your own buildings to gather them, then attack with one big army.": "Застрял? Перешли солдат между своими зданиями, собери их вместе и ударь одной большой армией.",
+	"Share anonymous level stats: on": "Анонимная статистика уровней: вкл",
+	"Share anonymous level stats: off": "Анонимная статистика уровней: выкл",
+	"Only level numbers, times and results, to find levels that are too hard. Nothing about you or your phone.": "Только номера уровней, время и результаты, чтобы найти слишком сложные уровни. Ничего о вас или вашем телефоне.",
+	"Privacy policy": "Политика конфиденциальности",
 }

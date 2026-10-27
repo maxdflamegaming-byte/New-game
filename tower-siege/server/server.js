@@ -140,9 +140,90 @@ function top() {
 }
 const dirtyTop = () => { topCache = null; };
 
+// ---------- Level stats ----------
+// The app sends what happened in campaign levels (anonymous: no account, no device id), a
+// batch at a time: rows of [level, what, seconds, extra], what being start, win (extra = stars),
+// lose (extra = why) or quit. The server only keeps totals per level, which show where
+// players get stuck: GET /stats?key=STATS_KEY (no STATS_KEY set: no report).
+const STATS_KEY = process.env.STATS_KEY || '';
+let levelStats = {};          // level -> { start, win, lose, quit, winSecs, loseSecs, stars: [1★, 2★, 3★], why: {} }
+let statsDirty = false;
+const statPosts = new Map();  // address -> times it sent stats in the last hour
+function addStats(rows) {
+  for (const r of rows.slice(0, 500)) {
+    if (!Array.isArray(r)) continue;
+    const level = Math.floor(Number(r[0]));
+    const what = String(r[1] || '');
+    const secs = Math.max(0, Math.min(3600, Number(r[2]) || 0));
+    if (!(level >= 0 && level <= 999) || !['start', 'win', 'lose', 'quit'].includes(what)) continue;
+    const L = levelStats[level] || (levelStats[level] = { start: 0, win: 0, lose: 0, quit: 0, winSecs: 0, loseSecs: 0, stars: [0, 0, 0], why: {} });
+    L[what]++;
+    if (what === 'win') {
+      L.winSecs += secs;
+      const st = Math.floor(Number(r[3]));
+      if (st >= 1 && st <= 3) L.stars[st - 1]++;
+    } else if (what === 'lose') {
+      L.loseSecs += secs;
+      const why = String(r[3] || 'army').replace(/[^a-z]/g, '').slice(0, 10) || 'army';
+      L.why[why] = (L.why[why] || 0) + 1;
+    }
+  }
+  statsDirty = true;
+}
+setInterval(() => {
+  if (statsDirty && store) { store.set('s:levels', levelStats); statsDirty = false; }
+}, 30000).unref();
+setInterval(() => statPosts.clear(), 3600e3).unref();
+
+function statsReport() {
+  const levels = Object.keys(levelStats).map(Number).sort((a, b) => a - b);
+  const first = levelStats[levels.find(l => l >= 1)]?.start || 0;
+  const pct = (a, b) => (b ? Math.round(100 * a / b) + '%' : '-');
+  const rows = levels.map(l => {
+    const L = levelStats[l];
+    const why = Object.entries(L.why).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ');
+    return `<tr><td>${l === 0 ? 'daily' : l}</td><td>${L.start}</td><td>${l ? pct(L.start, first) : ''}</td><td>${pct(L.win, L.start)}</td><td>${L.win ? Math.round(L.winSecs / L.win) + ' s' : '-'}</td>` +
+      `<td>${L.stars.join(' / ')}</td><td>${pct(L.lose, L.start)}</td><td>${why}</td><td>${pct(L.quit, L.start)}</td></tr>`;
+  }).join('\n');
+  return `<!doctype html><meta charset="utf-8"><title>Tower Siege level stats</title>
+<style>body{font:14px system-ui;margin:20px}table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px;text-align:right}th{background:#eef}</style>
+<h1>Tower Siege: campaign levels</h1>
+<p>Anonymous totals from the app. <b>Reached</b>: players who started the level, out of those who started level 1. A high <b>lost</b> or <b>quit</b> share shows where players get stuck.</p>
+<table><tr><th>Level</th><th>Started</th><th>Reached</th><th>Won</th><th>Avg win</th><th>Stars 1/2/3</th><th>Lost</th><th>Why lost</th><th>Quit</th></tr>
+${rows}</table>`;
+}
+
 // ---------- Matches ----------
 const server = http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain', 'Access-Control-Allow-Origin': '*' });
+  const url = new URL(req.url, 'http://x');
+  const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'Content-Type' };
+  if (url.pathname === '/stats' && req.method === 'OPTIONS') { res.writeHead(204, cors); res.end(); return; }
+  if (url.pathname === '/stats' && req.method === 'POST') {
+    const ip = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || '';
+    const n = (statPosts.get(ip) || 0) + 1;
+    statPosts.set(ip, n);
+    let body = '';
+    let tooBig = false;
+    req.on('data', d => { body += d; if (body.length > 65536) { tooBig = true; req.destroy(); } });
+    req.on('end', () => {
+      if (tooBig) return;
+      let ok = false;
+      if (n <= 60) {
+        try { const m = JSON.parse(body); if (Array.isArray(m.rows)) { addStats(m.rows); ok = true; } } catch { /* not stats */ }
+      }
+      res.writeHead(ok ? 200 : n > 60 ? 429 : 400, { 'Content-Type': 'text/plain', ...cors });
+      res.end(ok ? 'ok' : 'no');
+    });
+    return;
+  }
+  if (url.pathname === '/stats' && req.method === 'GET') {
+    if (!STATS_KEY || url.searchParams.get('key') !== STATS_KEY) { res.writeHead(404, { 'Content-Type': 'text/plain' }); res.end('Not found'); return; }
+    if (url.searchParams.get('format') === 'json') { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(levelStats)); return; }
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+    res.end(statsReport());
+    return;
+  }
+  res.writeHead(200, { 'Content-Type': 'text/plain', ...cors });
   res.end(`Tower Siege server, protocol ${PROTOCOL}. ${wss.clients.size} connected, ${players.size} players, ${clans.size} clans.\n`);
 });
 const wss = new WebSocketServer({ server, maxPayload: 256 * 1024 });
@@ -540,6 +621,7 @@ async function start() {
   for (const [k, v] of store.all) {
     if (k.startsWith('p:')) players.set(v.id, v);
     else if (k.startsWith('c:')) clans.set(v.id, v);
+    else if (k === 's:levels') levelStats = v || {};
   }
   // Forget accounts that never finished a match and haven't been back for 30 days
   const old = Date.now() - 30 * 864e5;
@@ -555,7 +637,10 @@ async function start() {
 // Save everything before the host stops the server
 for (const sig of ['SIGTERM', 'SIGINT']) {
   process.on(sig, async () => {
-    try { await store?.close(); } catch { /* exiting anyway */ }
+    try {
+      if (statsDirty && store) store.set('s:levels', levelStats);
+      await store?.close();
+    } catch { /* exiting anyway */ }
     process.exit(0);
   });
 }

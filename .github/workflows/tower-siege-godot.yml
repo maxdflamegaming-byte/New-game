@@ -73,6 +73,9 @@ jobs:
           timeout 600 xvfb-run -a -s "-screen 0 1280x1920x24" "$HOME/godot" --path tower-siege-godot --rendering-driver opengl3 -s tests/phone.gd 2>&1 | tee phone.log
           grep -q "PHONE DONE 0 failed" phone.log
           ! grep -q "SCRIPT ERROR" phone.log
+          # Cheap phones slow down with many draw calls: each graphics setting has a budget
+          timeout 300 xvfb-run -a -s "-screen 0 1280x1920x24" "$HOME/godot" --path tower-siege-godot --rendering-driver opengl3 -s tests/draw_calls.gd 2>&1 | tee draw.log
+          grep -q "DRAW DONE 0 failed" draw.log
 
       - name: Online matches between Godot players on the server, with dropped connections
         run: |

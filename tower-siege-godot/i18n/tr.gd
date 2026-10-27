@@ -385,4 +385,10 @@ const T := {
 	"The two games saw different results, so no trophies changed.": "İki oyun farklı sonuç gördü, bu yüzden kupalar değişmedi.",
 	"No trophies: you've played each other a lot today.": "Kupa yok: bugün birbirinizle çok oynadınız.",
 	"Report this name": "Bu adı bildir",
+	"Final push! Your buildings train faster: finish the battle!": "Son hamle! Binaların daha hızlı asker yetiştiriyor: savaşı bitir!",
+	"Stuck? Send soldiers between your own buildings to gather them, then attack with one big army.": "Takıldın mı? Askerlerini kendi binaların arasında gönderip topla, sonra tek büyük orduyla saldır.",
+	"Share anonymous level stats: on": "Anonim seviye istatistikleri: açık",
+	"Share anonymous level stats: off": "Anonim seviye istatistikleri: kapalı",
+	"Only level numbers, times and results, to find levels that are too hard. Nothing about you or your phone.": "Yalnızca seviye numaraları, süreler ve sonuçlar; çok zor seviyeleri bulmak için. Sen ya da telefonun hakkında hiçbir şey yok.",
+	"Privacy policy": "Gizlilik politikası",
 }

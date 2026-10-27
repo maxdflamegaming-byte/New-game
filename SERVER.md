@@ -110,7 +110,7 @@ The server makes its one table (`tower_siege`) by itself. Without `DATABASE_URL`
    - **Build Command:** `npm install --omit=dev`
    - **Start Command:** `node server.js`
    - **Instance Type:** Free
-   - **Environment Variables:** add `DATABASE_URL` with the Neon connection string from above
+   - **Environment Variables:** add `DATABASE_URL` with the Neon connection string from above, and **`STATS_KEY`** with a long random password of your own: it unlocks the level stats report (see "Level stats" below)
 4. Click **Create Web Service**. After a minute or two the logs end with
    `[server] Tower Siege server on port 10000, protocol 4, postgres storage, 0 players, 0 clans`. (Protocol 4 needs the matching app and web game: older ones are asked to update.)
    If it says `file storage`, `DATABASE_URL` isn't set, and everything will be lost when the server sleeps.
@@ -120,9 +120,21 @@ The server makes its one table (`tower_siege`) by itself. Without `DATABASE_URL`
 
 Like the Color Claim server, the free plan **sleeps** after about 15 minutes without players. The first player then waits up to a minute; the game shows *"Waking up the server…"* meanwhile.
 
+## Level stats: which levels are too hard
+
+The app sends anonymous level stats to the server (`POST /stats`): for each campaign level, how often it was started, won, lost (and why) and left unfinished, and how long wins took. No account or device id is attached, and the server only keeps totals per level. With `STATS_KEY` set, open
+
+`https://tower-siege-server.onrender.com/stats?key=<your STATS_KEY>`
+
+for a table of every level: how many players reached it, the share who won, lost and quit, the average winning time and the stars. A level many players lose or quit is one to make easier or give a better hint. Add `&format=json` for the raw numbers. Without `STATS_KEY` the stats are still collected but there's no report. Players can switch the stats off in the app's Settings.
+
+## Deleting an account
+
+The privacy policy (`tower-siege/privacy.html`) promises to delete a player's online account on request. In Neon's SQL editor, find it by name: `select k, v->>'name' from tower_siege where k like 'p:%' and v->>'name' = 'TheirName';`, delete it: `delete from tower_siege where k = 'p:<id>';`, then restart the service on Render (**Manual Deploy → Restart service**), since the server keeps accounts in memory while it runs.
+
 ## Data and privacy
 
-What the server stores per phone: the in-game name, trophies, wins, losses, the clan, and when the account was made. No email, no real name, no location. Clans store their name, tag, emblem, color, leader and members. The leaderboard shows names, clan tags and trophies to everyone. For Play Console's Data safety form that's **Name** (in-game) and **App interactions** (match results), for app functionality, stored, not shared.
+What the server stores per phone: the in-game name, trophies, wins, losses, the clan, when the account was made and last used, and reports about its name. No email, no real name, no location, no IP addresses (the address is held in memory for at most an hour, to limit new accounts). Clans store their name, tag, emblem, color, leader and members. The leaderboard shows names, clan tags and trophies to everyone. Level stats are totals per level, not linked to anyone. The privacy policy is `tower-siege/privacy.html` (on GitHub Pages at `https://maxdflamegaming-byte.github.io/New-game/tower-siege/privacy.html`). For Play Console's Data safety form that's **Name** (in-game) and **App interactions** (match results and level stats), for app functionality and analytics, collected, not shared; users can ask for their account to be deleted.
 
 ## Try it on your own computer
 

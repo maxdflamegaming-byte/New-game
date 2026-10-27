@@ -117,6 +117,7 @@ var march := 1.0             # soldiers and tanks march this much faster
 var momentum := false        # the army holding more buildings trains faster, so battles don't stall
 var _mom := {}               # side -> its training factor this moment (see _update_momentum)
 var frozen := false          # nothing trains (a "no reinforcements" mission)
+var push := 1.0              # the final push of a long battle: your buildings train and send this much faster
 
 
 func load_map(data: Dictionary, garrison := 0) -> void:
@@ -179,7 +180,7 @@ func boosted(side: int) -> bool:
 
 func prod_rate(t: Tower) -> float:
 	return (0.55 + 0.2 * t.level()) * TYPES[t.type].prod * (1 + 0.08 * boost.drill if boosted(t.owner) else 1.0) * (1 + STAR_BONUS * t.stars) \
-		* pace * float(_mom.get(t.owner, 1.0))
+		* pace * float(_mom.get(t.owner, 1.0)) * (push if t.owner == PLAYER else 1.0)
 
 
 ## Momentum: when you hold more buildings than the average army you train faster (up to 1.35
@@ -210,7 +211,8 @@ func sends_tanks(t: Tower) -> bool:
 
 
 func send_interval(t: Tower) -> float:
-	return (2.4 if sends_tanks(t) else 1.0) / (1.6 + 0.4 * t.level()) / (2.0 if boosted(t.owner) and rally > 0 else 1.0) / pace
+	return (2.4 if sends_tanks(t) else 1.0) / (1.6 + 0.4 * t.level()) / (2.0 if boosted(t.owner) and rally > 0 else 1.0) / pace \
+		/ (push if t.owner == PLAYER else 1.0)
 
 
 func unit_speed(u: Unit) -> float:
