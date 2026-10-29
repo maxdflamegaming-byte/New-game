@@ -422,4 +422,9 @@ const T := {
 	"Nobody trains soldiers here, so count before you attack: the label shows what each attack costs.": "Aqui ninguém treina soldados, então conte antes de atacar: a etiqueta mostra quanto custa cada ataque.",
 	"Beat the clock: attack from several buildings at once.": "Vença o relógio: ataque de várias construções ao mesmo tempo.",
 	"Take the 🎯 castle to win. Hit it from several buildings at once, and drop your Airstrike on it.": "Tome o castelo 🎯 para vencer. Ataque de várias construções ao mesmo tempo e jogue seu bombardeio nele.",
+	"🎓 Play the lessons again": "🎓 Jogar as lições de novo",
+	"While you drag, a label shows how many soldiers the attack needs and how many you have: green means enough.": "Enquanto você arrasta, uma etiqueta mostra quantos soldados o ataque precisa e quantos você tem: verde quer dizer o bastante.",
+	"In the story, a road to attack sends what it takes and then stops by itself. A road between your own towers runs until you cut it.": "Na história, um caminho de ataque envia o necessário e depois para sozinho. Um caminho entre suas próprias torres segue até você cortá-lo.",
+	"Each mission has a goal, shown under the top bar. Win fast for 3 stars.": "Cada missão tem um objetivo, mostrado abaixo da barra superior. Vença rápido para ganhar 3 estrelas.",
+	"Stuck? Tap 💡 Hint in a battle: it shows a good move.": "Travou? Toque em 💡 Dica numa batalha: ela mostra uma boa jogada.",
 }

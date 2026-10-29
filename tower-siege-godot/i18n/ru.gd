@@ -422,4 +422,9 @@ const T := {
 	"Nobody trains soldiers here, so count before you attack: the label shows what each attack costs.": "Здесь никто не обучает солдат, так что считай перед атакой: табличка показывает цену каждой атаки.",
 	"Beat the clock: attack from several buildings at once.": "Обгони время: атакуй сразу из нескольких зданий.",
 	"Take the 🎯 castle to win. Hit it from several buildings at once, and drop your Airstrike on it.": "Возьми замок 🎯, чтобы победить. Бей по нему из нескольких зданий сразу и сбрось на него авиаудар.",
+	"🎓 Play the lessons again": "🎓 Пройти уроки снова",
+	"While you drag, a label shows how many soldiers the attack needs and how many you have: green means enough.": "Пока ведёшь пальцем, табличка показывает, сколько солдат нужно для атаки и сколько у тебя: зелёная — хватает.",
+	"In the story, a road to attack sends what it takes and then stops by itself. A road between your own towers runs until you cut it.": "В истории дорога атаки отправляет сколько нужно и сама исчезает. Дорога между твоими башнями работает, пока ты её не перережешь.",
+	"Each mission has a goal, shown under the top bar. Win fast for 3 stars.": "У каждой миссии есть цель — она под верхней панелью. Победи быстро — получишь 3 звезды.",
+	"Stuck? Tap 💡 Hint in a battle: it shows a good move.": "Застрял? Нажми 💡 Подсказка в бою: она покажет хороший ход.",
 }

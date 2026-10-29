@@ -422,4 +422,9 @@ const T := {
 	"Nobody trains soldiers here, so count before you attack: the label shows what each attack costs.": "यहाँ कोई सैनिक तैयार नहीं करता, इसलिए हमले से पहले गिनो: लेबल हर हमले की क़ीमत दिखाता है।",
 	"Beat the clock: attack from several buildings at once.": "समय से जीतो: कई इमारतों से एक साथ हमला करो।",
 	"Take the 🎯 castle to win. Hit it from several buildings at once, and drop your Airstrike on it.": "जीतने के लिए 🎯 किला लो। कई इमारतों से एक साथ हमला करो, और उस पर हवाई हमला गिराओ।",
+	"🎓 Play the lessons again": "🎓 पाठ फिर से खेलें",
+	"While you drag, a label shows how many soldiers the attack needs and how many you have: green means enough.": "खींचते समय एक लेबल दिखाता है कि हमले के लिए कितने सैनिक चाहिए और तुम्हारे पास कितने हैं: हरा मतलब काफ़ी।",
+	"In the story, a road to attack sends what it takes and then stops by itself. A road between your own towers runs until you cut it.": "कहानी में, हमले का रास्ता उतने सैनिक भेजता है जितने चाहिए और फिर अपने आप रुक जाता है। अपने ही टावरों के बीच का रास्ता तब तक चलता है जब तक तुम उसे काटो नहीं।",
+	"Each mission has a goal, shown under the top bar. Win fast for 3 stars.": "हर मिशन का एक लक्ष्य है, जो ऊपर की पट्टी के नीचे दिखता है। 3 स्टार के लिए जल्दी जीतो।",
+	"Stuck? Tap 💡 Hint in a battle: it shows a good move.": "अटक गए? लड़ाई में 💡 संकेत दबाओ: वह एक अच्छी चाल दिखाता है।",
 }

@@ -422,4 +422,9 @@ const T := {
 	"Nobody trains soldiers here, so count before you attack: the label shows what each attack costs.": "Di sini tak ada yang melatih prajurit, jadi hitung dulu sebelum menyerang: label menunjukkan biaya setiap serangan.",
 	"Beat the clock: attack from several buildings at once.": "Kalahkan waktu: serang dari beberapa bangunan sekaligus.",
 	"Take the 🎯 castle to win. Hit it from several buildings at once, and drop your Airstrike on it.": "Rebut kastel 🎯 untuk menang. Serang dari beberapa bangunan sekaligus, dan jatuhkan serangan udaramu ke sana.",
+	"🎓 Play the lessons again": "🎓 Mainkan pelajaran lagi",
+	"While you drag, a label shows how many soldiers the attack needs and how many you have: green means enough.": "Saat menyeret, label menunjukkan berapa prajurit yang dibutuhkan serangan dan berapa yang kamu punya: hijau berarti cukup.",
+	"In the story, a road to attack sends what it takes and then stops by itself. A road between your own towers runs until you cut it.": "Dalam cerita, jalan serangan mengirim yang dibutuhkan lalu berhenti sendiri. Jalan di antara menaramu sendiri terus berjalan sampai kamu memotongnya.",
+	"Each mission has a goal, shown under the top bar. Win fast for 3 stars.": "Setiap misi punya tujuan, ditampilkan di bawah bilah atas. Menang cepat untuk 3 bintang.",
+	"Stuck? Tap 💡 Hint in a battle: it shows a good move.": "Buntu? Ketuk 💡 Petunjuk dalam pertempuran: ia menunjukkan langkah yang bagus.",
 }

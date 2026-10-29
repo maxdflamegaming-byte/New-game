@@ -114,6 +114,22 @@ func _run() -> void:
 	await create_timer(1.5).timeout
 	ok("Losing every building shows Defeat", main.screen_open == "lose")
 
+	# A won mission has no lessons, unless Settings asks for them again (progress stays)
+	main.start_level(1)
+	await _frames(2)
+	ok("A won mission plays without its lessons", main.tutor == null)
+	main.replay_lessons()
+	await _frames(2)
+	ok("Play the lessons again opens mission 1's briefing", main.screen_open == "brief" and main.ui.brief_n == 1)
+	main.start_level(1)
+	await _frames(2)
+	ok("...and mission 1 teaches again, with your progress kept", main.tutor != null and main.tutor.active() and int(main.save.level) == 2)
+	main.open_menu()
+	main.start_level(1)
+	await _frames(2)
+	ok("Back at the menu, the lessons are off again", main.tutor == null and not main.relearn)
+	main.open_menu()
+
 	# A save cut off halfway (the phone killed the app mid-write) falls back to the backup
 	var level_before := int(main.save.level)
 	main.save.coins = 7

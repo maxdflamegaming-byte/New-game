@@ -422,4 +422,9 @@ const T := {
 	"Nobody trains soldiers here, so count before you attack: the label shows what each attack costs.": "Burada kimse asker yetiştirmiyor, o yüzden saldırmadan önce say: etiket her saldırının bedelini gösterir.",
 	"Beat the clock: attack from several buildings at once.": "Saate karşı yarış: aynı anda birkaç binadan saldır.",
 	"Take the 🎯 castle to win. Hit it from several buildings at once, and drop your Airstrike on it.": "Kazanmak için 🎯 kalesini al. Aynı anda birkaç binadan saldır ve üzerine hava saldırını bırak.",
+	"🎓 Play the lessons again": "🎓 Dersleri yeniden oyna",
+	"While you drag, a label shows how many soldiers the attack needs and how many you have: green means enough.": "Sürüklerken bir etiket, saldırının kaç asker gerektirdiğini ve sende kaç tane olduğunu gösterir: yeşil yeterli demek.",
+	"In the story, a road to attack sends what it takes and then stops by itself. A road between your own towers runs until you cut it.": "Hikâyede saldırı yolu gerekeni gönderir, sonra kendiliğinden durur. Kendi kulelerin arasındaki yol, sen kesene kadar çalışır.",
+	"Each mission has a goal, shown under the top bar. Win fast for 3 stars.": "Her görevin bir hedefi vardır, üst çubuğun altında gösterilir. 3 yıldız için hızlı kazan.",
+	"Stuck? Tap 💡 Hint in a battle: it shows a good move.": "Takıldın mı? Savaşta 💡 İpucu'na dokun: iyi bir hamle gösterir.",
 }

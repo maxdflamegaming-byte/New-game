@@ -69,6 +69,7 @@ var hint_timer := 0.0
 var hand_shown := false
 var quota_roads := true        # campaign attack roads stop by themselves (a switch for tests)
 var battles := 0               # battles loaded so far (a late result screen checks it's still its battle)
+var relearn := false          # Settings: the first missions teach again, even when they're won
 var calm_until := -1.0         # battle time until which the enemy leaves you alone (the lessons); -1 = until they end
 var tutor: Tutorial = null     # the step-by-step lessons of the first levels, while they run
 var guide := {}                # a move the hand shows (a hint or a tutorial step): {from, to, others, life, attack}
@@ -321,6 +322,13 @@ func watch_story() -> void:
 		open_menu()
 
 
+## Settings: play missions 1 to 3 with their lessons again (your progress stays)
+func replay_lessons() -> void:
+	open_menu()
+	relearn = true
+	ui.show_brief(1)
+
+
 func set_lang(code: String) -> void:
 	save.lang = code
 	write_save()
@@ -402,8 +410,10 @@ func start_level(n: int) -> void:
 	armed = ""
 	shake = 0.0
 	hand_shown = data.get("hand", false)
-	# The first levels teach step by step until they're won (the lessons replace the hints)
-	if n >= int(save.level) and not Tutorial.steps_for(n).is_empty():
+	# The first levels teach step by step until they're won (the lessons replace the hints),
+	# or again when asked for in Settings
+	relearn = relearn and n <= 3
+	if (n >= int(save.level) or relearn) and not Tutorial.steps_for(n).is_empty():
 		tutor = Tutorial.new(self, n)
 		hand_shown = false
 		# ...and while you learn, the enemy only takes gray buildings and leaves yours alone
@@ -1024,6 +1034,7 @@ func _guide_done(a, b) -> void:
 # ---------- Screens and buttons ----------
 func open_menu() -> void:
 	_left_unfinished()
+	relearn = false
 	cutscene.abort()
 	state = "menu"
 	world.drift = true

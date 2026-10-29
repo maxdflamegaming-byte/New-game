@@ -1018,8 +1018,11 @@ func _build_settings() -> void:
 	row2.add_child(cutscenes_btn)
 	v.add_child(row2)
 	var watch := button("🎬 Watch the story again", "blue", 22, func(): main.watch_story())
-	watch.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	v.add_child(watch)
+	var lessons := button("🎓 Play the lessons again", "blue", 22, func(): main.replay_lessons())
+	var row3 := hbox(10)
+	row3.add_child(watch)
+	row3.add_child(lessons)
+	v.add_child(row3)
 	v.add_child(label("Graphics", 28))
 	var row := hbox(8)
 	for g in ["auto", "low", "medium", "high"]:
@@ -1396,7 +1399,10 @@ func _build_help() -> void:
 		"Bigger towers hold more roads: 1 road below 10 soldiers, 2 from 10, 3 from 30.",
 		"Soldiers from different armies fight when they meet on the field.",
 		"Tank factories send tanks worth 3 soldiers. Bunkers take half damage. Watchtowers shoot enemies in their circle. Walls block roads.",
-		"Take every enemy building to win. Win fast for 3 stars.",
+		"While you drag, a label shows how many soldiers the attack needs and how many you have: green means enough.",
+		"In the story, a road to attack sends what it takes and then stops by itself. A road between your own towers runs until you cut it.",
+		"Each mission has a goal, shown under the top bar. Win fast for 3 stars.",
+		"Stuck? Tap 💡 Hint in a battle: it shows a good move.",
 	]:
 		var p := PanelContainer.new()
 		p.add_theme_stylebox_override("panel", box(WHITE, INK, 16, 3, 0))
