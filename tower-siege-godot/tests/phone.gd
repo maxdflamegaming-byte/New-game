@@ -13,6 +13,7 @@ var out := ""
 var fails := 0
 var step := 0
 var headless := false
+var lesson_steps := {}         # lesson step -> what it waited for (the steps play_level went through)
 const NOTCH := Vector2(70, 34)   # top and bottom of the screen the phone keeps for itself
 
 
@@ -166,11 +167,45 @@ func watch_cutscene(name: String, max_s := 60.0) -> float:
 
 
 ## Play like a person: drag roads from my buildings to the nearest buildings that aren't mine
+## Follow the lesson's hand: drag along the guide, swipe across a road, or tap 💡 Hint
+func follow_lesson(name: String) -> void:
+	var w: String = main.tutor.waiting_for()
+	lesson_steps[main.tutor.i] = w
+	if w == "cut":
+		for tw in main.battle.towers:
+			if tw.owner == Battle.PLAYER and not tw.roads.is_empty():
+				var a: Vector2 = main.world.tower_screen(tw).base
+				var b: Vector2 = main.world.tower_screen(tw.roads[0].to).base
+				var mid := (a + b) * 0.5
+				var across := (b - a).orthogonal().normalized() * 90.0
+				await shot(name + "-cut")
+				await drag(0, mid - across, mid + across)
+				return
+	elif w == "hint":
+		await shot(name + "-lesson-hint")
+		await tap(main.ui.hint_btn, "Hint")
+		await _seconds(0.3)
+		await shot(name + "-hint")
+	elif not main.guide.is_empty() and main.guide.from.owner == Battle.PLAYER and main.guide.from.roads.size() < main.guide.from.max_roads():
+		var s1: Dictionary = main.world.tower_screen(main.guide.from)
+		var s2: Dictionary = main.world.tower_screen(main.guide.to)
+		if main.tutor.i == 0:
+			await shot(name + "-lesson")
+		await drag(0, s1.base + Vector2(0, -s1.r * 0.6), s2.base + Vector2(0, -s2.r * 0.6))
+
+
 func play_level(name: String, seconds := 90.0, help := true) -> bool:
 	var b: Battle = main.battle
 	var t := 0.0
 	var drags := 0
 	while main.state == "play" and t < seconds:
+		# A lesson step: do what it asks, the way a player would
+		if main.tutor != null and main.tutor.active():
+			await follow_lesson(name)
+			if main.tutor != null and main.tutor.holding():
+				await _seconds(0.5)
+				t += 0.5
+				continue
 		if help:
 			for tw in b.towers:
 				if tw.owner == Battle.PLAYER:
@@ -278,6 +313,7 @@ func _run() -> void:
 	clear_of_notch(ui.hint_panel, "The hint")
 	var won := await play_level("level1", 120.0)
 	ok("Level 1 can be won with drags", won and main.state != "play", "state %s" % main.state)
+	ok("Level 1's lesson is played through by following the hand", lesson_steps.size() >= 4, "steps %s" % str(lesson_steps))
 	await watch_cutscene("victory", 30.0)
 	await _seconds(2.0)
 	await shot("win")

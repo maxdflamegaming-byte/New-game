@@ -62,7 +62,10 @@ func _run() -> void:
 	main.start_level(1)
 	await _frames(3)
 	ok("Play starts level 1", main.state == "play" and main.level == 1 and main.battle.towers.size() == 4)
-	ok("Level 1 shows the hint and the hand", main.hand_shown and main.hint_text != "")
+	ok("Level 1 starts the lessons: what to do, and the hand showing it", main.tutor != null and main.tutor.active() and main.hint_text.begins_with("Drag") and not main.guide_move().is_empty())
+	var t0: float = main.battle.time
+	main.step(0.5)
+	ok("The lesson holds the battle still until you've done it", main.tutor.holding() and main.battle.time == t0)
 	# Freeze the enemy (with no enemies at all, the level would count as won)
 	for side in main.battle.ai_sides:
 		side.timer = 1e9
@@ -72,7 +75,9 @@ func _run() -> void:
 	var b: Dictionary = main.world.tower_screen(gray)
 	await _drag(0, Vector2(a.x, a.y), Vector2(b.x, b.y))
 	ok("Dragging builds a road", me.has_road(gray))
-	ok("The hand goes away after the first road", not main.hand_shown)
+	main.step(0.05)
+	ok("Building the road moves the lesson on, and the battle carries on", main.tutor.i == 1 and not main.tutor.holding() and main.battle.time > t0)
+	ok("An attack road carries just what it takes (and a few more)", me.roads.size() == 1 and int(me.roads[0].left) >= 6 and int(me.roads[0].left) <= 12, str(me.roads.map(func(r): return r.left)))
 	await _frames(30)
 	for i in 30:
 		main.battle.update(0.05)
@@ -100,6 +105,7 @@ func _run() -> void:
 	# Losing
 	main.start_level(2)
 	await _frames(3)
+	main.tutor = null   # (the lessons would hold the battle still)
 	for t in main.battle.towers:
 		if t.owner == 1:
 			t.owner = 2
@@ -261,6 +267,35 @@ func _run() -> void:
 	ok("...and then nothing is kept", main.save.stats_rows.is_empty())
 	main.ui.stats_btn.pressed.emit()
 	ok("...and back on", main.save.stats)
+	main.open_menu()
+
+	# The attack math the label, the hint and attack roads share
+	main.save.level = 12
+	main.start_level(12)
+	await _frames(3)
+	for side in main.battle.ai_sides:
+		side.timer = 1e9
+	var bt: Battle = main.battle
+	var mine12: Battle.Tower = bt.towers.filter(func(t): return t.owner == 1)[0]
+	var gray12: Battle.Tower = bt.towers.filter(func(t): return t.owner == 0 and t.type == "barracks")[0]
+	gray12.units = 10
+	ok("Taking a gray tower of 10 takes 11 soldiers", bt.attack_need(mine12, gray12, 1) == 11)
+	gray12.type = "fort"
+	ok("A Bunker takes twice as many", bt.attack_need(mine12, gray12, 1) == 21)
+	gray12.type = "barracks"
+	mine12.units = 40
+	ok("A campaign attack road is built with just what it takes", main.request_link(mine12, gray12, 1) == true and int(mine12.roads[-1].left) == 11 + main.ROAD_SPARE + ceili(11 * main.ROAD_EXTRA))
+	for i in 200:
+		bt.update(0.05)
+	ok("...it stops by itself once it's sent them, and the tower is taken", not mine12.has_road(gray12) and gray12.owner == 1 and mine12.units > 15, "%d %d %.0f" % [int(mine12.has_road(gray12)), gray12.owner, mine12.units])
+	main.show_hint()
+	ok("💡 Hint shows a move: the hand, and why", not main.guide.is_empty() and main.guide.from.owner == 1 and main.hint_text.length() > 20, main.hint_text)
+	main.net.start_pvp("practice", 779)
+	await _frames(2)
+	var pa: Battle.Tower = main.battle.towers.filter(func(t): return t.owner == 1)[0]
+	var pb: Battle.Tower = main.battle.towers.filter(func(t): return t.owner == 0)[0]
+	main.request_link(pa, pb, 1)
+	ok("PvP roads send until they're cut, like the web version", pa.roads.size() == 1 and int(pa.roads[0].get("left", -1)) == -1)
 	main.open_menu()
 
 	# A long battle gets a final push, so it can't drag on

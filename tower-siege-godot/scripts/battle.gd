@@ -46,7 +46,7 @@ class Tower:
 	var owner := 0
 	var type := "barracks"
 	var units := 0.0
-	var roads: Array = []  # [{to: Tower, timer: float, born: float}]
+	var roads: Array = []  # [{to: Tower, timer: float, born: float, left: soldiers still to send (-1 = no limit)}]
 	var flash := 0.0
 	var pop := 0.0
 	var reload := 0.0
@@ -244,8 +244,10 @@ func can_link(a: Tower, b: Tower, side: int) -> Variant:
 	return true
 
 
-## Build a road from a to b for `side`. Returns true or why it can't.
-func link(a: Tower, b: Tower, side: int) -> Variant:
+## Build a road from a to b for `side`. Returns true or why it can't. With a quota the road
+## sends that many soldiers and then goes away by itself (the campaign's attack roads, so a
+## building doesn't empty itself into one attack); -1 sends until it's cut.
+func link(a: Tower, b: Tower, side: int, quota := -1) -> Variant:
 	var ok = can_link(a, b, side)
 	if ok is String:
 		return ok
@@ -255,8 +257,31 @@ func link(a: Tower, b: Tower, side: int) -> Variant:
 			if b.roads[i].to == a:
 				b.roads.remove_at(i)
 				break
-	a.roads.append({"to": b, "timer": 0.0, "born": time})
+	a.roads.append({"to": b, "timer": 0.0, "born": time, "left": quota})
 	return true
+
+
+## How many soldiers `side` still has to send to take building t (0 if it's already theirs):
+## its soldiers, plus what it trains while ours walk there from a, counted twice for a Bunker
+## (and so on for each kind of building), one more to empty it, a few for each enemy
+## watchtower that will shoot at ours on the way, minus ours already marching there or still
+## to leave on roads with a quota. The attack preview, the hint and quota roads all use it.
+func attack_need(a: Tower, t: Tower, side: int) -> int:
+	if t.owner == side:
+		return 0
+	var travel := dist(a.x, a.y, t.x, t.y) / (UNIT_SPEED * march)
+	var grow := 0.0 if t.owner == NEUTRAL or frozen else prod_rate(t) * travel
+	var guard := 0
+	for w in towers:
+		if w.shoots() and w.owner != NEUTRAL and w.owner != side and dist(w.x, w.y, t.x, t.y) < w.shot_range():
+			guard += 4
+	var coming := float(inbound(t, side))
+	for s in towers:
+		if s.owner == side:
+			for r in s.roads:
+				if r.to == t and int(r.get("left", -1)) > 0:
+					coming += r.left
+	return maxi(0, ceili((t.units + grow) * TYPES[t.type].defense + 1 + guard - coming))
 
 
 func cut(a: Tower, b: Tower) -> bool:
@@ -330,18 +355,27 @@ func update(dt: float, run_ai := true) -> void:
 			t.units = minf(CAP, t.units + prod_rate(t) * dt)
 		t.flash = maxf(0, t.flash - dt * 3)
 		t.pop = maxf(0, t.pop - dt * 4)
+		var done := false
 		for r in t.roads:
 			r.timer -= dt
 			if r.timer > 0:
 				continue
-			# Tank factories send a tank when they have enough soldiers for one
-			var power := TANK_POWER if sends_tanks(t) and t.units >= TANK_POWER else 1
+			# Tank factories send a tank when they have enough soldiers for one (and when the
+			# road still has to carry that many)
+			var left: int = int(r.get("left", -1))
+			var power := TANK_POWER if sends_tanks(t) and t.units >= TANK_POWER and (left < 0 or left >= TANK_POWER) else 1
 			if t.units >= power:
 				t.units -= power
 				spawn_unit(t, r.to, power)
 				r.timer = send_interval(t) * (1.0 if power > 1 else 0.8)
+				if left >= 0:
+					r.left = maxi(0, left - power)
+					done = done or r.left == 0
 			else:
 				r.timer = 0.0
+		if done:
+			# Roads that have sent everything they had to go away
+			t.roads = t.roads.filter(func(r): return int(r.get("left", -1)) < 0 or r.left > 0)
 		if t.shoots():
 			_update_watch(t, dt)
 
@@ -386,6 +420,14 @@ func capture(t: Tower, side: int) -> void:
 	t.units = absf(t.units)
 	t.stars = 0
 	t.roads.clear()
+	# (The new owner's attack roads to it still deliver the rest of their soldiers, which now
+	# reinforce it, then stop)
+	# Campaign: your roads to a building you've just lost stop, instead of emptying your other
+	# buildings into it (PvP keeps the web version's rules)
+	if mode == "campaign" and old == PLAYER:
+		for s in towers:
+			if s.owner == PLAYER:
+				s.roads = s.roads.filter(func(r): return r.to != t)
 	t.pop = 1.5
 	if side == PLAYER:
 		stats.captured += 1
@@ -519,44 +561,8 @@ func ai_think(side: int, cfg: Dictionary) -> void:
 				if t.units < 3 and sending < need * 0.7 and randf() < 0.6:
 					t.roads.remove_at(i)
 
-	# Attack: find the cheapest, closest building it can take with up to 3 of its own
-	var best := {}
-	for tgt in towers:
-		if tgt.owner == side:
-			continue
-		var already := float(inbound(tgt, side))
-		for s in mine:
-			if s.has_road(tgt):
-				already += s.units
-		var sources := mine.filter(func(s): return s.roads.size() < s.max_roads() and s.units >= 5 and not s.has_road(tgt) and not blocked(s.x, s.y, tgt.x, tgt.y) and threat_on(s) < s.units * 0.5)
-		if sources.is_empty():
-			continue
-		sources.sort_custom(func(a, b): return dist(a.x, a.y, tgt.x, tgt.y) < dist(b.x, b.y, tgt.x, tgt.y))
-		var travel := dist(sources[0].x, sources[0].y, tgt.x, tgt.y) / (UNIT_SPEED * march)
-		var grow := 0.0 if tgt.owner == NEUTRAL or frozen else prod_rate(tgt) * travel
-		# Watchtowers shoot some of the attackers on the way in
-		var guard := 0
-		for w in towers:
-			if w.shoots() and w.owner != NEUTRAL and w.owner != side and dist(w.x, w.y, tgt.x, tgt.y) < w.shot_range():
-				guard += 4
-		var need: float = (tgt.units + grow) * TYPES[tgt.type].defense + cfg.margin + guard - already
-		var used := []
-		var total := 0.0
-		for s in sources:
-			if total >= need or used.size() >= 3:
-				break
-			used.append(s)
-			total += s.units - 1
-		if total < need:
-			continue
-		var dsum := 0.0
-		for s in used:
-			dsum += dist(s.x, s.y, tgt.x, tgt.y)
-		var value: float = 1.0 + (cfg.bold if tgt.owner == PLAYER else 0.0) + (0.4 if tgt.type == "factory" or tgt.type == "camp" else 0.0) + (0.2 if tgt.owner != NEUTRAL else 0.0) \
-			+ (float(cfg.get("focus_bonus", 0.0)) if tgt.id == int(cfg.get("focus", -1)) else 0.0)
-		var score := value / (maxf(1, need) + dsum / used.size() / 22)
-		if best.is_empty() or score > best.score:
-			best = {"score": score, "tgt": tgt, "used": used}
+	# Attack: the cheapest, closest building it can take with up to 3 of its own
+	var best := plan_attack(side, cfg, mine)
 	if not best.is_empty():
 		for s in best.used:
 			link(s, best.tgt, side)
@@ -577,6 +583,73 @@ func ai_think(side: int, cfg: Dictionary) -> void:
 			continue
 		helpers.sort_custom(func(a, b): return dist(a.x, a.y, t.x, t.y) < dist(b.x, b.y, t.x, t.y))
 		link(helpers[0], t, side)
+
+
+## A building's soldiers not yet promised to its attack roads (roads with a quota; an enemy
+## army's roads have none, so for them it's all its soldiers)
+func spare(t: Tower) -> float:
+	var promised := 0
+	for r in t.roads:
+		promised += maxi(0, int(r.get("left", -1)))
+	return t.units - promised
+
+
+## The attack an army would make now: the cheapest, closest building it can take with up to 3
+## of its own (`mine`), weighing how much it wants each kind of target (cfg: margin = spare
+## soldiers it wants, bold = how much it prefers the player's buildings, focus/prefer + focus_bonus
+## = buildings it wants most, min_source = the fewest soldiers a building attacks with,
+## spare_player = leave the player alone, while the first levels teach).
+## {tgt, used: [its buildings], need, score}, or {} if it can't afford any. The enemy armies
+## use it, and so does the hint button for the player.
+func plan_attack(side: int, cfg: Dictionary, mine: Array) -> Dictionary:
+	var best := {}
+	for tgt in towers:
+		if tgt.owner == side or (tgt.owner == PLAYER and cfg.get("spare_player", false)):
+			continue
+		var already := float(inbound(tgt, side))
+		for s in mine:
+			if s.has_road(tgt):
+				already += s.units
+		var sources := mine.filter(func(s): return s.roads.size() < s.max_roads() and spare(s) >= float(cfg.get("min_source", 5)) and not s.has_road(tgt) and not blocked(s.x, s.y, tgt.x, tgt.y) and threat_on(s) < s.units * 0.5)
+		if sources.is_empty():
+			continue
+		sources.sort_custom(func(a, b): return dist(a.x, a.y, tgt.x, tgt.y) < dist(b.x, b.y, tgt.x, tgt.y))
+		var travel := dist(sources[0].x, sources[0].y, tgt.x, tgt.y) / (UNIT_SPEED * march)
+		var grow := 0.0 if tgt.owner == NEUTRAL or frozen else prod_rate(tgt) * travel
+		# Watchtowers shoot some of the attackers on the way in
+		var guard := 0
+		for w in towers:
+			if w.shoots() and w.owner != NEUTRAL and w.owner != side and dist(w.x, w.y, tgt.x, tgt.y) < w.shot_range():
+				guard += 4
+		var need: float = (tgt.units + grow) * TYPES[tgt.type].defense + cfg.margin + guard - already
+		if cfg.get("skip_covered", false):
+			# For the hint: the same count the attack label shows (attack roads with a quota);
+			# a building enough soldiers are already heading for is skipped
+			var left := attack_need(sources[0], tgt, side)
+			if left <= 0:
+				continue
+			need = left + cfg.margin
+		var used := []
+		var total := 0.0
+		for s in sources:
+			if total >= need or used.size() >= 3:
+				break
+			used.append(s)
+			total += spare(s) - 1
+		if total < need:
+			continue
+		# Enough already on the way: the hint skips it (an enemy army just builds no road)
+		if used.is_empty() and cfg.get("skip_covered", false):
+			continue
+		var dsum := 0.0
+		for s in used:
+			dsum += dist(s.x, s.y, tgt.x, tgt.y)
+		var value: float = 1.0 + (cfg.bold if tgt.owner == PLAYER else 0.0) + (0.4 if tgt.type == "factory" or tgt.type == "camp" else 0.0) + (0.2 if tgt.owner != NEUTRAL else 0.0) \
+			+ (float(cfg.get("focus_bonus", 0.0)) if tgt.id == int(cfg.get("focus", -1)) or tgt.id in cfg.get("prefer", []) else 0.0)
+		var score := value / (maxf(1, need) + dsum / used.size() / 22)
+		if best.is_empty() or score > best.score:
+			best = {"score": score, "tgt": tgt, "used": used, "need": need}
+	return best
 
 
 # ---------- Abilities ----------

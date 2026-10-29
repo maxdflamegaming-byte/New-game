@@ -2,7 +2,7 @@ extends SceneTree
 ## Screenshots for checking by eye (run under xvfb-run, opengl3):
 ##   xvfb-run godot --path tower-siege-godot --rendering-driver opengl3 -s tests/look.gd -- OUT_DIR WHAT [W H]
 ## WHAT: menu, level:N (a battle with both sides played by the computer for a few seconds),
-## brief:N (mission N's briefing), or a screen name (levels, shop, help, win, lose, pvp).
+## brief:N (mission N's briefing), preview:N (dragging to attack), hint:N (💡 Hint pressed), or a screen name (levels, shop, help, win, lose, pvp).
 
 var main
 var out := "/tmp"
@@ -48,6 +48,21 @@ func _run() -> void:
 				t.units += 25
 		for i in 200:
 			main.battle.update(0.05)
+		await _frames(40)
+	elif what.begins_with("preview:") or what.begins_with("hint:"):
+		# A finger held over the cheapest building (the attack label), or 💡 Hint pressed
+		var n := int(what.split(":")[1])
+		main.save.level = 60
+		main.start_level(n)
+		for i in 60:
+			main.battle.update(0.05)
+		if what.begins_with("hint:"):
+			main.show_hint()
+		else:
+			var mv: Array = Tutorial.new(main, n)._move("cheap")
+			var to: Dictionary = main.world.tower_screen(mv[1])
+			main.pointer_down(0, main.world.tower_screen(mv[0]).base)
+			main.pointer_move(0, to.base + Vector2(0, -to.r * 0.5))
 		await _frames(40)
 	elif what == "pvp":
 		main.net.open_pvp()

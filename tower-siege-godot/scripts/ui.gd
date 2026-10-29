@@ -25,6 +25,7 @@ var power_bar: HBoxContainer
 var speed_btn: Button
 var abilities: HBoxContainer
 var ability_btns := {}
+var hint_btn: Button
 var toast_panel: PanelContainer
 var toast_label: Label
 var hint_panel: PanelContainer
@@ -503,6 +504,18 @@ func _build_hud() -> void:
 		b.add_child(bp)
 		abilities.add_child(b)
 		ability_btns[id] = {"btn": b, "count": badge}
+	# 💡: what to do now (campaign)
+	hint_btn = button("💡", "yellow", 40, func(): main.show_hint())
+	hint_btn.custom_minimum_size = Vector2(100, 100)
+	hint_btn.add_theme_constant_override("content_margin_bottom", 22)
+	hint_btn.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	var hcap := label("Hint", 16)
+	hcap.position = Vector2(0, 74)
+	hcap.size = Vector2(100, 24)
+	hcap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hcap.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_ALWAYS
+	hint_btn.add_child(hcap)
+	abilities.add_child(hint_btn)
 	hint_panel = PanelContainer.new()
 	hint_panel.add_theme_stylebox_override("panel", box(WHITE, INK, 18, 3, 4))
 	hint_label = wrapped(label("", 22, INK, 0), 560)
@@ -628,6 +641,8 @@ func refresh_abilities() -> void:
 		a.count.text = str(main.charges[id])
 		a.btn.disabled = main.state != "play" or (main.charges[id] <= 0 and main.armed != id) or (id == "rally" and main.battle.rally > 0)
 		a.btn.modulate = Color(1, 0.75, 0.75) if main.armed == id else Color.WHITE
+	if hint_btn:
+		hint_btn.disabled = main.state != "play"
 
 
 func refresh_speed() -> void:

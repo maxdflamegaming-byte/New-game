@@ -35,6 +35,7 @@ func _draw() -> void:
 	if show_labels and main.state != "menu" and main.state != "cutscene" and main.screen_open == "" and not main.cutscene.playing():
 		_marks(w)
 		_labels(b.towers, w)
+		_road_counts(w, b)
 	# Swipe trail
 	for c in main.cut_marks:
 		var k: float = c.life / 0.35
@@ -231,6 +232,8 @@ func _drags(w: World, b: Battle) -> void:
 			var can = b.can_link(a, d.over, d.side)
 			ok = can is bool and can
 		var col: Color = main.SIDES[d.side].color if ok else Color("#ff4a3a")
+		if d.over != null and d.over != a:
+			_preview(w, b, a, d.over, d.side)
 		draw_line(start, end, Color(1, 1, 1, 0.9), 16, true)
 		# A dashed line that crawls toward the target
 		var L := start.distance_to(end)
@@ -246,19 +249,70 @@ func _drags(w: World, b: Battle) -> void:
 		draw_circle(end, 9, col)
 
 
-# A ghost hand that shows how to drag a road, on the first level
-func _hand(w: World, b: Battle) -> void:
-	if not main.hand_shown or not main.drags.is_empty() or main.state != "play":
+## While dragging a road onto a building: will it work? For an attack, the soldiers it takes
+## to win the building (counting a Bunker's double defence, what it trains meanwhile and
+## watchtowers on the way) against what you have; for your own building, that soldiers move
+## there; or why the road can't be built.
+func _preview(w: World, b: Battle, a, t, side: int) -> void:
+	var can = b.can_link(a, t, side)
+	var text := ""
+	var good := false
+	if can is String:
+		text = {"full": tr("No free road: %d soldiers give more roads") % (10 if a.max_roads() == 1 else 30), "blocked": tr("A wall is in the way"), "exists": tr("Already sending here")}.get(can, "")
+	elif t.owner == side:
+		text = tr("Moves soldiers here until you cut the road")
+		good = true
+	else:
+		var need: int = b.attack_need(a, t, side)
+		var have := floori(a.units)
+		good = have >= need
+		text = (tr("Need %d · You have %d") % [need, have]) + ("  ✔" if good else "  ✖")
+		if need == 0:
+			text = tr("Enough soldiers are on the way")
+	if text == "":
 		return
-	var from = null
-	var to = null
+	var s := w.tower_screen(t)
+	var size := 22
+	var tw := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+	var r := Rect2(s.top_x - tw / 2 - 16, s.top_y - 118, tw + 32, 40)
+	r.position.x = clampf(r.position.x, 6, size_px().x - r.size.x - 6)
+	var bg := Color("#27a845") if good else Color("#e2453c")
+	if t.owner == side:
+		bg = Color("#2f7fe0")
+	_pill(_dot_tex(), r.grow(3), Color.WHITE)
+	_pill(_dot_tex(), r, bg)
+	draw_string(font, Vector2(r.position.x + 16, r.position.y + 28), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color.WHITE)
+
+
+func size_px() -> Vector2:
+	return get_viewport().get_visible_rect().size
+
+
+## Soldiers still to leave on your attack roads: a small count halfway along each
+func _road_counts(w: World, b: Battle) -> void:
 	for t in b.towers:
-		if t.owner == Battle.PLAYER and from == null:
-			from = t
-		if t.owner == 0 and (to == null or t.units < to.units):
-			to = t
-	if from == null or to == null:
+		for r in t.roads:
+			var left := int(r.get("left", -1))
+			if left <= 0:
+				continue
+			var p := w.project((t.x + r.to.x) / 2, (t.y + r.to.y) / 2, 6)
+			var text := str(left)
+			var tw := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 18).x
+			var rr := Rect2(p.x - tw / 2 - 9, p.y - 13, tw + 18, 26)
+			_pill(_dot_tex(), rr.grow(2), Color.WHITE)
+			_pill(_dot_tex(), rr, main.SIDES[t.owner].dark)
+			draw_string(font, Vector2(rr.position.x + 9, rr.position.y + 19), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color.WHITE)
+
+
+# A ghost hand that shows how to drag a road: on the first level, for a hint, or a tutorial step
+func _hand(w: World, b: Battle) -> void:
+	if not main.drags.is_empty() or main.state != "play":
 		return
+	var mv: Dictionary = main.guide_move()
+	if mv.is_empty():
+		return
+	var from = mv.from
+	var to = mv.to
 	var k := fmod(Time.get_ticks_msec() / 1600.0, 1.0)
 	var m := clampf((k - 0.15) / 0.6, 0, 1)
 	var e := m * m * (3 - 2 * m)

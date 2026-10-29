@@ -14,6 +14,8 @@ const CAMPAIGN_PACE := 1.5      # campaign buildings train and send this much fa
 const CAMPAIGN_MARCH := 1.3     # and soldiers march this much faster
 const FINAL_PUSH_AT := 120.0    # a campaign battle with no clock of its own gets a final push after this
 const FINAL_PUSH := 1.5         # ...in which your buildings train and send this much faster
+const ROAD_SPARE := 3           # an attack road carries this many more than it takes...
+const ROAD_EXTRA := 0.3         # ...and this share more (enemy soldiers meet yours on the way)
 const HUD_TOP := 136.0         # the top bar and the mission's goal under it
 const HUD_BOTTOM := 130.0
 const SAVE_PATH := "user://tower_siege.json"
@@ -65,6 +67,11 @@ var armed := ""                # an ability waiting for a target
 var hint_text := ""
 var hint_timer := 0.0
 var hand_shown := false
+var quota_roads := true        # campaign attack roads stop by themselves (a switch for tests)
+var battles := 0               # battles loaded so far (a late result screen checks it's still its battle)
+var calm_until := -1.0         # battle time until which the enemy leaves you alone (the lessons); -1 = until they end
+var tutor: Tutorial = null     # the step-by-step lessons of the first levels, while they run
+var guide := {}                # a move the hand shows (a hint or a tutorial step): {from, to, others, life, attack}
 var landscape := false
 var scene_level := 1
 var scene_theme := ""
@@ -352,6 +359,10 @@ func load_battle(data: Dictionary, n: int, theme := "") -> void:
 	battle.momentum = campaign
 	battle.frozen = false
 	battle.push = 1.0
+	battles += 1
+	calm_until = -1.0
+	guide = {}
+	tutor = null
 	goal = {}
 	last_change = 0.0
 	stuck_tip = false
@@ -391,6 +402,17 @@ func start_level(n: int) -> void:
 	armed = ""
 	shake = 0.0
 	hand_shown = data.get("hand", false)
+	# The first levels teach step by step until they're won (the lessons replace the hints)
+	if n >= int(save.level) and not Tutorial.steps_for(n).is_empty():
+		tutor = Tutorial.new(self, n)
+		hand_shown = false
+		# ...and while you learn, the enemy only takes gray buildings and leaves yours alone
+		# (on level 3, until a little after the last lesson)
+		for a in battle.ai_sides:
+			a.cfg = a.cfg.duplicate()
+			a.cfg.think = float(a.cfg.think) * 1.5
+			a.cfg.spare_player = true
+		calm_until = INF if n < 3 else -1.0
 	charges = {"strike": 1 + save.up.armory if n >= 3 else 0, "rally": 1 + save.up.armory if n >= 6 else 0}
 	# The fly-in shows the mission's code name and its goal
 	var g: String = goal.goal
@@ -440,7 +462,11 @@ func _begin(data: Dictionary, title: String, n: int, banner := "", sub := "") ->
 		cutscene.finish(r)
 	state = "play"
 	ui.start_hud(title, true)
-	set_hint(data.get("hint", ""), 25.0 if n == 2 else 10.0)
+	if tutor != null:
+		tutor.start()
+	else:
+		set_hint(data.get("hint", ""), 25.0 if n == 2 else 10.0)
+		_explain_goal()
 	# Introduce a new building the first time it shows up
 	for k in Battle.TYPES:
 		if Battle.TYPES[k].has("intro") and not save.seen.has(k) and battle.towers.any(func(t): return t.type == k):
@@ -449,6 +475,25 @@ func _begin(data: Dictionary, title: String, n: int, banner := "", sub := "") ->
 			get_tree().create_timer(0.6).timeout.connect(func(): ui.toast(Battle.TYPES[k].intro, 4.2))
 			break
 	music.play_track("boss" if boss else "game")
+
+
+## The first time a kind of mission comes up, say how to win it
+const GOAL_HELP := {
+	"defend": "Keep the 🛡 building yours until the clock runs out. When it's attacked, send soldiers to it from your other buildings.",
+	"capture": "Take the 📡 radar buildings and hold them all at the same time. The other buildings don't matter.",
+	"puzzle": "Nobody trains soldiers here, so count before you attack: the label shows what each attack costs.",
+	"blitz": "Beat the clock: attack from several buildings at once.",
+	"hq": "Take the 🎯 castle to win. Hit it from several buildings at once, and drop your Airstrike on it.",
+}
+
+
+func _explain_goal() -> void:
+	var g: String = goal.get("goal", "")
+	if mode != "campaign" or daily or not GOAL_HELP.has(g) or save.seen.has("goal_" + g):
+		return
+	save.seen["goal_" + g] = true
+	write_save()
+	set_hint(GOAL_HELP[g], 14.0)
 
 
 func set_hint(text: String, seconds := 10.0) -> void:
@@ -469,6 +514,13 @@ func mission(id: String, n := 1) -> void:
 
 func _on_captured(t, side: int, old: int) -> void:
 	last_change = battle.time
+	if tutor != null and side == Battle.PLAYER:
+		tutor.event("capture")
+	# While the lessons keep the enemy away from you, its roads to a tower you've just taken stop
+	if calm_until != -1.0 and side == Battle.PLAYER:
+		for s in battle.towers:
+			if s.owner >= 2:
+				s.roads = s.roads.filter(func(r): return r.to != t)
 	world.capture(t.x, t.y, side)
 	if side == Battle.PLAYER:
 		mission("capture")
@@ -544,6 +596,7 @@ func check_end() -> void:
 
 func end_game(won: bool) -> void:
 	state = "over"
+	tutor = null
 	if won:
 		lost_why = ""
 	if mode == "campaign" and _level_open >= 0:
@@ -566,7 +619,11 @@ func end_game(won: bool) -> void:
 	else:
 		play_sound("death")
 	if not cinematics:
-		get_tree().create_timer(1.1).timeout.connect(func(): show_win() if won else show_lose())
+		# (unless another battle has started meanwhile)
+		var n := battles
+		get_tree().create_timer(1.1).timeout.connect(func():
+			if n == battles and state == "over":
+				show_win() if won else show_lose())
 		return
 	# The celebration (or Grumble's laugh), then the results
 	ui.hide_hud()
@@ -763,6 +820,9 @@ func pointer_up(index: int, pos: Vector2) -> void:
 		elif t != null and t != d.from and state == "play" and d.from.owner == d.side:
 			var res = request_link(d.from, t, d.side)
 			if res is bool and res:
+				_guide_done(d.from, t)
+				if tutor != null:
+					tutor.event("own_road" if t.owner == d.side else "road")
 				play_sound("go")
 				if d.side == Battle.PLAYER:
 					mission("roads")
@@ -774,6 +834,9 @@ func pointer_up(index: int, pos: Vector2) -> void:
 				play_sound("beep")
 			elif res is String and res == "blocked":
 				ui.toast("A wall is in the way")
+				play_sound("beep")
+			elif res is String and res == "enough":
+				ui.toast("Enough of your soldiers are already on their way there.")
 				play_sound("beep")
 	cuts.erase(index)
 
@@ -798,13 +861,29 @@ func upgrade_building(t) -> void:
 
 
 ## Build a road. Online, a guest asks the host, who runs the battle.
+## In the campaign, a road you send to attack carries just what it takes to win the building
+## (and a couple to spare) and then goes away by itself, so your building isn't emptied.
+## PvP keeps the web version's roads, which send until they're cut.
 func request_link(a, b, side: int):
 	if net.is_guest():
 		var ok = battle.can_link(a, b, side)
 		if ok is bool:
 			net.send({"t": "cmd", "c": "link", "a": a.id, "b": b.id})
 		return ok
+	if attack_roads() and b.owner != side:
+		var ok = battle.can_link(a, b, side)
+		if ok is String:
+			return ok
+		var need := battle.attack_need(a, b, side)
+		if need <= 0:
+			return "enough"
+		return battle.link(a, b, side, need + ROAD_SPARE + ceili(need * ROAD_EXTRA))
 	return battle.link(a, b, side)
+
+
+## Attack roads that stop by themselves (campaign only)
+func attack_roads() -> bool:
+	return mode == "campaign" and quota_roads
 
 
 ## Cut any of that army's roads the swipe crosses
@@ -820,13 +899,16 @@ func swipe(a: Vector2, b: Vector2, side: int) -> void:
 				if net.is_guest():
 					net.send({"t": "cmd", "c": "cut", "a": t.id, "b": to.id})
 				t.roads.remove_at(i)
+				if tutor != null:
+					tutor.event("cut")
 				world.hit(hit.x, hit.y, side)
 				play_sound("cut")
 				if level == 2 and hint_text != "" and mode == "campaign":
 					set_hint("")
 
 
-## The ring under a building: the drag source, a drag target, or an airstrike target
+## The ring under a building: the drag source, a drag target, or an airstrike target (and the
+## buildings of a move the hand is showing)
 func highlight(t) -> String:
 	if armed == "strike" and t.owner != Battle.PLAYER:
 		return "target"
@@ -835,7 +917,108 @@ func highlight(t) -> String:
 			return "source"
 		if d.over == t:
 			return "over" if battle.can_link(d.from, t, d.side) is bool else "bad"
+	if not guide.is_empty() and drags.is_empty():
+		if t == guide.from or t in guide.others:
+			return "source"
+		if t == guide.to:
+			return "over"
 	return ""
+
+
+## The move the hand shows now: a hint or tutorial step, or on the first level a road from your
+## tower to the cheapest gray one. {from, to} or {}
+func guide_move() -> Dictionary:
+	if not guide.is_empty():
+		return guide
+	if not hand_shown:
+		return {}
+	var from = null
+	var to = null
+	for t in battle.towers:
+		if t.owner == Battle.PLAYER and from == null:
+			from = t
+		if t.owner == Battle.NEUTRAL and (to == null or t.units < to.units):
+			to = t
+	return {} if from == null or to == null else {"from": from, "to": to}
+
+
+## 💡: what to do now, worked out the same way the enemy armies choose their moves (the cheapest,
+## closest building your buildings can take together), with the goal of the mission in mind
+func show_hint() -> void:
+	if state != "play" or mode != "campaign":
+		return
+	play_sound("tap")
+	if tutor != null and tutor.waiting_for() == "hint":
+		tutor.event("hint")
+	var mine: Array = battle.towers.filter(func(t): return t.owner == Battle.PLAYER)
+	var g: String = goal.get("goal", "")
+	# Defending: help a headquarters that's under attack first
+	if g == "defend" and goal.hq != null and goal.hq.owner == Battle.PLAYER and battle.threat_on(goal.hq) > goal.hq.units * 0.5:
+		var hq = goal.hq
+		var helpers := mine.filter(func(s): return s != hq and s.units >= 5 and battle.can_link(s, hq, Battle.PLAYER) is bool)
+		if not helpers.is_empty():
+			helpers.sort_custom(func(a, b): return Battle.dist(a.x, a.y, hq.x, hq.y) < Battle.dist(b.x, b.y, hq.x, hq.y))
+			_guide(helpers[0], hq, [], "Your HQ is under attack! Send soldiers to it from here.")
+			return
+	# A building of yours about to fall: help it first (the same way the enemy armies do)
+	for t in mine:
+		var threat := battle.threat_on(t)
+		if threat <= 0 or threat < t.units * 0.8:
+			continue
+		var helpers := mine.filter(func(s): return s != t and battle.spare(s) >= 5 and battle.threat_on(s) == 0 and battle.can_link(s, t, Battle.PLAYER) is bool)
+		if not helpers.is_empty():
+			helpers.sort_custom(func(a, b): return Battle.dist(a.x, a.y, t.x, t.y) < Battle.dist(b.x, b.y, t.x, t.y))
+			_guide(helpers[0], t, [], "This building is under attack and may fall! Send soldiers to it from here.")
+			return
+	var cfg := {"margin": 2.0, "bold": 0.3, "min_source": 4.0, "skip_covered": true}
+	if g == "capture":
+		cfg.prefer = goal.targets.filter(func(t): return t.owner != Battle.PLAYER).map(func(t): return t.id)
+		cfg.focus_bonus = 2.0
+	elif g == "hq" and goal.hq != null:
+		cfg.focus = goal.hq.id
+		cfg.focus_bonus = 1.5
+	var best := battle.plan_attack(Battle.PLAYER, cfg, mine)
+	if best.is_empty():
+		# Nothing can be taken yet: gather soldiers into your biggest building
+		var big = null
+		for t in mine:
+			if big == null or t.units > big.units:
+				big = t
+		var small := mine.filter(func(s): return s != big and s.units >= 3 and battle.can_link(s, big, Battle.PLAYER) is bool)
+		if big != null and not small.is_empty():
+			small.sort_custom(func(a, b): return a.units > b.units)
+			_guide(small[0], big, [], "No attack is strong enough yet. Gather soldiers: send them from here to your biggest building, then attack from there.")
+		else:
+			set_hint("Wait a few seconds while your buildings train soldiers, then attack the weakest building near you.", 8.0)
+		return
+	var tgt = best.tgt
+	var used: Array = best.used
+	var need := battle.attack_need(used[0], tgt, Battle.PLAYER)
+	var have := 0
+	for s in used:
+		have += floori(s.units)
+	var kind: String = tr(Battle.TYPES[tgt.type].name)
+	if used.size() == 1:
+		_guide(used[0], tgt, [], tr("Attack this %s from here: it takes about %d soldiers, and you have %d.") % [kind, need, have])
+	else:
+		_guide(used[0], tgt, used.slice(1), tr("Attack this %s from these %d buildings together: it takes about %d soldiers, and they have %d.") % [kind, used.size(), need, have])
+
+
+func _guide(from, to, others: Array, text: String) -> void:
+	guide = {"from": from, "to": to, "others": others, "life": 9.0, "attack": to.owner != Battle.PLAYER}
+	set_hint(text, 9.0)
+
+
+## A road was built: if it's the one the hand shows, move on to the next building of the move
+func _guide_done(a, b) -> void:
+	if guide.is_empty() or a != guide.from or b != guide.to:
+		return
+	if guide.others.is_empty():
+		guide = {}
+		set_hint("")
+	else:
+		guide.from = guide.others.pop_front()
+		guide.life = 9.0
 
 
 # ---------- Screens and buttons ----------
@@ -957,6 +1140,18 @@ func step(dt: float) -> void:
 	if net.is_guest():
 		net.guest_update(dt)
 		return
+	if tutor != null:
+		tutor.tick(dt)
+		# A lesson waiting for you to act holds the battle still
+		if tutor.holding():
+			check_end()
+			return
+		if not tutor.active() and calm_until < 0:
+			calm_until = battle.time + 20.0
+	if calm_until >= 0 and battle.time > calm_until:
+		calm_until = -1.0
+		for a in battle.ai_sides:
+			a.cfg.erase("spare_player")
 	battle.update(dt)
 	_final_push()
 	if hint_text != "" and armed == "":
@@ -1008,6 +1203,17 @@ func _update_effects(dt: float) -> void:
 	for c in cut_marks:
 		c.life -= dt
 	cut_marks = cut_marks.filter(func(c): return c.life > 0)
+	if not guide.is_empty():
+		guide.life -= dt
+		# It's over when it's done, or no longer makes sense
+		if guide.life <= 0 or state != "play" or guide.from.owner != Battle.PLAYER or (guide.attack and guide.to.owner == Battle.PLAYER):
+			guide = {}
+		# A building of the move that can't send any more (its roads are full): the next one
+		elif battle.can_link(guide.from, guide.to, Battle.PLAYER) is String:
+			if guide.others.is_empty():
+				guide = {}
+			else:
+				guide.from = guide.others.pop_front()
 	if not upgrade_offer.is_empty():
 		upgrade_offer.life -= dt
 		if upgrade_offer.life <= 0 or upgrade_offer.t.owner != Battle.PLAYER or state != "play":
