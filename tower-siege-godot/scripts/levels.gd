@@ -64,6 +64,9 @@ static func theme_for(n: int) -> String:
 
 
 static func data(n: int) -> Dictionary:
+	var b := boss(n)
+	if not b.is_empty():
+		return b
 	if n <= FIRST.size():
 		var d: Dictionary = FIRST[n - 1].duplicate(true)
 		d["rocks"] = d.get("rocks", [])
@@ -71,6 +74,114 @@ static func data(n: int) -> Dictionary:
 		d.ai.upgrade = false
 		return d
 	return extras(gen(n), n)
+
+
+## Enemy soldiers on a few generated levels, from playing them with the level bot: less than 1
+## where it got stuck, more where a late level fell in seconds
+const TUNE := {29: 0.8, 43: 1.4, 44: 0.6, 58: 1.4}
+
+
+## A line of wall blocks from one point to another (a block every 44, like the generator's)
+static func _wall(x0: float, y0: float, x1: float, y1: float) -> Array:
+	var out := []
+	var n := maxi(1, roundi(_d(x0, y0, x1, y1) / 44.0))
+	for i in n + 1:
+		out.append([lerpf(x0, x1, float(i) / n), lerpf(y0, y1, float(i) / n), 30.0])
+	return out
+
+
+## A ring of wall blocks round a point, with gaps (angles in degrees, 0 = right, 90 = down)
+static func _ring(cx: float, cy: float, r: float, gaps: Array) -> Array:
+	var out := []
+	for a in range(0, 360, 15):
+		if gaps.any(func(g): return absf(fposmod(a - g + 180.0, 360.0) - 180.0) < 25):
+			continue
+		out.append([cx + cos(deg_to_rad(a)) * r, cy + sin(deg_to_rad(a)) * r, 30.0])
+	return out
+
+
+## The boss levels at the end of chapters 2 to 12 are made by hand, each with its own twist
+## (Grumble's taunt hints at it). Towers: [x, y, army, soldiers, type]; the castle is always
+## the second. Level 5 is one of the first five; the endless levels' bosses are made.
+static func boss(n: int) -> Dictionary:
+	var t := []
+	var rocks := []
+	var hint := ""
+	match n:
+		10:
+			# "Its walls have never fallen": the castle sits behind walls with one gate, so
+			# only buildings in line with the gate can hit it
+			t = [[450, 1180, 1, 14], [450, 250, 2, 26, "castle"], [450, 760, 0, 12, "factory"],
+				[200, 1000, 0, 6], [700, 1000, 0, 6], [720, 600, 2, 10], [180, 600, 0, 8, "fort"]]
+			rocks = _wall(270, 150, 270, 450) + _wall(630, 150, 630, 450) + _wall(314, 450, 380, 450) + _wall(520, 450, 586, 450)
+			hint = "The castle's walls have one gate. Take the Tank Factory in front of it: only from there can you reach the castle."
+		15:
+			# "Frozen solid": Grumble and Duke Mustard side by side, a wall between them
+			t = [[450, 1170, 1, 14], [250, 280, 2, 26, "castle"], [680, 300, 3, 18], [220, 900, 0, 8], [680, 900, 0, 8],
+				[450, 700, 0, 14, "fort"], [230, 560, 0, 8, "watch"], [690, 560, 0, 8]]
+			rocks = _wall(450, 140, 450, 480)
+			hint = "Two armies at the top, a wall between them. Let them fight, take the middle, then hit the castle."
+		20:
+			# "Even tougher": three lanes split by long walls, each its own front
+			t = [[450, 1170, 1, 14], [450, 220, 2, 46, "castle"], [150, 1100, 1, 8], [150, 700, 0, 7], [150, 390, 0, 9],
+				[450, 800, 0, 12, "factory"], [450, 520, 0, 10, "fort"], [750, 1100, 0, 6], [750, 700, 2, 10], [750, 390, 0, 9]]
+			rocks = _wall(300, 400, 300, 1010) + _wall(600, 400, 600, 1010)
+			hint = "Walls split the field into three lanes. Push up each lane; the castle is open from the top of all three."
+		25:
+			# "A bigger army": Major Moss's Green army arrives, and Duke Mustard is back
+			t = [[450, 1170, 1, 16], [450, 230, 2, 58, "castle"], [150, 520, 3, 16], [750, 520, 4, 16], [250, 1060, 1, 8],
+				[450, 780, 0, 14, "factory"], [260, 820, 0, 8], [640, 820, 0, 8], [450, 520, 0, 10, "fort"]]
+			hint = "Four armies! Let Yellow and Green wear Grumble down, then strike the castle."
+		30:
+			# "More cannons": Watchtowers guard the castle. Take the gray ones and they shoot for you
+			t = [[450, 1170, 1, 16], [450, 230, 2, 85, "castle"], [280, 330, 2, 8, "watch"], [620, 330, 2, 8, "watch"],
+				[320, 560, 0, 8, "watch"], [580, 560, 0, 8, "watch"], [200, 950, 1, 8], [700, 950, 1, 8],
+				[450, 820, 0, 12, "factory"], [120, 560, 3, 14]]
+			hint = "Watchtowers guard the castle. Take the gray ones first: then they shoot Grumble's soldiers for you."
+		35:
+			# "A moat": a ring of walls round the castle with a gate on each side
+			t = [[450, 1180, 1, 16], [450, 330, 2, 64, "castle"], [130, 330, 0, 10], [770, 330, 0, 10], [200, 1100, 1, 8],
+				[450, 760, 0, 14, "fort"], [200, 700, 0, 8, "factory"], [700, 700, 0, 8, "factory"]]
+			rocks = _ring(450, 330, 170, [0, 180])
+			hint = "The castle's moat has a gate on each side. Take the towers beside it and attack through the gates."
+		40:
+			# "My finest castle": Training Camps on both sides; whoever holds more trains faster
+			t = [[450, 1180, 1, 18], [450, 200, 2, 95, "castle"], [250, 330, 2, 10, "camp"], [650, 330, 2, 10, "camp"],
+				[250, 1050, 1, 8, "camp"], [650, 1050, 1, 8, "camp"], [450, 700, 0, 20, "fort"],
+				[180, 700, 0, 10, "factory"], [720, 700, 0, 10, "factory"]]
+			hint = "Training Camps train very fast. Grab yours, then take Grumble's before you storm the castle."
+		45:
+			# "I'll do it myself": the castle sits in the middle of the field, with the Yellow
+			# and Green armies on the flanks
+			t = [[450, 1180, 1, 18], [450, 580, 2, 90, "castle"], [250, 250, 2, 12], [650, 250, 2, 12],
+				[120, 420, 3, 14], [780, 420, 4, 14], [450, 900, 0, 10, "fort"], [270, 1120, 1, 8], [630, 1120, 1, 8]]
+			hint = "Grumble came out to fight: his castle is right in front of you. Hit it hard before the others close in."
+		50:
+			# "Pure stubbornness": a line of Bunkers guards the castle; Tank Factories help break it
+			t = [[450, 1180, 1, 18], [450, 240, 2, 70, "castle"], [250, 520, 2, 10, "fort"], [450, 560, 2, 12, "fort"],
+				[650, 520, 2, 10, "fort"], [220, 950, 1, 10, "factory"], [680, 950, 1, 10, "factory"],
+				[450, 840, 0, 14], [790, 640, 4, 12]]
+			hint = "A line of Bunkers guards the castle. Take the Tank Factories: each tank is worth 3 soldiers."
+		55:
+			# "Only two castles left": an empty castle stands in the middle. Take it and its guns
+			# are yours
+			t = [[450, 1180, 1, 18], [450, 220, 2, 110, "castle"], [450, 700, 0, 24, "castle"], [200, 1080, 1, 8], [700, 1080, 1, 8],
+				[180, 700, 0, 10, "factory"], [720, 700, 0, 10, "factory"], [200, 380, 2, 12, "watch"], [700, 380, 2, 12, "watch"]]
+			hint = "The castle in the middle is empty. Take it, and its guns shoot Grumble's soldiers for you."
+		60:
+			# "My last and greatest castle": everything at once
+			t = [[450, 1190, 1, 20], [450, 190, 2, 90, "castle"], [280, 310, 2, 10, "watch"], [620, 310, 2, 10, "watch"],
+				[120, 540, 3, 16], [780, 540, 4, 16], [450, 620, 0, 20, "fort"], [250, 820, 0, 10, "factory"],
+				[650, 820, 0, 10, "factory"], [450, 920, 0, 12], [200, 1120, 1, 10], [700, 1120, 1, 10]]
+			rocks = _wall(240, 450, 340, 520) + _wall(660, 450, 560, 520)
+			hint = "Grumble's last castle! Everyone is here. Take the middle, let the others fight, and finish him."
+		_:
+			return {}
+	var towers := []
+	for x in t:
+		towers.append([float(x[0]), float(x[1]), int(x[2]), int(x[3]), x[4] if x.size() > 4 else "barracks"])
+	var ai := {"think": maxf(1.7, 3.1 - n * 0.04), "margin": maxf(3.0, 7 - n * 0.1), "bold": minf(0.75, 0.25 + n * 0.02), "upgrade": n >= 25}
+	return {"towers": towers, "rocks": rocks, "ai": ai, "hint": hint}
 
 
 ## Every chapter (five levels, one land) ends with a boss: General Grumble's castle
@@ -96,6 +207,25 @@ static func extras(d: Dictionary, n: int) -> Dictionary:
 				towers[i][4] = "camp"
 				towers[i + 1][4] = "camp"
 				break
+	# From level 40 the web version gives the enemy two outposts beside its base, so you'd
+	# start one building against three. Here the buildings mirroring them are yours, so both
+	# sides start even (the map is the same; maps come in mirrored pairs)
+	if n >= 40:
+		for i in range(2, towers.size()):
+			var t: Array = towers[i]
+			if int(t[2]) != 2:
+				continue
+			for m in towers:
+				if int(m[2]) == 0 and absf(float(m[0]) - (FW - float(t[0]))) < 1 and absf(float(m[1]) - (FH - float(t[1]))) < 1:
+					m[2] = 1
+					m[3] = t[3]
+					break
+	# Levels the level bot found too hard or too easy (tests/levels.gd): the enemy armies'
+	# soldiers scaled
+	if TUNE.has(n):
+		for t in towers:
+			if int(t[2]) >= 2:
+				t[3] = maxi(1, roundi(float(t[3]) * TUNE[n]))
 	if n > MAX_LEVEL:
 		var extra := (n - MAX_LEVEL) / 2
 		for t in towers:
@@ -103,6 +233,12 @@ static func extras(d: Dictionary, n: int) -> Dictionary:
 				t[3] = int(t[3]) + extra
 	d.ai = d.ai.duplicate()
 	d.ai.upgrade = n >= 25
+	# The web version's enemy gets so quick and bold after level 35 that the story turned into a
+	# wall (the level bot in tests/levels.gd lost nearly every level there): here it never
+	# moves more often than every 1.7 seconds or attacks without a few soldiers to spare
+	d.ai.think = maxf(float(d.ai.think), 1.7)
+	d.ai.margin = maxf(float(d.ai.margin), 3.0)
+	d.ai.bold = minf(float(d.ai.bold), 0.75)
 	if n == 8 and d.hint == "":
 		d.hint = "Tap one of your buildings, then the ⬆ button: spend soldiers so it trains faster."
 	if n == MAX_LEVEL + 1 and d.hint == "":

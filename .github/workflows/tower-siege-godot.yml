@@ -64,7 +64,10 @@ jobs:
           grep -q "SIM DONE 0 failed" sim.log
           timeout 300 "$HOME/godot" --headless --path tower-siege-godot -s tests/flow.gd 2>&1 | tee flow.log
           grep -q "FLOW DONE 0 failed" flow.log
-          ! grep -q "SCRIPT ERROR" sim.log flow.log
+          # A bot plays every story level the way a casual player would: each must be winnable
+          timeout 900 "$HOME/godot" --headless --path tower-siege-godot -s tests/levels.gd 2>&1 | tee levels.log
+          grep -q "LEVELS DONE 0 failed" levels.log
+          ! grep -q "SCRIPT ERROR" sim.log flow.log levels.log
 
       - name: Play it like a phone (screen shape, notch, touch, back button), with drawing on
         run: |

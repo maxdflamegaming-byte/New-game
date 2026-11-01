@@ -474,6 +474,9 @@ func _begin(data: Dictionary, title: String, n: int, banner := "", sub := "") ->
 	ui.start_hud(title, true)
 	if tutor != null:
 		tutor.start()
+		# The lesson explains this mission's goal (level 5's teaches the boss castle), so its
+		# general tip isn't needed later; a boss's own tip shows instead
+		save.seen["goal_" + str(goal.get("goal", ""))] = true
 	else:
 		set_hint(data.get("hint", ""), 25.0 if n == 2 else 10.0)
 		_explain_goal()
@@ -992,15 +995,61 @@ func show_hint() -> void:
 		cfg.focus_bonus = 1.5
 	var best := battle.plan_attack(Battle.PLAYER, cfg, mine)
 	if best.is_empty():
-		# Nothing can be taken yet: gather soldiers into your biggest building
+		# Nothing can be taken yet: gather soldiers toward a building that can reach the
+		# cheapest target. Walls can mean it takes a few hops through your own buildings, so
+		# the hand shows the first hop on the way from your biggest building.
+		var stages := {}
+		var cheapest := INF
+		for t in battle.towers:
+			if t.owner == Battle.PLAYER:
+				continue
+			for s2 in mine:
+				if battle.can_link(s2, t, Battle.PLAYER) is String and not s2.has_road(t):
+					continue
+				var need := float(battle.attack_need(s2, t, Battle.PLAYER))
+				if need <= 0:
+					continue
+				if need < cheapest:
+					cheapest = need
+					stages.clear()
+				if need == cheapest:
+					stages[s2] = true
 		var big = null
 		for t in mine:
 			if big == null or t.units > big.units:
 				big = t
-		var small := mine.filter(func(s): return s != big and s.units >= 3 and battle.can_link(s, big, Battle.PLAYER) is bool)
-		if big != null and not small.is_empty():
+		# Breadth-first from the biggest building through your own, to the nearest stage
+		var hop = null
+		var stage = null
+		if big != null and not stages.has(big):
+			var came := {big: null}
+			var queue := [big]
+			while not queue.is_empty() and stage == null:
+				var at = queue.pop_front()
+				for nx in mine:
+					if came.has(nx) or battle.blocked(at.x, at.y, nx.x, nx.y):
+						continue
+					came[nx] = at
+					if stages.has(nx):
+						stage = nx
+						break
+					queue.append(nx)
+			if stage != null:
+				hop = stage
+				while came[hop] != big:
+					hop = came[hop]
+		var small := []
+		if hop != null and big.units >= 3 and battle.can_link(big, hop, Battle.PLAYER) is bool:
+			small = [big]
+		elif stage == null and big != null:
+			stage = big
+			small = mine.filter(func(s3): return s3 != big and s3.units >= 3 and battle.can_link(s3, big, Battle.PLAYER) is bool)
 			small.sort_custom(func(a, b): return a.units > b.units)
-			_guide(small[0], big, [], "No attack is strong enough yet. Gather soldiers: send them from here to your biggest building, then attack from there.")
+			hop = big
+		if not small.is_empty():
+			_guide(small[0], hop, [], "No attack is strong enough yet. Gather soldiers: send them from here to this building, which can reach the next target, then attack from there.")
+		elif battle.frozen:
+			set_hint("Nobody trains soldiers here, so gather them: send soldiers between your buildings until one is big enough to attack.", 8.0)
 		else:
 			set_hint("Wait a few seconds while your buildings train soldiers, then attack the weakest building near you.", 8.0)
 		return

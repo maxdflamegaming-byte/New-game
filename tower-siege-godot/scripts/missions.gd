@@ -217,6 +217,9 @@ static func setup(n: int, battle: Battle, goal := "") -> Dictionary:
 					a.cfg.bold = 0.0
 					a.cfg.margin = float(a.cfg.margin) + 4
 					a.cfg.think = float(a.cfg.think) * 1.25
+					# ...and the castle keeps its soldiers: it never empties itself to attack
+					if hq != null:
+						a.cfg.hold = hq.id
 			for t in mine:
 				t.units += 6
 	return m

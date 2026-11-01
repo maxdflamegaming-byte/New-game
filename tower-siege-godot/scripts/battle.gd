@@ -279,8 +279,10 @@ func attack_need(a: Tower, t: Tower, side: int) -> int:
 	for s in towers:
 		if s.owner == side:
 			for r in s.roads:
+				# (only what its building can still send: an emptied building's road brings
+				# nobody, and with no reinforcements it never will)
 				if r.to == t and int(r.get("left", -1)) > 0:
-					coming += r.left
+					coming += mini(int(r.left), floori(s.units))
 	return maxi(0, ceili((t.units + grow) * TYPES[t.type].defense + 1 + guard - coming))
 
 
@@ -376,6 +378,9 @@ func update(dt: float, run_ai := true) -> void:
 		if done:
 			# Roads that have sent everything they had to go away
 			t.roads = t.roads.filter(func(r): return int(r.get("left", -1)) < 0 or r.left > 0)
+		elif frozen and t.units < 1 and not t.roads.is_empty():
+			# With no reinforcements an emptied building never sends again: its roads go
+			t.roads.clear()
 		if t.shoots():
 			_update_watch(t, dt)
 
@@ -578,7 +583,7 @@ func ai_think(side: int, cfg: Dictionary) -> void:
 	for t in mine:
 		if threat_on(t) <= t.units * 0.8:
 			continue
-		var helpers := mine.filter(func(s): return s != t and s.units > 8 and threat_on(s) == 0 and s.roads.size() < s.max_roads() and not s.has_road(t) and not blocked(s.x, s.y, t.x, t.y))
+		var helpers := mine.filter(func(s): return s != t and s.units > 8 and threat_on(s) == 0 and s.roads.size() < s.max_roads() and not s.has_road(t) and not blocked(s.x, s.y, t.x, t.y) and s.id != int(cfg.get("hold", -1)))
 		if helpers.is_empty():
 			continue
 		helpers.sort_custom(func(a, b): return dist(a.x, a.y, t.x, t.y) < dist(b.x, b.y, t.x, t.y))
@@ -598,7 +603,8 @@ func spare(t: Tower) -> float:
 ## of its own (`mine`), weighing how much it wants each kind of target (cfg: margin = spare
 ## soldiers it wants, bold = how much it prefers the player's buildings, focus/prefer + focus_bonus
 ## = buildings it wants most, min_source = the fewest soldiers a building attacks with,
-## spare_player = leave the player alone, while the first levels teach).
+## spare_player = leave the player alone, while the first levels teach; hold = a building that
+## keeps its soldiers, like the boss's castle).
 ## {tgt, used: [its buildings], need, score}, or {} if it can't afford any. The enemy armies
 ## use it, and so does the hint button for the player.
 func plan_attack(side: int, cfg: Dictionary, mine: Array) -> Dictionary:
@@ -610,7 +616,7 @@ func plan_attack(side: int, cfg: Dictionary, mine: Array) -> Dictionary:
 		for s in mine:
 			if s.has_road(tgt):
 				already += s.units
-		var sources := mine.filter(func(s): return s.roads.size() < s.max_roads() and spare(s) >= float(cfg.get("min_source", 5)) and not s.has_road(tgt) and not blocked(s.x, s.y, tgt.x, tgt.y) and threat_on(s) < s.units * 0.5)
+		var sources := mine.filter(func(s): return s.roads.size() < s.max_roads() and spare(s) >= float(cfg.get("min_source", 5)) and not s.has_road(tgt) and not blocked(s.x, s.y, tgt.x, tgt.y) and threat_on(s) < s.units * 0.5 and s.id != int(cfg.get("hold", -1)))
 		if sources.is_empty():
 			continue
 		sources.sort_custom(func(a, b): return dist(a.x, a.y, tgt.x, tgt.y) < dist(b.x, b.y, tgt.x, tgt.y))
@@ -664,7 +670,9 @@ func _update_strikes(dt: float) -> void:
 			s.done = true
 			var t: Tower = s.t
 			if t.owner != PLAYER:
-				t.units = maxf(0, t.units - maxf(8, t.units * 0.5))
+				# Half a building's soldiers; a castle's thick walls keep it to a quarter (castles
+				# are campaign-only, so PvP is the same as the web version)
+				t.units = maxf(0, t.units - maxf(8, t.units * (0.25 if t.type == "castle" else 0.5)))
 			t.flash = 1.0
 			struck = []
 			for u in units:

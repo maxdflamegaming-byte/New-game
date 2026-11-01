@@ -212,7 +212,24 @@ func _initialize() -> void:
 	ok("A captured building loses its upgrades", me.stars == 0)
 	ok("Every chapter ends with a boss castle", [5, 10, 15, 20, 50, 70].all(func(n): return Levels.data(n).towers[1][4] == "castle") and Levels.data(11).towers[1][4] != "castle")
 	_missions()
-	ok("Levels 1-60 are still made the same way as the web version (only types and soldiers change)", Levels.data(20).towers.map(func(t): return [t[0], t[1]]) == Levels.gen(20).towers.map(func(t): return [t[0], t[1]]))
+	ok("Levels 1-60 are still made the same way as the web version (only types and soldiers change)", Levels.data(23).towers.map(func(t): return [t[0], t[1]]) == Levels.gen(23).towers.map(func(t): return [t[0], t[1]]))
+	var bosses_ok := true
+	var why_boss := ""
+	for n in range(10, 61, 5):
+		var d := Levels.boss(n)
+		if d.is_empty() or d.towers[1][4] != "castle" or int(d.towers[1][2]) != 2 or int(d.towers[0][2]) != 1:
+			bosses_ok = false
+			why_boss = "level %d: no castle second or no base first" % n
+		elif not Levels.connected(d.towers, d.rocks):
+			bosses_ok = false
+			why_boss = "level %d: a building can't be reached" % n
+		for t in d.get("towers", []):
+			for blk in d.rocks:
+				if Battle.dist(t[0], t[1], blk[0], blk[1]) < 80:
+					bosses_ok = false
+					why_boss = "level %d: a building sits in a wall" % n
+	ok("The 11 boss levels (10 to 60) are made by hand: a castle, every building reachable, none in a wall", bosses_ok, why_boss)
+	ok("Level 25's boss has the Green army Major Moss brings", Levels.data(25).towers.any(func(t): return int(t[2]) == 4))
 	var endless_ok := true
 	for n in range(61, 160, 7):
 		var d := Levels.data(n)
