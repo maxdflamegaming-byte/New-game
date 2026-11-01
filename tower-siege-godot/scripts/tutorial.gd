@@ -1,15 +1,17 @@
 class_name Tutorial
 extends RefCounted
-## The first three levels teach the game one step at a time. Each step says what to do and
+## The first five levels teach the game one step at a time. Each step says what to do and
 ## shows it with the hand; a step waiting for you to act holds the battle still until you do,
 ## so nothing happens while you read (and gives up after a while, so nobody gets stuck).
-##   level 1: build a road, take a gray tower, take another (the label shows if you have
-##            enough), then the enemy
-##   level 2: cheap towers first, gather soldiers into one army, cut a road, the 💡 hint
-##   level 3: bigger towers hold more roads (two attacks at once), Bunkers count double
+##   level 1: build a road, take a gray tower, then the enemy (the label shows if you have enough)
+##   level 2: gather soldiers into one tower, it grows a storey at 10, cut a road
+##   level 3: cheap towers first, two attacks at once, the 💡 hint
+##   level 4: the Airstrike, and the Watchtower's circle
+##   level 5: feed small towers into a big one, then storm the castle
 ## Steps: {text, guide: "cheap" | "enemy" | "own" | "", wait: what you do, hold: the battle waits}
 ## wait: "road" (a road to a building that isn't yours), "own_road" (between your own),
-## "capture", "cut", "hint", or "time:N" (seconds).
+## "capture", "cut", "hint", "strike" (an airstrike), "level:N" (one of your towers grows to
+## level N) or "time:N" (seconds).
 
 const MAX_WAIT := 30.0
 
@@ -27,23 +29,33 @@ static func steps_for(n: int) -> Array:
 			return [
 				{"text": "Drag from your blue tower to the gray one. Your soldiers march there.", "guide": "cheap", "wait": "road", "hold": true},
 				{"text": "Each soldier that arrives takes one away. At 0, the tower is yours!", "wait": "capture"},
-				{"text": "Every tower you own trains soldiers, so take the other gray one too. While you drag, the label shows if you have enough: green means yes.", "guide": "cheap", "wait": "road", "hold": true},
-				{"text": "An attack road sends just the soldiers it needs, then stops by itself.", "wait": "capture"},
 				{"text": "Now the red tower. Drag to it and check the label: when it turns green, let go!", "guide": "enemy", "wait": "road"},
 			]
 		2:
 			return [
-				{"text": "Take the small gray tower first: cheap towers are the best start.", "guide": "cheap", "wait": "road", "hold": true},
-				{"text": "More towers, more soldiers!", "wait": "capture"},
 				{"text": "Drag from one of your towers to another to move soldiers there, and gather one big army.", "guide": "own", "wait": "own_road", "hold": true},
+				{"text": "At 10 soldiers a tower grows a storey and gets a second road: see the dots on top.", "wait": "level:2"},
 				{"text": "That road keeps moving soldiers until you cut it. Swipe across it to cut it.", "wait": "cut", "hold": true},
-				{"text": "Stuck? Tap 💡 Hint any time: it shows a good move.", "wait": "hint", "hold": true},
+				{"text": "Now take the gray tower and the red one. Walls block roads, so go round them from below.", "guide": "cheap", "wait": "road"},
 			]
 		3:
 			return [
-				{"text": "Bigger towers hold more roads: 1 below 10 soldiers, 2 from 10, 3 from 30. Attack a gray tower...", "guide": "cheap", "wait": "road", "hold": true},
+				{"text": "Take the small gray tower first: cheap towers are the best start.", "guide": "cheap", "wait": "road", "hold": true},
 				{"text": "...and another one at the same time!", "guide": "cheap", "wait": "road", "hold": true},
-				{"text": "The Bunker in the middle takes half damage, so it needs twice the soldiers. The label counts that for you.", "wait": "time:9"},
+				{"text": "More towers, more soldiers!", "wait": "capture"},
+				{"text": "Stuck? Tap 💡 Hint any time: it shows a good move.", "wait": "hint", "hold": true},
+			]
+		4:
+			return [
+				{"text": "Call in an Airstrike: tap ✈ Airstrike below, then tap the red tower.", "wait": "strike", "hold": true},
+				{"text": "The bombs knock out the soldiers inside. Attack it now, before it trains more!", "guide": "enemy", "wait": "road"},
+				{"text": "Keep clear of the Watchtower's circle: it shoots soldiers walking inside it.", "wait": "time:8"},
+			]
+		5:
+			return [
+				{"text": "Grumble's castle is strong. Send your small towers' soldiers to the big one in the middle.", "guide": "own", "wait": "own_road", "hold": true},
+				{"text": "More! Every road feeds the big tower.", "guide": "own", "wait": "own_road", "hold": true},
+				{"text": "When it's big, attack the castle from it. Its guns shoot inside the circle, so go in with one big army.", "wait": "time:10"},
 			]
 	return []
 
@@ -82,7 +94,8 @@ func tick(dt: float) -> void:
 		return
 	waited += dt
 	var w: String = steps[i].wait
-	var ok: bool = done.has(w) or (w.begins_with("time:") and waited >= float(w.substr(5)))
+	var ok: bool = done.has(w) or (w.begins_with("time:") and waited >= float(w.substr(5))) \
+		or (w.begins_with("level:") and main.battle.towers.any(func(t): return t.owner == Battle.PLAYER and t.level() >= int(w.substr(6))))
 	if ok or waited >= MAX_WAIT:
 		_next()
 
@@ -100,7 +113,7 @@ func _next() -> void:
 		return
 	var st: Dictionary = steps[i]
 	shown = main.tr(st.text)
-	main.set_hint(shown, 999.0)
+	main.set_hint(shown, 999.0, true)
 	main.guide = {}
 	var mv := _move(st.get("guide", ""))
 	if not mv.is_empty():

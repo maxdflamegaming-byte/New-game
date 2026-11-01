@@ -12,9 +12,13 @@ func ok(name: String, cond: bool, extra := "") -> void:
 		fails += 1
 
 
+## A small map for the rule tests: your tower, two gray ones and the enemy's
+const RULES_MAP := {"towers": [[450.0, 1180.0, 1, 12], [260.0, 760.0, 0, 5], [640.0, 700.0, 0, 7], [450.0, 240.0, 2, 6]], "rocks": []}
+
+
 func level1() -> Battle:
 	var b := Battle.new()
-	b.load_map(Levels.data(1))
+	b.load_map(RULES_MAP)
 	return b
 
 
@@ -288,9 +292,10 @@ func _missions() -> void:
 			chapters_ok = false
 	ok("Every chapter has at least three kinds of mission, then the boss", chapters_ok)
 	ok("Every mission has a goal, a code name and a briefing", range(1, 80).all(func(n): return Missions.GOALS.has(Missions.goal_for(n)) and Missions.title(n).begins_with("Operation ") and Missions.brief(n).length() > 20))
-	ok("The first levels teach the basics with plain battles", range(1, 4).all(func(n): return Missions.goal_for(n) == "conquer"))
+	ok("The first levels teach the basics with plain battles", range(1, 5).all(func(n): return Missions.goal_for(n) == "conquer"))
+	ok("The first five levels are small, one idea each", range(1, 6).all(func(n): return Levels.data(n).towers.size() <= 6))
 
-	var r := mission_battle(4)
+	var r := mission_battle(9)
 	var b: Battle = r[0]
 	var m: Dictionary = r[1]
 	ok("Defend: your HQ is one of your buildings", m.goal == "defend" and m.hq != null and m.hq.owner == Battle.PLAYER and Missions.result(m, b) == "")
@@ -326,7 +331,7 @@ func _missions() -> void:
 			t.units = 1
 	ok("No reinforcements: too few soldiers left loses", Missions.result(m, b) == "soldiers")
 
-	r = mission_battle(9)
+	r = mission_battle(13)
 	b = r[0]
 	m = r[1]
 	ok("Blitz: a clock", m.goal == "blitz" and m.time > 30 and Missions.result(m, b) == "")

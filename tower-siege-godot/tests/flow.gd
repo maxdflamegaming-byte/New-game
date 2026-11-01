@@ -61,7 +61,7 @@ func _run() -> void:
 
 	main.start_level(1)
 	await _frames(3)
-	ok("Play starts level 1", main.state == "play" and main.level == 1 and main.battle.towers.size() == 4)
+	ok("Play starts level 1: three buildings", main.state == "play" and main.level == 1 and main.battle.towers.size() == 3)
 	ok("Level 1 starts the lessons: what to do, and the hand showing it", main.tutor != null and main.tutor.active() and main.hint_text.begins_with("Drag") and not main.guide_move().is_empty())
 	var t0: float = main.battle.time
 	main.step(0.5)
@@ -70,7 +70,7 @@ func _run() -> void:
 	for side in main.battle.ai_sides:
 		side.timer = 1e9
 	var me: Battle.Tower = main.battle.towers[0]
-	var gray: Battle.Tower = main.battle.towers[1]
+	var gray: Battle.Tower = main.battle.towers.filter(func(t): return t.owner == Battle.NEUTRAL)[0]
 	var a: Dictionary = main.world.tower_screen(me)
 	var b: Dictionary = main.world.tower_screen(gray)
 	await _drag(0, Vector2(a.x, a.y), Vector2(b.x, b.y))
@@ -239,7 +239,7 @@ func _run() -> void:
 	main.ui.brief_start.pressed.emit()
 	await _frames(3)
 	ok("Start begins the mission", main.state == "play" and main.level == 9 and main.goal.goal == Missions.goal_for(9))
-	main.start_level(4)
+	main.start_level(9)
 	await _frames(3)
 	ok("The HUD shows the mission's goal", main.ui.objective.get_parent().visible and main.ui.objective.text.contains("0:"), main.ui.objective.text)
 	for side in main.battle.ai_sides:
@@ -248,7 +248,7 @@ func _run() -> void:
 	await _frames(3)
 	await create_timer(1.5).timeout
 	ok("Losing the HQ loses a defend mission, and the defeat screen says why", main.screen_open == "lose" and main.ui.lose_reason.text == "Your headquarters has fallen.", main.ui.lose_reason.text)
-	main.start_level(9)
+	main.start_level(13)
 	await _frames(3)
 	main.battle.time = main.goal.time + 1
 	await _frames(3)
@@ -326,7 +326,7 @@ func _run() -> void:
 	main.battle.time = 121.0
 	main.step(0.05)
 	ok("After two minutes, a final push: your buildings train faster and the enemy attacks", main.battle.push > 1.0 and main.battle.prod_rate(main.battle.towers[0]) > rate_before * 1.3 and main.battle.ai_sides.all(func(a): return float(a.cfg.bold) >= 0.5))
-	main.start_level(4)
+	main.start_level(9)
 	await _frames(3)
 	main.battle.time = main.goal.time - 1.0
 	main.step(0.05)

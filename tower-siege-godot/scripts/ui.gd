@@ -649,9 +649,22 @@ func refresh_speed() -> void:
 	speed_btn.text = "%d×" % main.speed
 
 
-func set_hint(text: String) -> void:
+## lesson: a step of the lessons, written big on the field in white (not in a box), so it
+## can't be missed
+func set_hint(text: String, lesson := false) -> void:
 	hint_label.text = text
 	hint_panel.visible = text != ""
+	if lesson:
+		hint_panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+		hint_label.add_theme_font_size_override("font_size", 30)
+		hint_label.add_theme_color_override("font_color", WHITE)
+		hint_label.add_theme_color_override("font_outline_color", INK)
+		hint_label.add_theme_constant_override("outline_size", 12)
+	else:
+		hint_panel.add_theme_stylebox_override("panel", box(WHITE, INK, 18, 3, 4))
+		hint_label.add_theme_font_size_override("font_size", 22)
+		hint_label.add_theme_color_override("font_color", INK)
+		hint_label.add_theme_constant_override("outline_size", 0)
 
 
 func _build_toast() -> void:

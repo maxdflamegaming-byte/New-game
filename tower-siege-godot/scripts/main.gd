@@ -65,6 +65,7 @@ var speed := 1
 var charges := {"strike": 0, "rally": 0}
 var armed := ""                # an ability waiting for a target
 var hint_text := ""
+var hint_lesson := false        # the hint is a lesson step (written big on the field)
 var hint_timer := 0.0
 var hand_shown := false
 var quota_roads := true        # campaign attack roads stop by themselves (a switch for tests)
@@ -506,10 +507,11 @@ func _explain_goal() -> void:
 	set_hint(GOAL_HELP[g], 14.0)
 
 
-func set_hint(text: String, seconds := 10.0) -> void:
+func set_hint(text: String, seconds := 10.0, lesson := false) -> void:
 	hint_text = text
 	hint_timer = seconds
-	ui.set_hint(text)
+	hint_lesson = lesson
+	ui.set_hint(text, lesson)
 
 
 ## Count progress on today's missions, and say when one is finished
@@ -699,7 +701,7 @@ func use_ability(id: String) -> void:
 	if id == "strike":
 		if armed == "strike":
 			armed = ""
-			ui.set_hint(hint_text)
+			ui.set_hint(hint_text, hint_lesson)
 		elif charges.strike > 0:
 			armed = "strike"
 			ui.set_hint("Tap an enemy or gray building to bomb it")
@@ -717,9 +719,11 @@ func use_ability(id: String) -> void:
 
 func drop_strike(t) -> void:
 	mission("strike")
+	if tutor != null:
+		tutor.event("strike")
 	charges.strike -= 1
 	armed = ""
-	ui.set_hint(hint_text)
+	ui.set_hint(hint_text, hint_lesson)
 	battle.drop_strike(t)
 	play_sound("warn")
 	ui.refresh_abilities()

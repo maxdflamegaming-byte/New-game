@@ -129,7 +129,8 @@ func layout(size: Vector2, top: float, bottom: float, field_w: float, field_h: f
 	_hud = Vector2(top, bottom)
 	fw = field_w
 	fh = field_h
-	var pitch := 1.0
+	# Tilted enough that a tower's storeys show, so you can see how strong it is
+	var pitch := 0.86
 	var f := focus if focus.has_area() else Rect2(0, 0, fw, fh)
 	var target := Vector3(f.get_center().x, 0, f.get_center().y)
 	var d := 2400.0
@@ -260,12 +261,13 @@ func build(seed_value: int, theme_name: String, battle: Battle) -> void:
 		var kind: String = th.props if k < 0.6 else ("bush" if th.props == "tree" or th.props == "palm" else th.props) if k < 0.74 else "rock" if k < 0.82 \
 			else ["drum", "sandbags", "hedgehog"][int(k * 997) % 3]
 		props[kind].append([x, z, 0.85 + rng.randf() * 0.55, rng.randf() * TAU, rng.randf()])
+	# Walls: each block is a tight cluster of big pieces, so a line of them reads as a solid wall
 	for w in battle.rocks:
-		var n := maxi(2, roundi(w.r / 18))
+		var n := maxi(3, roundi(w.r / 10))
 		for i in n:
 			var a := rng.randf() * TAU
-			var dd := rng.randf() * w.r * 0.55
-			props["w_" + th.wall].append([w.x + cos(a) * dd, w.y + sin(a) * dd, (w.r / 40) * (0.8 + rng.randf() * 0.3), roundi(rng.randf() * 4) * PI / 2 + (rng.randf() - 0.5) * 0.3, rng.randf()])
+			var dd := rng.randf() * w.r * 0.45
+			props["w_" + th.wall].append([w.x + cos(a) * dd, w.y + sin(a) * dd, (w.r / 40) * (1.25 + rng.randf() * 0.35), roundi(rng.randf() * 4) * PI / 2 + (rng.randf() - 0.5) * 0.3, rng.randf()])
 	_add_props(props)
 	for t in battle.towers:
 		_sync_tower(t)
@@ -351,7 +353,12 @@ func _add_props(P: Dictionary) -> void:
 	var bags := MeshKit.new()
 	for p in [Vector3(-9, 4, 0), Vector3(0, 4, 0), Vector3(9, 4, 0), Vector3(-4.5, 10.5, 0), Vector3(4.5, 10.5, 0)]:
 		bags.sphere(6, p, T, Vector3(1.25, 0.6, 0.9), false, 7, 3)
-	_instanced(bags.mesh(), P.w_hedge, func(c): return Color.from_hsv(0.11, 0.33, 0.8 + c * 0.08))
+	# Hedges (the grass land's walls): round bushes crowded together
+	var hedge := MeshKit.new()
+	hedge.sphere(15, Vector3(0, 12, 0), T, Vector3(1, 0.85, 1), false, 8, 5)
+	hedge.sphere(12, Vector3(11, 9, 5), T, Vector3(1, 0.85, 1), false, 8, 5)
+	hedge.sphere(11, Vector3(-10, 9, -4), T, Vector3(1, 0.85, 1), false, 8, 5)
+	_instanced(hedge.mesh(), P.w_hedge, func(c): return Color.from_hsv(0.31, 0.62, 0.5 + c * 0.12))
 	_instanced(bags.mesh(), P.sandbags, func(c): return Color.from_hsv(0.11, 0.33, 0.78 + c * 0.08))
 	_instanced(MeshKit.new().box(24, 18, 22, Vector3(0, 9, 0), T).box(25, 3, 23, Vector3(0, 18.5, 0), MeshKit.DARK).box(6, 6, 1, Vector3(0, 10, 11.2), Color("#e8e0b0")).mesh(),
 		P.w_crate, func(c): return Color.from_hsv(0.2, 0.42, 0.66 + c * 0.08))
@@ -384,46 +391,38 @@ func _build_model(t, lv: int) -> Dictionary:
 	var BAG := Color("#cdb68a")      # sandbags
 	var OLIVE := Color("#7f8c4c")
 	if t.type == "barracks":
-		# A military outpost: an eight-sided concrete blockhouse with the army's stripe, gun slits
-		# and a steel door, sandbags on the roof, and more on top with every level: a lookout
-		# post, a machine gun, a radio mast and a radar dish
-		var R := 25.0 + lv * 2.5
-		var h := 16.0 + lv * 6.0
-		k.cyl(R + 9, R + 11, 5, 8, Vector3(0, 2.5, 0), CON_D, Basis(Vector3.UP, PI / 8))
-		k.cyl(R + 9.6, R + 9.6, 1.6, 8, Vector3(0, 5.2, 0), MeshKit.TEAM, Basis(Vector3.UP, PI / 8))
-		k.cyl(R, R + 1.5, h, 8, Vector3(0, 5 + h / 2, 0), CON, Basis(Vector3.UP, PI / 8))
-		k.cyl(R + 0.8, R + 0.8, 7, 8, Vector3(0, 5 + h - 6, 0), MeshKit.TEAM, Basis(Vector3.UP, PI / 8))
-		var face := (R + 0.7) * cos(PI / 8)
-		k.box(12, 13, 3, Vector3(0, 11.5, face), DK).box(15, 2.2, 3.4, Vector3(0, 18.6, face), STEEL)
-		for a in [-PI / 4, PI / 4]:
-			k.box(10, 2.6, 3, Vector3(sin(a) * face, 5 + h * 0.55, cos(a) * face), DK, a)
-		var top := 5.0 + h
-		k.cyl(R + 2.5, R + 2.5, 3, 8, Vector3(0, top + 1.5, 0), CON_D, Basis(Vector3.UP, PI / 8))
-		k.cyl(R - 3, R - 3, 1.2, 8, Vector3(0, top + 3.4, 0), MeshKit.TEAM, Basis(Vector3.UP, PI / 8))
-		var n := 10 + lv * 2
-		for i in n:
-			var a := i * TAU / n
-			k.sphere(4.2, Vector3(sin(a) * (R - 1), top + 5.2, cos(a) * (R - 1)), BAG, Vector3(1.35, 0.62, 0.9), false, 6, 3)
-		var y := top + 3.0
-		if lv >= 2:
-			# A lookout post with a roof in the army's colour
-			k.box(20, 12, 20, Vector3(0, y + 6, -2), CON)
-			k.box(14, 3, 3, Vector3(0, y + 8, 8.2), DK)
-			k.box(25, 3, 25, Vector3(0, y + 13.5, -2), MeshKit.TEAM)
-			y += 15.0
+		# A concrete tower block that grows a storey at 10, 30 and 60 soldiers (more storeys,
+		# more roads), each with gun slits and a ledge in the army's colour, under a roof in the
+		# army's colour, so from above you can tell whose it is and how strong at a glance
+		var rot := Basis(Vector3.UP, PI / 8)
+		var R := 30.0
+		var SH := 19.0
+		k.cyl(R + 8, R + 10, 5, 8, Vector3(0, 2.5, 0), CON_D, rot)
+		k.cyl(R + 8.6, R + 8.6, 1.6, 8, Vector3(0, 5.2, 0), MeshKit.TEAM, rot)
+		var y := 5.0
+		var r := R
+		for i in lv:
+			r = R - i * 2.4
+			var face := (r + 0.6) * cos(PI / 8)
+			k.cyl(r, r + 0.8, SH, 8, Vector3(0, y + SH / 2, 0), CON, rot)
+			for a in [-PI / 4, 0.0, PI / 4]:
+				if i == 0 and a == 0.0:
+					continue
+				k.box(9, 3, 2.6, Vector3(sin(a) * face, y + SH * 0.55, cos(a) * face), DK, a)
+			k.cyl(r + 2.2, r + 2.2, 3.2, 8, Vector3(0, y + SH + 0.6, 0), MeshKit.TEAM, rot)
+			y += SH + 2.2
+		var front := (R + 0.6) * cos(PI / 8)
+		k.box(12, 13, 3, Vector3(0, 11.5, front), DK).box(15, 2.2, 3.4, Vector3(0, 18.6, front), STEEL)
+		# The roof: a cap in the army's colour with a lighter top, a hatch and, on big towers,
+		# a radio mast
+		k.cyl(r - 0.5, r + 2.2, 7, 8, Vector3(0, y + 3.5, 0), MeshKit.TEAM, rot)
+		k.cyl(r * 0.38, r * 0.45, 2, 8, Vector3(0, y + 8, 0), MeshKit.LIGHT, rot)
+		k.box(8, 3, 8, Vector3(r * 0.35, y + 9.5, -r * 0.3), DK)
 		if lv >= 3:
-			# A machine gun at the front and a radio mast
-			k.box(5, 4, 7, Vector3(9, top + 5, R - 6), DK)
-			k.cyl(0.9, 0.9, 12, 6, Vector3(9, top + 6, R + 1), DK, Basis(Vector3.RIGHT, PI / 2))
-			k.cyl(0.8, 0.8, 26, 6, Vector3(-9, y + 13, -9), STEEL)
-			k.sphere(1.6, Vector3(-9, y + 26, -9), Color("#ff5a5a"), Vector3.ONE, false, 6, 3)
-		if lv >= 4:
-			# A radar dish
-			var dish := Basis(Vector3.RIGHT, -0.9)
-			k.cyl(0.9, 0.9, 7, 6, Vector3(9, y + 3.5, -6), STEEL)
-			k.add(_dish_mesh(), Transform3D(dish * Basis.from_scale(Vector3(1, 0.3, 1)), Vector3(9, y + 9, -6)), CON)
-		info.flag_at = Vector3(0, y, -2)
-		info.top = y + 30
+			k.cyl(0.8, 0.8, 22, 6, Vector3(-r * 0.4, y + 18, -r * 0.35), STEEL)
+			k.sphere(1.6, Vector3(-r * 0.4, y + 29, -r * 0.35), Color("#ff5a5a"), Vector3.ONE, false, 6, 3)
+		info.flag_at = Vector3(r * 0.45, y + 7, r * 0.2)
+		info.top = y + 22
 	elif t.type == "fort":
 		# A heavy bunker: a concrete dome ringed with sandbags, gun slits all round, and a gun for
 		# every level
@@ -672,8 +671,13 @@ func _sync_tower(t) -> Dictionary:
 	return info
 
 
+## A building's army colour, a little deeper than the HUD's so it holds up in the sunlight
+## (gray buildings a darker slate, so their roofs don't look white)
 func _team_lin(side: int) -> Color:
-	return sides[side].color
+	if side == Battle.NEUTRAL:
+		return Color("#78839a")
+	var c: Color = sides[side].color
+	return Color.from_hsv(c.h, minf(1.0, c.s * 1.12), c.v * 0.86)
 
 
 # ---------- Soldiers and tanks ----------
@@ -911,13 +915,13 @@ func _draw_units(units: Array) -> void:
 		if u.power > 1:
 			if k >= MAX_TANKS:
 				continue
-			tmm.set_instance_transform(k, Transform3D(Basis(Vector3.UP, ang).scaled(Vector3.ONE * 1.55 * S * pop), Vector3(u.x, absf(sin(time * 20 + u.id)) * 0.6, u.y)))
+			tmm.set_instance_transform(k, Transform3D(Basis(Vector3.UP, ang).scaled(Vector3.ONE * 1.3 * S * pop), Vector3(u.x, absf(sin(time * 20 + u.id)) * 0.6, u.y)))
 			tmm.set_instance_custom_data(k, Color(team.r, team.g, team.b, 0))
 			k += 1
 		else:
 			if s + me >= MAX_SOLDIERS:
 				continue
-			var xf := Transform3D(Basis(Vector3.UP, ang).scaled(Vector3.ONE * 1.9 * S * pop), Vector3(ux, 0, uz))
+			var xf := Transform3D(Basis(Vector3.UP, ang).scaled(Vector3.ONE * 1.5 * S * pop), Vector3(ux, 0, uz))
 			var cd := Color(team.r, team.g, team.b, fmod(u.id * 0.137, 1.0))
 			if shadows:
 				shm.set_instance_transform(s + me, xf)

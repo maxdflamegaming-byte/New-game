@@ -4,9 +4,10 @@ extends SceneTree
 
 func _initialize() -> void:
 	var out := {}
-	# The levels as both versions make them (Levels.extras adds this version's bosses and camps on top)
-	for n in range(1, 61):
-		var d := Levels.data(n) if n <= Levels.TUTORIAL.size() else Levels.gen(n)
+	# The levels as both versions make them (Levels.extras adds this version's bosses and camps on
+	# top; levels 1-3 are hand-made in both, and this app has its own)
+	for n in range(4, 61):
+		var d := Levels.gen(n)
 		out["L%d" % n] = {"towers": d.towers.map(func(t): return [t[0], t[1], t[2], t[3], t[4] if t.size() > 4 else "barracks"]), "rocks": d.rocks}
 	for s in [1, 7, 12345, 987654321, 555555555]:
 		var d := Levels.gen(14, true, s)

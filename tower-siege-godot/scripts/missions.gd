@@ -69,17 +69,15 @@ const ROTATION := ["conquer", "capture", "defend", "blitz", "puzzle"]
 
 ## The goal of campaign level n (0 = the daily challenge: conquer)
 static func goal_for(n: int) -> String:
-	if n <= 3:
-		return "conquer"
+	if n <= 4:
+		return "conquer"                                     # 1-4 teach the basics
 	if Levels.is_boss(n):
 		return "hq"
 	var c := chapter_of(n)
 	var pos := (n - 1) % PER_CHAPTER
 	match c:
-		1:
-			return "defend"                                  # 4
 		2:
-			return ["capture", "puzzle", "conquer", "blitz"][pos]  # 6-9 (8 teaches upgrades)
+			return ["capture", "puzzle", "conquer", "defend"][pos]  # 6-9 (8 teaches upgrades)
 	# A new army's first level is a plain fight (they fight each other too)
 	if n == 12 or n == 26:
 		return "conquer"

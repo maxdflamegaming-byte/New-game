@@ -15,22 +15,40 @@ const THEMES := ["grass", "desert", "snow", "beach"]
 
 ## AI: think = seconds between moves, margin = spare soldiers it wants before attacking,
 ## bold = how much it prefers hitting you.
-const TUTORIAL := [
+## The first five story levels are small and made by hand, each teaching one thing (the
+## lessons in tutorial.gd walk you through them). Only this app has them: from level 6 on,
+## levels are made the same way as the web version's. Towers: [x, y, army, soldiers, type];
+## rocks (walls): [x, y, radius].
+## AI: think = seconds between moves, margin = spare soldiers it wants before attacking,
+## bold = how much it prefers hitting you.
+const FIRST := [
+	# 1. Attack: take the gray tower, then the red one
 	{
-		"towers": [[450.0, 1180.0, 1, 12], [260.0, 760.0, 0, 5], [640.0, 700.0, 0, 7], [450.0, 240.0, 2, 6]],
-		"ai": {"think": 4.5, "margin": 8.0, "bold": 0.0},
-		"hint": "Drag from your blue tower to a gray one to send soldiers",
-		"hand": true,
+		"towers": [[450.0, 1130.0, 1, 12], [450.0, 380.0, 2, 3], [450.0, 760.0, 0, 5]],
+		"ai": {"think": 5.0, "margin": 9.0, "bold": 0.0},
 	},
+	# 2. Grow: gather soldiers into one tower; at 10 it gets a storey and a second road.
+	# Walls keep the middle tower from reaching the sides, so the army goes round from below
 	{
-		"towers": [[230.0, 1190.0, 1, 14], [690.0, 1150.0, 0, 4], [450.0, 880.0, 0, 10], [200.0, 560.0, 0, 8], [700.0, 520.0, 0, 8], [450.0, 220.0, 2, 12]],
-		"ai": {"think": 3.6, "margin": 6.0, "bold": 0.1},
-		"hint": "Swipe across one of your roads to cut it. Soldiers on it keep marching.",
+		"towers": [[450.0, 1160.0, 1, 7], [180.0, 760.0, 2, 3], [450.0, 780.0, 1, 4], [720.0, 760.0, 0, 5]],
+		"rocks": [[315.0, 600.0, 30.0], [315.0, 660.0, 30.0], [315.0, 720.0, 30.0], [315.0, 780.0, 30.0], [315.0, 840.0, 30.0],
+			[585.0, 600.0, 30.0], [585.0, 660.0, 30.0], [585.0, 720.0, 30.0], [585.0, 780.0, 30.0], [585.0, 840.0, 30.0]],
+		"ai": {"think": 5.0, "margin": 9.0, "bold": 0.0},
 	},
+	# 3. Cheap towers first, two attacks at once, and the 💡 Hint
 	{
-		"towers": [[450.0, 1210.0, 1, 16], [200.0, 940.0, 0, 6], [700.0, 940.0, 0, 6], [450.0, 700.0, 0, 16, "fort"], [200.0, 460.0, 0, 6], [700.0, 460.0, 0, 6], [450.0, 190.0, 2, 16]],
-		"ai": {"think": 3.2, "margin": 5.0, "bold": 0.2},
-		"hint": "Bigger towers hold more roads: 2 roads from 10 soldiers, 3 from 30",
+		"towers": [[450.0, 1150.0, 1, 15], [450.0, 330.0, 2, 12], [200.0, 760.0, 0, 3], [700.0, 760.0, 0, 4]],
+		"ai": {"think": 3.6, "margin": 6.0, "bold": 0.2},
+	},
+	# 4. The Airstrike, and a Watchtower that shoots inside its circle
+	{
+		"towers": [[450.0, 1160.0, 1, 20], [630.0, 520.0, 2, 11], [230.0, 790.0, 0, 5, "watch"], [150.0, 1060.0, 0, 2], [720.0, 850.0, 0, 7]],
+		"ai": {"think": 3.4, "margin": 5.0, "bold": 0.3},
+	},
+	# 5. Boss: feed your small towers into the big one, then storm Grumble's castle
+	{
+		"towers": [[450.0, 880.0, 1, 12], [450.0, 300.0, 2, 30, "castle"], [210.0, 760.0, 1, 6], [690.0, 760.0, 1, 5], [250.0, 1140.0, 1, 6], [650.0, 1140.0, 1, 5]],
+		"ai": {"think": 3.4, "margin": 6.0, "bold": 0.4},
 	},
 ]
 
@@ -46,9 +64,11 @@ static func theme_for(n: int) -> String:
 
 
 static func data(n: int) -> Dictionary:
-	if n <= TUTORIAL.size():
-		var d: Dictionary = TUTORIAL[n - 1].duplicate(true)
-		d["rocks"] = []
+	if n <= FIRST.size():
+		var d: Dictionary = FIRST[n - 1].duplicate(true)
+		d["rocks"] = d.get("rocks", [])
+		d["hint"] = ""
+		d.ai.upgrade = false
 		return d
 	return extras(gen(n), n)
 
