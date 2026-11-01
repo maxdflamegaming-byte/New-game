@@ -370,6 +370,43 @@ func _run() -> void:
 	# Missions
 	var list := Progress.missions(main.save)
 	ok("There are 3 missions today", list.size() == 3)
+
+	# Achievements, ranks and weekly quests
+	main.save.ach = {"done": [], "claimed": []}
+	main.save.life = {}
+	var saved_stars: Dictionary = main.save.stars.duplicate()
+	main.save.stars = {}
+	ok("A new commander is a Recruit", Achievements.rank(main.save).name == "Recruit")
+	main.count("capture", 99)
+	ok("An achievement isn't earned before its goal", not Achievements.earned(main.save, "cap100"))
+	main.count("capture")
+	ok("...and is earned when the number reaches it", Achievements.earned(main.save, "cap100") and Achievements.claimable(main.save) >= 1)
+	var coins_a := int(main.save.coins)
+	ok("Collecting an achievement pays its coins once", Achievements.claim(main.save, "cap100") == 50 and int(main.save.coins) == coins_a + 50 and Achievements.claim(main.save, "cap100") == 0)
+	for lv in range(1, 16):
+		main.save.stars[str(lv)] = 3
+	main.check_achievements()
+	ok("Stars raise your rank (45 stars: Sergeant), and bosses and stars count", Achievements.rank(main.save).name == "Sergeant" and Achievements.value(main.save, "bosses") == 3 and Achievements.earned(main.save, "boss3") and Achievements.earned(main.save, "star30"))
+	main.save.weekly = {"week": -1, "list": []}
+	var wl := Progress.weekly(main.save)
+	ok("There are 4 weekly quests, the same all week", wl.size() == 4 and Progress.weekly(main.save, Progress.today()) == wl)
+	var wq: Dictionary = wl[0]
+	Progress.add(main.save, wq.id, int(wq.goal))
+	var coins_w := int(main.save.coins)
+	ok("Weekly quests count the same things as daily ones and pay when collected", Progress.claim_weekly(main.save, 0) == int(wq.coins) and int(main.save.coins) == coins_w + int(wq.coins))
+	main.ui.show_screen("profile")
+	await _frames(2)
+	ok("The profile shows your rank and numbers", main.screen_open == "profile" and main.ui.prof_rank.text.contains("Sergeant") and main.ui.prof_stats.get_child_count() == 9)
+	main.ui.prof_medals.pressed.emit()
+	await _frames(2)
+	ok("...and opens the achievements, every one listed", main.screen_open == "achievements" and main.ui.ach_list.get_child_count() == Achievements.LIST.size() + Achievements.GROUPS.size())
+	main.ui.quest_tab = "weekly"
+	main.ui.show_screen("missions")
+	await _frames(2)
+	ok("Quests has a weekly tab", main.ui.mission_list.get_child_count() == 4 and not main.ui.quest_track.visible)
+	main.ui.quest_tab = "daily"
+	main.save.stars = saved_stars
+	main.open_menu()
 	var m0: Dictionary = list[0]
 	m0.have = 0
 	m0.claimed = false

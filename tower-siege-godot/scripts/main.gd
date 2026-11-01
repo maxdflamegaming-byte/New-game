@@ -93,6 +93,8 @@ var shells := []
 
 
 func _ready() -> void:
+	for u in UPGRADES:
+		Achievements.upgrade_max[u.id] = u.max
 	load_save()
 	I18n.lang = save.lang
 	I18n.setup()
@@ -148,6 +150,7 @@ func default_save() -> Dictionary:
 		"pid": "", "token": "", "clan": null, "gfx": "auto", "vibrate": true, "lang": "", "cutscenes": true,
 		"stats": true, "stats_rows": []}
 	d.merge(Progress.defaults())
+	d.merge(Achievements.defaults())
 	return d
 
 
@@ -523,7 +526,28 @@ func mission(id: String, n := 1) -> void:
 	for m in Progress.add(save, id, n):
 		ui.toast(tr("Quest done: %s! Collect %d coins in Quests.") % [Progress.mission_text(m), int(m.coins)], 3.0)
 		play_sound("coin")
+	count(id, n)
+
+
+## Add to one of your lifetime numbers (for the achievements), and say when one is earned
+func count(id: String, n := 1) -> void:
+	if quiet or n <= 0:
+		return
+	save.life[id] = int(save.life.get(id, 0)) + n
+	check_achievements()
+
+
+## Achievements just earned get a toast (they're collected on the Achievements screen)
+func check_achievements() -> void:
+	var got := Achievements.check(save)
+	for id in got:
+		var a := Achievements.info(id)
+		ui.toast(tr("🏅 Achievement: %s! Collect it in your profile.") % tr(a[3]), 3.2)
+		play_sound("trophy")
+		vibrate(60)
 	write_save()
+	if screen_open == "menu":
+		ui.refresh_menu()
 
 
 func _on_captured(t, side: int, old: int) -> void:
@@ -660,6 +684,10 @@ func show_win() -> void:
 	mission("win")
 	if stars == 3:
 		mission("stars3")
+	if int(battle.stats.lost) == 0:
+		count("perfect")
+	if battle.time < 30.0:
+		count("fast")
 	if daily:
 		var first_today: bool = int(save.daily_won) != Progress.today()
 		var prize: int = Progress.DAILY_COINS if first_today else Progress.DAILY_REPLAY_COINS
@@ -689,6 +717,7 @@ func show_win() -> void:
 		elif level == Levels.MAX_LEVEL:
 			unlock = "You beat all 60 levels! Endless levels unlocked: they keep getting harder."
 	write_save()
+	check_achievements()
 	ui.show_win(stars, coins, unlock, battle.time, battle.stats)
 
 
@@ -1168,6 +1197,7 @@ func buy(id: String) -> void:
 		save.up[id] = lv + 1
 		write_save()
 		play_sound("coin")
+		check_achievements()
 
 
 # ---------- Each frame ----------

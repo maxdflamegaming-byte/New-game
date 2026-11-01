@@ -111,6 +111,28 @@ func _run() -> void:
 		list[1].have = 1
 		main.ui.show_screen("missions")
 		await _frames(40)
+	elif what in ["profile", "achievements", "weekly", "home"]:
+		# Some progress to show: 23 levels with stars, numbers, a few achievements earned
+		main.save.level = 24
+		for n in range(1, 24):
+			main.save.stars[str(n)] = 3 if n % 3 else 2
+		main.save.life = {"win": 31, "capture": 412, "beat": 2650, "perfect": 6, "pvp_win": 2, "roads": 380, "strike": 12, "fast": 3, "quest": 9, "chest": 7, "streak": 4}
+		main.save.coins = 640
+		main.save.name = "Commander Rex"
+		Achievements.check(main.save)
+		Achievements.claim(main.save, "win1")
+		var wl := Progress.weekly(main.save)
+		wl[0].have = wl[0].goal
+		wl[1].have = int(wl[1].goal / 2)
+		if what == "weekly":
+			main.ui.quest_tab = "weekly"
+			main.ui.show_screen("missions")
+		elif what == "home":
+			main.reward_shown_day = Progress.today()
+			main.open_menu()
+		else:
+			main.ui.show_screen(what)
+		await _frames(60)
 	elif what == "looks":
 		main.save.coins = 500
 		main.ui.show_screen(what)

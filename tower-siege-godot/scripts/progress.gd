@@ -28,6 +28,20 @@ const MISSIONS := [
 	{"id": "daily", "text": "Win the daily challenge", "goal": [1, 1, 1], "coins": [80, 80, 80], "need": 5},
 ]
 
+## Weekly quests: bigger goals that last a week (4 a week, the same for everyone)
+const WEEKLY := [
+	{"id": "win", "goal": 15, "coins": 200},
+	{"id": "capture", "goal": 150, "coins": 200},
+	{"id": "beat", "goal": 1500, "coins": 150},
+	{"id": "stars3", "goal": 6, "coins": 200},
+	{"id": "roads", "goal": 120, "coins": 150},
+	{"id": "strike", "goal": 10, "coins": 150, "need": 3},
+	{"id": "upgrade", "goal": 15, "coins": 150, "need": 8},
+	{"id": "pvp", "goal": 5, "coins": 200},
+	{"id": "daily", "goal": 3, "coins": 250, "need": 8, "text": "Win %d daily challenges"},
+]
+const WEEKLY_COUNT := 4
+
 const HATS := [
 	{"id": "helmet", "name": "Helmet", "icon": "⛑", "cost": 0},
 	{"id": "cap", "name": "Cap", "icon": "🧢", "cost": 150},
@@ -56,6 +70,7 @@ static func defaults() -> Dictionary:
 		"missions": {"day": -1, "list": []},
 		"daily_won": -1,
 		"quest": {"day": -1, "points": 0, "opened": []},
+		"weekly": {"week": -1, "list": []},
 		"looks": {"hat": "helmet", "flag": "plain", "owned": ["helmet", "plain"]},
 	}
 
@@ -79,6 +94,7 @@ static func claim_reward(save: Dictionary, day := today()) -> int:
 		return 0
 	var n := streak_next(save, day)
 	save.streak = {"day": day, "count": n}
+	_life(save, "streak", n, true)
 	var coins: int = STREAK_COINS[n - 1]
 	save.coins = int(save.coins) + coins
 	add_points(save, REWARD_POINTS, day)
@@ -102,6 +118,8 @@ static func missions(save: Dictionary, day := today()) -> Array:
 
 
 static func mission_text(m: Dictionary) -> String:
+	if str(m.get("text", "")) != "":
+		return I18n.t(m.text) % m.goal
 	for d in MISSIONS:
 		if d.id == m.id:
 			return I18n.t(d.text) % m.goal if d.text.contains("%d") else I18n.t(d.text)
@@ -113,7 +131,7 @@ static func add(save: Dictionary, id: String, n := 1) -> Array:
 	var done := []
 	if n <= 0:
 		return done
-	for m in missions(save):
+	for m in missions(save) + weekly(save):
 		if m.id != id or int(m.have) >= int(m.goal):
 			continue
 		m.have = mini(int(m.goal), int(m.have) + n)
@@ -140,6 +158,55 @@ static func claim_mission(save: Dictionary, index: int) -> int:
 	m.claimed = true
 	save.coins = int(save.coins) + int(m.coins)
 	add_points(save, QUEST_POINTS)
+	_life(save, "quest", 1)
+	return int(m.coins)
+
+
+## A lifetime number for the achievements: added to, or kept at its best
+static func _life(save: Dictionary, id: String, n: int, best := false) -> void:
+	var life: Dictionary = save.get("life", {})
+	life[id] = maxi(int(life.get(id, 0)), n) if best else int(life.get(id, 0)) + n
+	save.life = life
+
+
+# ---------- Weekly quests ----------
+## Weeks start on Monday (day 0, 1 January 1970, was a Thursday)
+static func week(day := today()) -> int:
+	return (day + 3) / 7
+
+
+static func days_left_in_week(day := today()) -> int:
+	return 7 - (day + 3) % 7
+
+
+static func weekly(save: Dictionary, day := today()) -> Array:
+	var w := week(day)
+	if not save.has("weekly") or int(save.weekly.week) != w:
+		var rng := Levels.Rng.new(w * 53 + 11)
+		var pool := WEEKLY.filter(func(m): return int(save.level) >= m.get("need", 0))
+		var list := []
+		while list.size() < WEEKLY_COUNT and not pool.is_empty():
+			var m: Dictionary = pool[floori(rng.next() * pool.size())]
+			pool.erase(m)
+			list.append({"id": m.id, "goal": m.goal, "coins": m.coins, "have": 0, "claimed": false, "weekly": true, "text": m.get("text", "")})
+		save.weekly = {"week": w, "list": list}
+	return save.weekly.list
+
+
+static func weekly_claimable(save: Dictionary) -> int:
+	return weekly(save).filter(func(m): return int(m.have) >= int(m.goal) and not m.claimed).size()
+
+
+static func claim_weekly(save: Dictionary, index: int) -> int:
+	var list := weekly(save)
+	if index < 0 or index >= list.size():
+		return 0
+	var m: Dictionary = list[index]
+	if int(m.have) < int(m.goal) or m.claimed:
+		return 0
+	m.claimed = true
+	save.coins = int(save.coins) + int(m.coins)
+	_life(save, "quest", 1)
 	return int(m.coins)
 
 
@@ -170,6 +237,7 @@ static func open_chest(save: Dictionary, i: int) -> int:
 	if i < 0 or i >= CHESTS.size() or not chest_ready(save, i):
 		return 0
 	quest(save).opened.append(i)
+	_life(save, "chest", 1)
 	var coins := int(CHESTS[i].coins)
 	save.coins = int(save.coins) + coins
 	return coins

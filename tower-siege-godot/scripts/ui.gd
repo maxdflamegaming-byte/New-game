@@ -84,6 +84,18 @@ var reward_btn: Button
 var mission_list: VBoxContainer
 var mission_streak: Label
 var quest_track: Control          # the chest track on Quests
+var quest_tabs := {}              # "daily" / "weekly" -> its tab button
+var quest_tab := "daily"
+var quest_note: Label
+var prof_face: TextureRect
+var prof_name: Label
+var prof_rank: Label
+var prof_bar: ProgressBar
+var prof_next: Label
+var prof_stats: GridContainer
+var prof_medals: Button
+var ach_summary: Label
+var ach_list: VBoxContainer
 var looks_lists := {}
 var looks_coins: Label
 var look_pics := {}           # "hat:crown" -> a picture of it (made the first time Looks opens)
@@ -110,6 +122,8 @@ func build() -> void:
 	_build_settings()
 	_build_reward()
 	_build_missions()
+	_build_profile()
+	_build_achievements()
 	_build_looks()
 	_build_paused()
 	_build_win()
@@ -434,6 +448,10 @@ func show_screen(id: String) -> void:
 			refresh_reward()
 		"missions":
 			refresh_missions()
+		"profile":
+			refresh_profile()
+		"achievements":
+			refresh_achievements()
 		"looks":
 			refresh_looks()
 
@@ -724,6 +742,9 @@ var tab_btns := {}                # tab id -> its button
 var menu_level: Label             # "LEVEL 7" over the map
 var menu_mission: Label           # the mission's code name and goal
 var menu_name: Label
+var menu_rank: Label             # your rank under your name
+var medals_btn: Button
+var profile_btn: Button          # your face and name on the home screen
 var menu_face: TextureRect
 var more_panel: PanelContainer    # what ☰ opens
 
@@ -767,7 +788,24 @@ func _build_menu() -> void:
 	frame.add_child(bar)
 	var row := hbox(12)
 	bar.add_child(row)
+	# Your face, name and rank open your profile
+	var me := Button.new()
+	profile_btn = me
+	for st in ["normal", "hover", "pressed", "focus", "disabled"]:
+		me.add_theme_stylebox_override(st, StyleBoxEmpty.new())
+	me.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	me.custom_minimum_size.y = 70
+	me.pressed.connect(func():
+		main.play_sound("tap")
+		show_screen("profile"))
+	squishy(me)
+	row.add_child(me)
+	var me_row := hbox(12)
+	me_row.set_anchors_preset(Control.PRESET_FULL_RECT)
+	me_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	me.add_child(me_row)
 	var face := PanelContainer.new()
+	face.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	face.add_theme_stylebox_override("panel", box(Color("#3a9df3"), WHITE, 16, 3, 0))
 	face.custom_minimum_size = Vector2(70, 70)
 	var helmet := label("🎖", 40, WHITE, 0)
@@ -777,12 +815,20 @@ func _build_menu() -> void:
 	menu_face.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	menu_face.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	face.add_child(menu_face)
-	row.add_child(face)
+	me_row.add_child(face)
+	var names := vbox(0)
+	names.alignment = BoxContainer.ALIGNMENT_CENTER
+	names.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	names.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	menu_name = label("", 28, WHITE, 6)
-	menu_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	menu_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	menu_name.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
-	row.add_child(menu_name)
+	names.add_child(menu_name)
+	menu_rank = label("", 18, YELLOW, 5)
+	menu_rank.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	menu_rank.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	names.add_child(menu_rank)
+	me_row.add_child(names)
 	menu_coins = _pill("0")
 	menu_coins.add_theme_font_size_override("font_size", 30)
 	menu_coins.get_parent().size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -800,6 +846,13 @@ func _build_menu() -> void:
 	missions_btn.offset_top = 104
 	missions_btn.offset_bottom = 212
 	frame.add_child(missions_btn)
+	medals_btn = _side_button("achievements", "🏅", "Medals", "purple", func(): show_screen("achievements"))
+	medals_btn.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	medals_btn.offset_left = -240
+	medals_btn.offset_right = -132
+	medals_btn.offset_top = 104
+	medals_btn.offset_bottom = 212
+	frame.add_child(medals_btn)
 	more_panel = PanelContainer.new()
 	more_panel.add_theme_stylebox_override("panel", box(Color("#24345e"), WHITE, 18, 3, 6))
 	more_panel.position = Vector2(16, 204)
@@ -996,6 +1049,7 @@ func _build_reward() -> void:
 	reward_btn = button("Collect", "yellow", 40, func():
 		var coins := Progress.claim_reward(main.save)
 		main.write_save()
+		main.check_achievements()
 		if coins > 0:
 			main.play_sound("coin")
 			main.vibrate(40)
@@ -1032,6 +1086,13 @@ func refresh_reward() -> void:
 func _build_missions() -> void:
 	var col := screen("missions")
 	col.add_child(ribbon("Quests"))
+	var tabs := hbox(10)
+	quest_tabs = {"daily": button("Daily quests", "yellow", 24, func(): _quest_tab("daily")),
+		"weekly": button("Weekly quests", "blue", 24, func(): _quest_tab("weekly"))}
+	for k in quest_tabs:
+		quest_tabs[k].custom_minimum_size = Vector2(290, 72)
+		tabs.add_child(quest_tabs[k])
+	col.add_child(tabs)
 	# The chest track: today's quest points fill it, and its chests open at set points
 	quest_track = Control.new()
 	quest_track.custom_minimum_size = Vector2(620, 236)
@@ -1040,13 +1101,35 @@ func _build_missions() -> void:
 	col.add_child(mission_streak)
 	mission_list = vbox(12)
 	col.add_child(mission_list)
-	col.add_child(wrapped(label("New quests every day, the same for everyone. Each one you collect earns ⭐ points that open the chests.", 18, WHITE, 4, font_m), 600))
+	quest_note = wrapped(label("", 18, WHITE, 4, font_m), 600)
+	col.add_child(quest_note)
 	col.add_child(back_button())
+
+
+func _quest_tab(tab: String) -> void:
+	quest_tab = tab
+	refresh_missions()
 
 
 func refresh_missions() -> void:
 	for c in mission_list.get_children():
 		c.queue_free()
+	for k in quest_tabs:
+		set_kind(quest_tabs[k], "yellow" if k == quest_tab else "blue")
+	var weekly := quest_tab == "weekly"
+	quest_track.visible = not weekly
+	mission_streak.visible = not weekly
+	if weekly:
+		var days := Progress.days_left_in_week()
+		quest_note.text = tr("Bigger quests that last all week. New ones in %d days.") % days if days > 1 else tr("Bigger quests that last all week. New ones tomorrow.")
+		var wl := Progress.weekly(main.save)
+		for i in wl.size():
+			var m: Dictionary = wl[i]
+			var idx := i
+			mission_list.add_child(progress_row("📆", Progress.mission_text(m), "", int(m.have), int(m.goal), int(m.coins), m.claimed, func():
+				return Progress.claim_weekly(main.save, idx)))
+		return
+	quest_note.text = tr("New quests every day, the same for everyone. Each one you collect earns ⭐ points that open the chests.")
 	_refresh_track()
 	if Progress.reward_ready(main.save):
 		var rb := button(tr("🎁 Collect your daily reward (day %d)") % Progress.streak_next(main.save), "yellow", 24, func(): show_screen("reward"))
@@ -1055,43 +1138,194 @@ func refresh_missions() -> void:
 	var list := Progress.missions(main.save)
 	for i in list.size():
 		var m: Dictionary = list[i]
-		var row := PanelContainer.new()
-		row.add_theme_stylebox_override("panel", box(PANEL, INK, 20, 3, 4))
-		row.custom_minimum_size.x = 620
-		var h := hbox(14)
-		h.alignment = BoxContainer.ALIGNMENT_BEGIN
-		var info := vbox(6)
-		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var name_l := wrapped(label(Progress.mission_text(m), 24), 400)
-		name_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-		info.add_child(name_l)
-		var bar := ProgressBar.new()
-		bar.max_value = int(m.goal)
-		bar.value = int(m.have)
-		bar.show_percentage = false
-		bar.custom_minimum_size = Vector2(380, 22)
-		bar.add_theme_stylebox_override("background", box(Color(1, 1, 1, 0.3), INK, 10, 2, 0))
-		var fill := box(YELLOW, INK, 10, 2, 0)
-		bar.add_theme_stylebox_override("fill", fill)
-		info.add_child(bar)
-		var count := label("%d / %d   ·   ⭐ +%d" % [int(m.have), int(m.goal), Progress.QUEST_POINTS], 18, WHITE, 4)
-		count.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-		info.add_child(count)
-		h.add_child(info)
-		var done: bool = int(m.have) >= int(m.goal)
 		var idx := i
-		var b := button("✓" if m.claimed else "🪙 %d" % int(m.coins), "green" if done and not m.claimed else "blue", 24, func():
-			var coins := Progress.claim_mission(main.save, idx)
-			if coins > 0:
-				main.write_save()
-				main.play_sound("coin")
-				toast(tr("+%d coins!") % coins)
-			refresh_missions())
-		b.disabled = not done or m.claimed
-		b.custom_minimum_size.x = 130
-		h.add_child(b)
-		row.add_child(h)
-		mission_list.add_child(row)
+		mission_list.add_child(progress_row("📜", Progress.mission_text(m), "⭐ +%d" % Progress.QUEST_POINTS, int(m.have), int(m.goal), int(m.coins), m.claimed, func():
+			return Progress.claim_mission(main.save, idx)))
+
+
+## A row with a progress bar: a picture, what to do, how far you are, and a button that
+## collects its coins once it's done. claim: returns the coins collected.
+func progress_row(icon: String, title: String, sub: String, have: int, goal: int, coins: int, claimed: bool, claim: Callable) -> PanelContainer:
+	var done := have >= goal
+	var row := PanelContainer.new()
+	row.add_theme_stylebox_override("panel", box(PANEL if done or claimed else Color("#3a6fc4"), INK, 20, 3, 4))
+	row.custom_minimum_size.x = 620
+	var h := hbox(12)
+	h.alignment = BoxContainer.ALIGNMENT_BEGIN
+	var pic := label(icon, 38, WHITE, 0)
+	pic.custom_minimum_size = Vector2(56, 56)
+	pic.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	if claimed:
+		pic.modulate = Color(1, 1, 1, 0.55)
+	h.add_child(pic)
+	var info := vbox(4)
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var name_l := wrapped(label(title, 22), 340)
+	name_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	info.add_child(name_l)
+	var bar := ProgressBar.new()
+	bar.max_value = goal
+	bar.value = mini(have, goal)
+	bar.show_percentage = false
+	bar.custom_minimum_size = Vector2(320, 20)
+	bar.add_theme_stylebox_override("background", box(Color(1, 1, 1, 0.3), INK, 10, 2, 0))
+	bar.add_theme_stylebox_override("fill", box(YELLOW if not done else Color("#4cbc45"), INK, 10, 2, 0))
+	info.add_child(bar)
+	var count := label("%d / %d" % [mini(have, goal), goal] + ("   ·   " + sub if sub != "" else ""), 17, WHITE, 4)
+	count.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	count.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	info.add_child(count)
+	h.add_child(info)
+	var b := button("✓" if claimed else "🪙 %d" % coins, "green" if done and not claimed else "blue", 24, func():
+		var got: int = claim.call()
+		if got > 0:
+			main.write_save()
+			main.play_sound("coin")
+			toast(tr("+%d coins!") % got)
+			main.check_achievements()
+		show_screen(main.screen_open))
+	b.disabled = not done or claimed
+	b.custom_minimum_size.x = 124
+	h.add_child(b)
+	row.add_child(h)
+	return row
+
+
+# ---------- Profile and achievements ----------
+## Your profile: your captain, name and rank (with the stars to the next), your lifetime
+## numbers, and the way to the achievements
+func _build_profile() -> void:
+	var col := screen("profile")
+	col.add_child(ribbon("Profile"))
+	var p := panel()
+	var v := vbox(12)
+	p.add_child(v)
+	var top := hbox(16)
+	var face := PanelContainer.new()
+	face.add_theme_stylebox_override("panel", box(Color("#3a9df3"), WHITE, 22, 4, 0))
+	face.custom_minimum_size = Vector2(130, 130)
+	var medal := label("🎖", 70, WHITE, 0)
+	medal.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	medal.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	face.add_child(medal)
+	prof_face = TextureRect.new()
+	prof_face.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	prof_face.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	face.add_child(prof_face)
+	top.add_child(face)
+	var who := vbox(6)
+	who.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	prof_name = label("", 34, WHITE, 8)
+	prof_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	prof_name.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	who.add_child(prof_name)
+	prof_rank = label("", 26, YELLOW, 7)
+	prof_rank.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	prof_rank.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	who.add_child(prof_rank)
+	prof_bar = ProgressBar.new()
+	prof_bar.show_percentage = false
+	prof_bar.custom_minimum_size = Vector2(340, 22)
+	prof_bar.add_theme_stylebox_override("background", box(Color(1, 1, 1, 0.3), INK, 10, 2, 0))
+	prof_bar.add_theme_stylebox_override("fill", box(YELLOW, INK, 10, 2, 0))
+	who.add_child(prof_bar)
+	prof_next = label("", 18, WHITE, 4, font_m)
+	prof_next.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	prof_next.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	who.add_child(prof_next)
+	top.add_child(who)
+	v.add_child(top)
+	prof_stats = GridContainer.new()
+	prof_stats.columns = 3
+	prof_stats.add_theme_constant_override("h_separation", 10)
+	prof_stats.add_theme_constant_override("v_separation", 10)
+	v.add_child(prof_stats)
+	col.add_child(p)
+	prof_medals = button("🏅 Achievements", "purple", 30, func(): show_screen("achievements"))
+	prof_medals.custom_minimum_size = Vector2(440, 90)
+	prof_medals.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	col.add_child(prof_medals)
+	col.add_child(back_button())
+
+
+func refresh_profile() -> void:
+	var sv: Dictionary = main.save
+	prof_name.text = sv.name if str(sv.get("name", "")) != "" else tr("Commander")
+	var r := Achievements.rank(sv)
+	prof_rank.text = "⭐ " + tr(r.name)
+	if r.next < 0:
+		prof_bar.max_value = 1
+		prof_bar.value = 1
+		prof_next.text = tr("The highest rank! %d stars.") % r.stars
+	else:
+		prof_bar.min_value = int(Achievements.RANKS[r.i][1])
+		prof_bar.max_value = r.next
+		prof_bar.value = r.stars
+		prof_next.text = tr("⭐ %d / %d to %s") % [r.stars, r.next, tr(Achievements.RANKS[r.i + 1][0])]
+	for c in prof_stats.get_children():
+		c.queue_free()
+	var life: Dictionary = sv.life
+	var won := int(life.get("win", 0))
+	for item in [[str(Achievements.value(sv, "level")), "Levels beaten"], ["%d / 180" % r.stars, "Stars"],
+			[str(Achievements.value(sv, "bosses")), "Bosses beaten"], [str(won), "Battles won"],
+			[str(int(life.get("capture", 0))), "Buildings taken"], [str(int(life.get("beat", 0))), "Soldiers beaten"],
+			[str(int(life.get("perfect", 0))), "Flawless wins"], [str(int(life.get("pvp_win", 0))), "PvP wins"],
+			[str(int(sv.trophies)), "Trophies"]]:
+		var t := _stat(item[0], item[1])
+		t.custom_minimum_size = Vector2(196, 0)
+		prof_stats.add_child(t)
+	var have: int = sv.ach.done.size()
+	prof_medals.text = tr("🏅 Achievements  %d / %d") % [have, Achievements.LIST.size()]
+	_profile_face()
+
+
+func _profile_face() -> void:
+	var cut: Cutscene = main.cutscene
+	if not cut.portraits.has("skye") and not _drawing_face:
+		_drawing_face = true
+		cut.portraits["skye"] = await cut._portrait("skye")
+		_drawing_face = false
+	prof_face.texture = cut.portraits.get("skye")
+
+
+## Every achievement, in its group: earned ones to collect first
+func _build_achievements() -> void:
+	var col := screen("achievements")
+	col.add_child(ribbon("Achievements"))
+	ach_summary = wrapped(label("", 24, WHITE, 6, font_m), 600)
+	col.add_child(ach_summary)
+	col.add_child(back_button("profile"))   # (a long list: a way back at the top too)
+	ach_list = vbox(12)
+	col.add_child(ach_list)
+	col.add_child(back_button("profile"))
+
+
+func refresh_achievements() -> void:
+	for c in ach_list.get_children():
+		c.queue_free()
+	var sv: Dictionary = main.save
+	var waiting := 0
+	for a in Achievements.LIST:
+		if Achievements.earned(sv, a[1]) and not Achievements.claimed(sv, a[1]):
+			waiting += int(a[7])
+	ach_summary.text = tr("%d of %d earned") % [sv.ach.done.size(), Achievements.LIST.size()] + \
+		("   ·   " + tr("🪙 %d to collect") % waiting if waiting > 0 else "")
+	for g in Achievements.GROUPS:
+		ach_list.add_child(label(g, 30, YELLOW, 8))
+		var group := Achievements.LIST.filter(func(a): return a[0] == g)
+		# Ready to collect first, then the ones in progress, then the collected
+		group.sort_custom(func(a, b): return _ach_order(a) < _ach_order(b))
+		for a in group:
+			var id: String = a[1]
+			ach_list.add_child(progress_row(a[2], tr(a[3]), Achievements.text(a), Achievements.value(sv, a[5]), int(a[6]), int(a[7]),
+				Achievements.claimed(sv, id), func(): return Achievements.claim(main.save, id)))
+
+
+func _ach_order(a: Array) -> int:
+	var sv: Dictionary = main.save
+	if Achievements.claimed(sv, a[1]):
+		return 2
+	return 0 if Achievements.earned(sv, a[1]) else 1
 
 
 ## Today's quest points on a bar, with a chest at each step: ready ones bounce and open with a
@@ -1127,6 +1361,7 @@ func _refresh_track() -> void:
 			var coins := Progress.open_chest(main.save, idx)
 			if coins > 0:
 				main.write_save()
+				main.check_achievements()
 				main.play_sound("coin")
 				toast(tr("+%d coins!") % coins)
 				refresh_missions())
@@ -1216,6 +1451,7 @@ func refresh_looks() -> void:
 			b.pressed.connect(func():
 				if Progress.pick_look(main.save, k, id) == "":
 					main.write_save()
+					main.check_achievements()
 					main.world.set_look(main.save.looks.hat, main.save.looks.flag)
 					main.play_sound("coin" if not owned else "tap")
 				refresh_looks())
@@ -1296,10 +1532,13 @@ func refresh_menu() -> void:
 	var n := mini(int(main.save.level), Levels.LAST_LEVEL)
 	menu_coins.text = "🪙 %d" % main.save.coins
 	menu_name.text = main.save.name if str(main.save.get("name", "")) != "" else tr("Commander")
+	menu_rank.text = "⭐ " + tr(Achievements.rank(main.save).name)
+	var medals := Achievements.claimable(main.save)
+	set_badge("achievements", str(medals) if medals > 0 else "")
 	menu_level.text = tr("LEVEL %d") % n
 	menu_mission.text = Missions.title(n) + "\n" + Missions.icon(Missions.goal_for(n)) + "  " + Missions.goal_name(Missions.goal_for(n))
 	more_panel.visible = false
-	var k := Progress.claimable(main.save) + Progress.chests_ready(main.save) + (1 if Progress.reward_ready(main.save) else 0)
+	var k := Progress.claimable(main.save) + Progress.weekly_claimable(main.save) + Progress.chests_ready(main.save) + (1 if Progress.reward_ready(main.save) else 0)
 	set_badge("missions", str(k) if k > 0 else "")
 	_lock(daily_btn, "📅", "Daily", DAILY_UNLOCK)
 	set_badge("daily", "✓" if int(main.save.daily_won) == Progress.today() and n >= DAILY_UNLOCK else "")

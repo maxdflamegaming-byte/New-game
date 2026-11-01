@@ -726,6 +726,8 @@ func finish(winner: int, why: String) -> void:
 	pvp.over = true
 	main.mission("pvp")
 	main.mission("beat", main.battle.stats.killed)
+	if winner == 1 and main.mode != "duo":
+		main.count("pvp_win")
 	pvp.winner = winner
 	main.state = "over"
 	main.clear_pointers()

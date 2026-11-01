@@ -275,6 +275,22 @@ func _run() -> void:
 		ok("The phone's back button leaves %s" % item[1], back_worked)
 		ok("Back to the menu from %s" % item[1], main.screen_open == "menu", "screen %s" % main.screen_open)
 
+	# ----- Your profile and the achievements -----
+	await tap(ui.profile_btn, "your name")
+	await _seconds(0.6)
+	ok("Tapping your name opens your profile", main.screen_open == "profile", "screen %s" % main.screen_open)
+	await shot("profile")
+	await tap(ui.prof_medals, "Achievements")
+	await _seconds(0.6)
+	ok("...and Achievements opens from there", main.screen_open == "achievements", "screen %s" % main.screen_open)
+	await shot("achievements")
+	await back_button()
+	await _seconds(0.4)
+	ok("The phone's back button goes to the profile", main.screen_open == "profile", "screen %s" % main.screen_open)
+	await tap(find_button("Back", ui.screens.profile), "Back")
+	await _seconds(0.4)
+	ok("...and then home", main.screen_open == "menu")
+
 	# ----- A long list scrolls with a finger, even when the drag starts on a button -----
 	var had: int = main.save.level
 	main.save.level = 150
