@@ -2,7 +2,7 @@
 // tidy edge) on darker ground where the scenery stands. On the beach map the sea, white foam
 // and a sandy shore go around it instead.
 shader_type spatial;
-render_mode cull_back;
+render_mode cull_back, specular_disabled;
 
 uniform vec3 ground : source_color = vec3(0.47, 0.81, 0.27);
 uniform vec3 field : source_color = vec3(0.53, 0.86, 0.31);
@@ -13,14 +13,13 @@ uniform bool water = false;
 uniform bool cracks = false;
 uniform float seed = 0.0;
 
+// Smooth random patches come from a small tileable noise picture (World.noise_texture) instead
+// of being worked out for every pixel: on a phone that sum was the most expensive thing drawn.
+uniform sampler2D noise_tex : filter_linear, repeat_enable;
+
 varying vec3 world;
 
-float hash(vec2 p) { return fract(sin(dot(p + seed, vec2(127.1, 311.7))) * 43758.5453); }
-float noise(vec2 p) {
-	vec2 i = floor(p), f = fract(p);
-	vec2 u = f * f * (3.0 - 2.0 * f);
-	return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
-}
+float noise(vec2 p) { return texture(noise_tex, (p + seed * vec2(0.37, 0.61)) / 32.0).r; }
 float round_box(vec2 p, vec2 b, float r) {
 	vec2 q = abs(p) - b + r;
 	return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;

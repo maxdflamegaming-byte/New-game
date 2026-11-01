@@ -35,6 +35,13 @@ var paint_shader: Shader = preload("res://shaders/paint.gdshader")
 var ground_shader: Shader = preload("res://shaders/ground.gdshader")
 var road_shader: Shader = preload("res://shaders/road.gdshader")
 var glow_shader: Shader = preload("res://shaders/glow.gdshader")
+var blob_shader: Shader = preload("res://shaders/blob.gdshader")
+var blob_mat: ShaderMaterial
+var blob_mesh: PlaneMesh
+var blobs_on := true           # soft round shadows instead of real ones (Low and Medium)
+var soldier_blobs: MultiMeshInstance3D
+var prop_blobs: MultiMeshInstance3D
+var _blob_list: Array = []     # scenery's shadows, gathered while building: [x, z, size]
 
 var models := {}               # tower id -> {node, mesh_inst, mat, flag, ring, lv, type, side, top, smoke, bounce}
 var roads := {}                # key -> MeshInstance3D
@@ -195,6 +202,41 @@ func tower_screen(t) -> Dictionary:
 	return {"x": c.x, "y": c.y, "r": absf(e.x - c.x), "top_x": tp.x, "top_y": tp.y, "base": base}
 
 
+## Smooth value noise, 32 x 32 cells that wrap around, 4 pixels a cell: the ground shader reads
+## its soft patches from this instead of working them out for every pixel. Made once.
+static var _noise_tex: ImageTexture
+
+
+static func noise_texture() -> ImageTexture:
+	if _noise_tex:
+		return _noise_tex
+	const N := 32
+	const R := 4
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7717
+	var v := PackedFloat32Array()
+	v.resize(N * N)
+	for i in N * N:
+		v[i] = rng.randf()
+	var data := PackedByteArray()
+	data.resize(N * R * N * R)
+	for y in N * R:
+		var cy := y / R
+		var fy := float(y % R) / R
+		fy = fy * fy * (3.0 - 2.0 * fy)
+		for x in N * R:
+			var cx := x / R
+			var fx := float(x % R) / R
+			fx = fx * fx * (3.0 - 2.0 * fx)
+			var a := v[cy * N + cx]
+			var b := v[cy * N + (cx + 1) % N]
+			var c := v[((cy + 1) % N) * N + cx]
+			var d := v[((cy + 1) % N) * N + (cx + 1) % N]
+			data[y * N * R + x] = int(lerpf(lerpf(a, b, fx), lerpf(c, d, fx), fy) * 255.0)
+	_noise_tex = ImageTexture.create_from_image(Image.create_from_data(N * R, N * R, false, Image.FORMAT_L8, data))
+	return _noise_tex
+
+
 func px_per_unit(x: float, y: float) -> float:
 	return absf(project(x + 100, y).x - project(x, y).x) / 100.0
 
@@ -230,6 +272,7 @@ func build(seed_value: int, theme_name: String, battle: Battle) -> void:
 	gm.set_shader_parameter("water", th.get("water", false))
 	gm.set_shader_parameter("cracks", th.get("cracks", false))
 	gm.set_shader_parameter("seed", float(seed_value % 1000))
+	gm.set_shader_parameter("noise_tex", noise_texture())
 	g.material_override = gm
 	g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	level_root.add_child(g)
@@ -268,7 +311,9 @@ func build(seed_value: int, theme_name: String, battle: Battle) -> void:
 			var a := rng.randf() * TAU
 			var dd := rng.randf() * w.r * 0.45
 			props["w_" + th.wall].append([w.x + cos(a) * dd, w.y + sin(a) * dd, (w.r / 40) * (1.25 + rng.randf() * 0.35), roundi(rng.randf() * 4) * PI / 2 + (rng.randf() - 0.5) * 0.3, rng.randf()])
+	_blob_list.clear()
 	_add_props(props)
+	_make_prop_blobs()
 	_warm = 2
 	for t in battle.towers:
 		_sync_tower(t)
@@ -311,6 +356,35 @@ func _instanced(m: Mesh, list: Array, color_fn := Callable(), shadow := true, sw
 		mi.material_override.set_shader_parameter("sway", sway)
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadow else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	level_root.add_child(mi)
+	var foot := m.get_aabb()
+	var r := maxf(foot.size.x, foot.size.z) * 0.5
+	for p in list:
+		_blob_list.append([p[0], p[1], r * 2.3 * p[2] * S])
+
+
+## The scenery's soft shadows, all in one batch
+func _make_prop_blobs() -> void:
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.mesh = blob_mesh
+	mm.instance_count = _blob_list.size()
+	var off := blob_offset()
+	for i in _blob_list.size():
+		var b: Array = _blob_list[i]
+		mm.set_instance_transform(i, Transform3D(Basis.from_scale(Vector3(b[2], 1, b[2])), Vector3(b[0], 0.5, b[1]) + off * b[2]))
+	prop_blobs = MultiMeshInstance3D.new()
+	prop_blobs.multimesh = mm
+	prop_blobs.material_override = blob_mat
+	prop_blobs.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	prop_blobs.visible = blobs_on
+	level_root.add_child(prop_blobs)
+	_blob_list.clear()
+
+
+## Which way a soft shadow sits from what casts it (per unit of its size): away from the sun
+func blob_offset() -> Vector3:
+	var d := -Basis.from_euler(Vector3(deg_to_rad(-62), deg_to_rad(-38), 0)).z
+	return Vector3(d.x, 0, d.z).normalized() * 0.12
 
 
 func _add_props(P: Dictionary) -> void:
@@ -696,8 +770,17 @@ func _sync_tower(t) -> Dictionary:
 		ring.material_override = glow_material(Color.WHITE)
 		ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		node.add_child(ring)
+		var blob := MeshInstance3D.new()
+		blob.mesh = blob_mesh
+		blob.material_override = blob_mat
+		blob.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var bs: float = t.radius() * 3.0
+		blob.scale = Vector3(bs, 1, bs)
+		blob.position = Vector3(0, 0.6, 0) + blob_offset() * bs
+		blob.visible = blobs_on
+		node.add_child(blob)
 		level_root.add_child(node)
-		info = {"node": node, "holder": holder, "mat": mat, "flag": flag, "ring": ring, "range": range_ring,
+		info = {"node": node, "holder": holder, "mat": mat, "flag": flag, "ring": ring, "range": range_ring, "blob": blob,
 			"lv": lv, "type": t.type, "side": old_side, "top": built.top * S, "smoke": built.smoke,
 			"muzzle": built.muzzle * S, "bounce": 0.0, "smoke_t": randf(), "kick": 0.0,
 			"flag_y": flag.position.y, "raise": 0.0, "color_from": _team_lin(old_side), "color_t": 1.0}
@@ -741,6 +824,14 @@ func _make_units() -> void:
 	soldier_shadows = _unit_mm(sh.mesh(), MAX_SOLDIERS, false)
 	soldier_shadows.material_override = StandardMaterial3D.new()
 	soldier_shadows.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+	# ... or, without real shadows, a soft round one under each soldier and tank
+	blob_mat = ShaderMaterial.new()
+	blob_mat.shader = blob_shader
+	blob_mesh = PlaneMesh.new()
+	blob_mesh.size = Vector2.ONE
+	soldier_blobs = _unit_mm(blob_mesh, MAX_SOLDIERS + MAX_TANKS, false)
+	soldier_blobs.material_override = blob_mat
+	soldier_blobs.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	# Tank
 	var tk := MeshKit.new()
 	tk.box(20, 8, 28, Vector3(0, 8, 0), T).box(16, 3, 8, Vector3(0, 9, 15), T)
@@ -972,6 +1063,10 @@ func _draw_units(units: Array) -> void:
 	var mmm := soldiers_me.multimesh
 	var shm := soldier_shadows.multimesh
 	var shadows := soldier_shadows.visible
+	var bmm := soldier_blobs.multimesh
+	var blobs := blobs_on
+	var boff := blob_offset()
+	var nb := 0
 	var tmm := tanks.multimesh
 	var s := 0
 	var me := 0
@@ -995,6 +1090,10 @@ func _draw_units(units: Array) -> void:
 			if k >= MAX_TANKS:
 				continue
 			tmm.set_instance_transform(k, Transform3D(Basis(Vector3.UP, ang).scaled(Vector3.ONE * 1.3 * S * pop), Vector3(u.x, absf(sin(time * 20 + u.id)) * 0.6, u.y)))
+			if blobs:
+				var bs := 40.0 * S * pop
+				bmm.set_instance_transform(nb, Transform3D(Basis.from_scale(Vector3(bs, 1, bs)), Vector3(u.x, 0.7, u.y) + boff * bs))
+				nb += 1
 			tmm.set_instance_custom_data(k, Color(team.r, team.g, team.b, 0))
 			k += 1
 		else:
@@ -1004,6 +1103,10 @@ func _draw_units(units: Array) -> void:
 			var cd := Color(team.r, team.g, team.b, fmod(u.id * 0.137, 1.0))
 			if shadows:
 				shm.set_instance_transform(s + me, xf)
+			if blobs:
+				var bs := 20.0 * S * pop
+				bmm.set_instance_transform(nb, Transform3D(Basis.from_scale(Vector3(bs, 1, bs)), Vector3(ux, 0.7, uz) + boff * bs))
+				nb += 1
 			if u.owner == Battle.PLAYER:
 				mmm.set_instance_transform(me, xf)
 				mmm.set_instance_custom_data(me, cd)
@@ -1016,6 +1119,7 @@ func _draw_units(units: Array) -> void:
 	mmm.visible_instance_count = me
 	shm.visible_instance_count = s + me if shadows else 0
 	tmm.visible_instance_count = k
+	bmm.visible_instance_count = nb
 
 
 # ---------- Roads ----------
@@ -1654,29 +1758,49 @@ func _apply_camera(dt: float) -> void:
 		camera.transform = cam_base
 
 
-## Graphics quality. The 3D is always drawn at the screen's full resolution with smooth edges:
-## drawn smaller and scaled up, it looked blurry and jagged on phones. What the lower settings
-## save is the extra work: Low has lighter smoothing and hard shadows from buildings only;
-## Medium adds soldiers' shadows and soft shadows; High the softest shadows.
+## Graphics quality. What costs a phone most is drawing every pixel of a big, sharp screen,
+## and real-time shadows (everything drawn a second time, then soft-filtered on every pixel).
+##   High: real soft shadows, 4x smoothing, full resolution
+##   Medium: soft round shadows under things instead, 4x smoothing, full resolution
+##   Low: round shadows, 2x smoothing, the 3D a little smaller (at most 1700 pixels tall)
+## On Auto, a phone still too slow on Low gets one more step (reduced): the 3D at most 1280
+## pixels tall. Text and buttons always stay at full sharpness.
+var reduced := false
+
+
 func set_quality(q: int) -> void:
 	quality = clampi(q, 0, 2)
+	if quality > 0:
+		reduced = false
 	var vp := get_viewport()
+	var h := maxf(1.0, float(DisplayServer.window_get_size().y))
 	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
-	vp.scaling_3d_scale = 1.0
+	vp.scaling_3d_scale = 1.0 if quality > 0 else clampf((1280.0 if reduced else 1700.0) / h, 0.5, 1.0)
 	vp.msaa_3d = Viewport.MSAA_2X if quality == 0 else Viewport.MSAA_4X
-	# Low: no real-time shadows at all (they draw every building twice); the soldiers' cheap
-	# stand-in shadows are off too
-	sun.shadow_enabled = quality > 0
-	sun.shadow_blur = [0.0, 1.0, 1.5][quality]
-	RenderingServer.directional_shadow_atlas_set_size(1024 if quality == 0 else 2048, true)
-	soldier_shadows.visible = quality > 0
+	sun.shadow_enabled = quality == 2
+	sun.shadow_blur = 1.5
+	RenderingServer.directional_shadow_atlas_set_size(2048, true)
+	soldier_shadows.visible = quality == 2
+	blobs_on = quality < 2
+	if prop_blobs and is_instance_valid(prop_blobs):
+		prop_blobs.visible = blobs_on
+	for info in models.values():
+		if is_instance_valid(info.blob):
+			info.blob.visible = blobs_on
+	if not blobs_on:
+		soldier_blobs.multimesh.visible_instance_count = 0
 	# Cloud shadows looked like dirty patches on the clean board, so they stay off
 	for c in clouds:
 		c.visible = false
 
 
+## One step cheaper (Auto, when the phone can't keep up): false when there's nothing left
 func lower_quality() -> bool:
 	if quality == 0:
-		return false
+		if reduced:
+			return false
+		reduced = true
+		set_quality(0)
+		return true
 	set_quality(quality - 1)
 	return true

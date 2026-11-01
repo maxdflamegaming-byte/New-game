@@ -65,7 +65,8 @@ func _run() -> void:
 	ok("Level 1 starts the lessons: what to do, and the hand showing it", main.tutor != null and main.tutor.active() and main.hint_text.begins_with("Drag") and not main.guide_move().is_empty())
 	var t0: float = main.battle.time
 	main.step(0.5)
-	ok("The lesson holds the battle still until you've done it", main.tutor.holding() and main.battle.time == t0)
+	ok("The lesson slows the battle right down while you read", main.tutor.holding() and main.battle.time > t0 and main.battle.time <= t0 + 0.5 * Tutorial.SLOW + 0.001)
+	t0 = main.battle.time
 	# Freeze the enemy (with no enemies at all, the level would count as won)
 	for side in main.battle.ai_sides:
 		side.timer = 1e9
@@ -77,6 +78,14 @@ func _run() -> void:
 	ok("Dragging builds a road", me.has_road(gray))
 	main.step(0.05)
 	ok("Building the road moves the lesson on, and the battle carries on", main.tutor.i == 1 and not main.tutor.holding() and main.battle.time > t0)
+	var tl := Tutorial.new(main, 3)
+	tl.i = 3   # "Stuck? Tap Hint"
+	var held := tl.holding()
+	tl.event("strike")
+	ok("Doing something else (an airstrike) during a lesson ends the slow motion", held and not tl.holding() and tl.i == 3)
+	tl.acted = false
+	tl.waited = Tutorial.HOLD_MAX + 0.1
+	ok("...and so does waiting a few seconds", not tl.holding())
 	ok("An attack road carries just what it takes (and a few more)", me.roads.size() == 1 and int(me.roads[0].left) >= 6 and int(me.roads[0].left) <= 12, str(me.roads.map(func(r): return r.left)))
 	await _frames(30)
 	for i in 30:
@@ -627,25 +636,35 @@ func _extras() -> void:
 func _graphics() -> void:
 	# Graphics settings
 	main.set_gfx("low")
-	ok("Low graphics: full resolution with light smoothing, no soldier shadows", main.world.quality == 0 and not main.world.soldier_shadows.visible and get_root().msaa_3d == Viewport.MSAA_2X and is_equal_approx(get_root().scaling_3d_scale, 1.0))
+	var w = main.world
+	ok("Low graphics: soft round shadows instead of real ones, light smoothing", w.quality == 0 and not w.sun.shadow_enabled and w.blobs_on and w.prop_blobs.visible and not w.soldier_shadows.visible and get_root().msaa_3d == Viewport.MSAA_2X and get_root().scaling_3d_scale <= 1.0)
+	main.set_gfx("medium")
+	ok("Medium graphics: round shadows, full resolution, 4x smoothing", w.quality == 1 and not w.sun.shadow_enabled and w.blobs_on and get_root().msaa_3d == Viewport.MSAA_4X and is_equal_approx(get_root().scaling_3d_scale, 1.0))
 	main.set_gfx("high")
-	ok("High graphics: full resolution", main.world.quality == 2 and is_equal_approx(get_root().scaling_3d_scale, 1.0) and main.world.soldier_shadows.visible)
+	ok("High graphics: real shadows, full resolution", w.quality == 2 and w.sun.shadow_enabled and not w.blobs_on and not w.prop_blobs.visible and is_equal_approx(get_root().scaling_3d_scale, 1.0) and w.soldier_shadows.visible)
 	main.set_gfx("auto")
-	ok("Auto starts at Medium", main.world.quality == 1)
+	ok("Auto starts at Medium", w.quality == 1)
 	main.state = "menu"
 	for i in 200:
 		main._process(0.06)
-	ok("Slow frames on a menu don't count (menus run at 30 frames a second)", main.world.quality == 1)
+	ok("Slow frames on a menu don't count (menus run at 30 frames a second)", w.quality == 1)
 	main.cinematics = false
 	main.start_level(12)
 	await _frames(2)
 	for side in main.battle.ai_sides:
 		side.timer = 1e9
 	var slow_ok: bool = main.state == "play" and main.screen_open == ""
-	for i in 200:
+	for i in 70:
 		main._process(0.06)
+	ok("Auto steps the graphics down when a battle runs slowly", slow_ok and w.quality == 0 and main.save.get("gfx_auto", "") == "low", "state ok %s, quality %d" % [slow_ok, w.quality])
+	for i in 40:
+		main._process(0.06)
+	ok("...and once more on Low: the 3D drawn smaller", w.quality == 0 and w.reduced and main.save.gfx_auto == "reduced")
 	main.open_menu()
-	ok("Auto steps the graphics down when a battle runs slowly", slow_ok and main.world.quality == 0, "state ok %s, quality %d" % [slow_ok, main.world.quality])
+	main.apply_gfx()
+	ok("Auto remembers where it got to", w.quality == 0 and w.reduced)
+	main.set_gfx("auto")
+	ok("Picking Auto again starts over from Medium", w.quality == 1 and not w.reduced and not main.save.has("gfx_auto"))
 	main.ui.show_screen("settings")
 	await _frames(2)
 	ok("The settings screen opens", main.screen_open == "settings")

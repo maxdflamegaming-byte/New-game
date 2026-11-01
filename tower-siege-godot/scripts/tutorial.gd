@@ -1,8 +1,9 @@
 class_name Tutorial
 extends RefCounted
 ## The first five levels teach the game one step at a time. Each step says what to do and
-## shows it with the hand; a step waiting for you to act holds the battle still until you do,
-## so nothing happens while you read (and gives up after a while, so nobody gets stuck).
+## shows it with the hand; a step waiting for you to act slows the battle right down while you
+## read, until you do something (anything: a road, a cut, an airstrike...) or for a few seconds
+## at most, so the game never looks stuck. A step gives up after a while too.
 ##   level 1: build a road, take a gray tower, then the enemy (the label shows if you have enough)
 ##   level 2: gather soldiers into one tower, it grows a storey at 10, cut a road
 ##   level 3: cheap towers first, two attacks at once, the 💡 hint
@@ -14,12 +15,15 @@ extends RefCounted
 ## level N) or "time:N" (seconds).
 
 const MAX_WAIT := 30.0
+const HOLD_MAX := 6.0   # how long a step may slow the battle down
+const SLOW := 0.2       # how fast the battle runs meanwhile
 
 var main
 var steps: Array = []
 var i := -1
 var waited := 0.0
 var done := {}          # what you've done since this step began
+var acted := false      # you did something since this step began (ends the slow motion)
 var shown := ""         # this step's text (so finishing doesn't wipe a hint shown meanwhile)
 
 
@@ -69,9 +73,9 @@ func active() -> bool:
 	return i >= 0 and i < steps.size()
 
 
-## The battle waits while a step asks you to do something
+## The battle runs in slow motion while a step asks you to do something
 func holding() -> bool:
-	return active() and steps[i].get("hold", false)
+	return active() and steps[i].get("hold", false) and not acted and waited < HOLD_MAX
 
 
 func waiting_for() -> String:
@@ -87,6 +91,8 @@ func start() -> void:
 func event(what: String) -> void:
 	if active():
 		done[what] = true
+		if what != "capture":
+			acted = true
 
 
 func tick(dt: float) -> void:
@@ -104,6 +110,7 @@ func _next() -> void:
 	i += 1
 	waited = 0.0
 	done.clear()
+	acted = false
 	if not active():
 		# The end: clear the last step's words, unless a hint is showing now
 		if main.hint_text == shown:

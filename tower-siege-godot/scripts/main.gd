@@ -83,7 +83,6 @@ var scene_level := 1
 var scene_theme := ""
 var shake := 0.0
 var quiet := false             # the menu's demo battle makes no sound
-var slow_frames := 0
 const GFX := ["low", "medium", "high"]
 var safe_override := Vector2(-1, -1) # tests pretend the phone has a notch (top, bottom)
 var _back_at := -10000              # when the back button was last pressed on the menu
@@ -145,6 +144,7 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_layout)
 	_layout()
 	apply_gfx()
+	_prefer_60hz()
 	open_menu()
 
 
@@ -218,6 +218,8 @@ func _notification(what: int) -> void:
 	match what:
 		NOTIFICATION_WM_GO_BACK_REQUEST:
 			go_back()
+		NOTIFICATION_APPLICATION_RESUMED:
+			_prefer_60hz()
 		NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_APPLICATION_PAUSED:
 			# A call, the notification shade or another app: the battle waits for you
 			if state == "play" and screen_open == "" and not cutscene.playing():
@@ -300,17 +302,60 @@ func build_scene() -> void:
 	world.build(scene_level * 101 + 7, scene_theme if scene_theme != "" else Levels.theme_for(scene_level), battle)
 
 
-## "auto" starts at Medium and steps down by itself if the phone can't keep up
+## "auto" starts at Medium and steps down by itself if the phone can't keep up; where it got
+## to is remembered (save.gfx_auto), so the next battle starts there
 func apply_gfx() -> void:
 	var g: String = save.gfx
-	world.set_quality(GFX.find(g) if g in GFX else 1)
-	slow_frames = 0
+	if g in GFX:
+		world.reduced = false
+		world.set_quality(GFX.find(g))
+	else:
+		var learned: String = save.get("gfx_auto", "medium")
+		world.reduced = learned == "reduced"
+		world.set_quality(1 if learned == "medium" else 0)
+	_perf = [0.0, 0, 0]
 
 
 func set_gfx(g: String) -> void:
 	save.gfx = g
+	if g == "auto":
+		save.erase("gfx_auto") # look again from Medium
 	write_save()
 	apply_gfx()
+
+
+## Auto graphics: every 2 seconds of battle, if more than a third of the frames came late
+## (under ~48 a second), one step cheaper. _perf = [seconds, frames, late frames]
+var _perf := [0.0, 0, 0]
+
+
+func _watch_speed(delta: float) -> void:
+	if save.gfx != "auto" or state != "play" or screen_open != "" or delta > 0.5 or battle.time < 1.5:
+		return
+	_perf[0] += delta
+	_perf[1] += 1
+	if delta > 1.0 / 48:
+		_perf[2] += 1
+	if _perf[0] < 2.0:
+		return
+	var slow: bool = _perf[2] > _perf[1] / 3
+	_perf = [0.0, 0, 0]
+	if slow and world.lower_quality():
+		save.gfx_auto = "medium" if world.quality > 0 else ("reduced" if world.reduced else "low")
+		ui.toast("Graphics lowered to keep the game smooth")
+
+
+## Phones whose screens run at 90 or 120 Hz are asked for 60 Hz, so every frame lines up with
+## the screen (android/reminders/Screen.java); elsewhere this does nothing
+func _prefer_60hz() -> void:
+	if not PhoneReminders.available():
+		return
+	var cls = JavaClassWrapper.wrap("com.towersiege.reminders.Screen")
+	if cls == null or not cls.has_method("preferRefreshRate"):
+		return
+	var act = Engine.get_singleton("AndroidRuntime").getActivity()
+	if act != null:
+		cls.preferRefreshRate(act, 60.0)
 
 
 ## Settings: watch the opening again (on level 1's map), then back to the menu
@@ -1326,19 +1371,14 @@ func buy(id: String) -> void:
 func _process(delta: float) -> void:
 	var dt := minf(0.05, delta)
 	# Menus and screens don't need 60 frames a second: 30 saves the battery and keeps the
-	# phone cool (installed builds only, so the tests run at full speed)
+	# phone cool (installed builds only, so the tests run at full speed). Battles have no cap:
+	# they follow the screen (vsync), since a timer cap can't line frames up with the screen
+	# and makes the soldiers judder
 	if OS.has_feature("template"):
-		var fps := 60 if state == "play" and screen_open == "" or state == "cutscene" else 30
+		var fps := 0 if state == "play" and screen_open == "" or state == "cutscene" else 30
 		if Engine.max_fps != fps:
 			Engine.max_fps = fps
-	# On Auto, if a battle keeps running below ~35 frames a second, step the graphics down
-	if save.gfx == "auto" and world.quality > 0 and delta < 0.5 and state == "play" and screen_open == "":
-		slow_frames = slow_frames + 1 if delta > 1.0 / 35 else maxi(0, slow_frames - 2)
-		if slow_frames > 150:
-			slow_frames = 0
-			world.lower_quality()
-			if state == "play":
-				ui.toast("Graphics lowered to keep the game smooth")
+	_watch_speed(delta)
 	if state == "play":
 		for i in speed:
 			step(dt)
@@ -1366,8 +1406,10 @@ func step(dt: float) -> void:
 		return
 	if tutor != null:
 		tutor.tick(dt)
-		# A lesson waiting for you to act holds the battle still
+		# A lesson waiting for you to act slows the battle right down while you read
 		if tutor.holding():
+			battle.update(dt * Tutorial.SLOW)
+			replays.tick(battle, dt)
 			check_end()
 			return
 		if not tutor.active() and calm_until < 0:
