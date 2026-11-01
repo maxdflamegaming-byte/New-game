@@ -901,6 +901,7 @@ func _build_menu() -> void:
 	more_panel.add_theme_stylebox_override("panel", box(Color("#24345e"), WHITE, 18, 3, 6))
 	more_panel.position = Vector2(16, 204)
 	more_panel.visible = false
+	more_panel.z_index = 5  # over the level's name band, which is added after it
 	var list := vbox(10)
 	more_panel.add_child(list)
 	for item in [["⚙  Settings", func(): show_screen("settings")], ["❓  How to play", func(): show_screen("help")],
@@ -1602,12 +1603,14 @@ func refresh_looks() -> void:
 			card.set_anchors_preset(Control.PRESET_FULL_RECT)
 			card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			var pic: Texture2D = look_pics.get("%s:%s" % [kind, item.id])
+			# A locked look says how to get it, which can take two lines: the picture makes room
+			var note: bool = not owned and str(item.get("lock", "")) != ""
 			if pic:
 				var tr := TextureRect.new()
 				tr.texture = pic
 				tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 				tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-				tr.custom_minimum_size = Vector2(100, 100)
+				tr.custom_minimum_size = Vector2(84, 84) if note else Vector2(100, 100)
 				tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
 				card.add_child(tr)
 			else:
@@ -1621,7 +1624,7 @@ func refresh_looks() -> void:
 				price = tr("Free!") if open else "🔒 " + tr(Achievements.info(lock.substr(4))[3])
 			elif lock.begins_with("event:"):
 				price = "🎪 " + tr("Weekend event")
-			var price_l := wrapped(label(state if owned else price, 17 if not owned and lock != "" else 20, WHITE, 6), 160)
+			var price_l := wrapped(label(state if owned else price, 15 if note else 20, WHITE, 5), 164)
 			card.add_child(price_l)
 			for c in card.get_children():
 				c.mouse_filter = Control.MOUSE_FILTER_IGNORE

@@ -625,4 +625,7 @@ const T := {
 	"The weekend event has started: %s!": "Hafta sonu etkinliği başladı: %s!",
 	"Frame rate: on": "Kare hızı: açık",
 	"Frame rate: off": "Kare hızı: kapalı",
+	"Win a level with 3 stars": "Bir bölümü 3 yıldızla kazan",
+	"Play a PvP or practice match": "Bir PvP ya da antrenman maçı oyna",
+	"Players": "Oyuncular",
 }

@@ -16,15 +16,16 @@ const DAILY_COINS := 100         # winning today's challenge the first time
 const DAILY_REPLAY_COINS := 20
 
 ## goal and coins: easy, medium, hard. need: the level you must have reached for it to come up.
+## one: the words when the goal is 1 ("Win a level with 3 stars", not "Win 1 levels...")
 const MISSIONS := [
 	{"id": "capture", "text": "Capture %d buildings", "goal": [10, 18, 28], "coins": [40, 60, 90]},
 	{"id": "win", "text": "Win %d levels", "goal": [2, 3, 5], "coins": [40, 60, 90]},
 	{"id": "beat", "text": "Beat %d enemy soldiers", "goal": [80, 160, 300], "coins": [40, 60, 90]},
 	{"id": "roads", "text": "Build %d roads", "goal": [20, 35, 55], "coins": [30, 50, 70]},
-	{"id": "stars3", "text": "Win %d levels with 3 stars", "goal": [1, 2, 3], "coins": [50, 80, 120]},
+	{"id": "stars3", "text": "Win %d levels with 3 stars", "one": "Win a level with 3 stars", "goal": [1, 2, 3], "coins": [50, 80, 120]},
 	{"id": "strike", "text": "Use %d airstrikes", "goal": [2, 3, 5], "coins": [40, 60, 80], "need": 3},
 	{"id": "upgrade", "text": "Upgrade your buildings %d times", "goal": [2, 4, 7], "coins": [40, 60, 90], "need": 8},
-	{"id": "pvp", "text": "Play %d PvP or practice matches", "goal": [1, 2, 3], "coins": [40, 70, 100]},
+	{"id": "pvp", "text": "Play %d PvP or practice matches", "one": "Play a PvP or practice match", "goal": [1, 2, 3], "coins": [40, 70, 100]},
 	{"id": "daily", "text": "Win the daily challenge", "goal": [1, 1, 1], "coins": [80, 80, 80], "need": 5},
 ]
 
@@ -138,6 +139,8 @@ static func mission_text(m: Dictionary) -> String:
 		return I18n.t(m.text) % m.goal
 	for d in MISSIONS:
 		if d.id == m.id:
+			if int(m.goal) == 1 and d.has("one"):
+				return I18n.t(d.one)
 			return I18n.t(d.text) % m.goal if d.text.contains("%d") else I18n.t(d.text)
 	return m.id
 

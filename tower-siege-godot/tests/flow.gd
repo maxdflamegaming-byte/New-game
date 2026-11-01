@@ -631,6 +631,7 @@ func _extras() -> void:
 	var c0 := int(main.save.coins)
 	ok("...and is free once it's earned", Progress.pick_look(main.save, "hat", "pilot") == "" and int(main.save.coins) == c0 and main.save.looks.hat == "pilot")
 	main.save.looks.hat = "helmet"
+	ok("A quest for just one says so in words (not \"Play 1 ... matches\")", Progress.mission_text({"id": "pvp", "goal": 1}) == "Play a PvP or practice match" and Progress.mission_text({"id": "pvp", "goal": 3}) == "Play 3 PvP or practice matches")
 
 
 func _graphics() -> void:

@@ -67,7 +67,10 @@ jobs:
           # A bot plays every story level the way a casual player would: each must be winnable
           timeout 900 "$HOME/godot" --headless --path tower-siege-godot -s tests/levels.gd 2>&1 | tee levels.log
           grep -q "LEVELS DONE 0 failed" levels.log
-          ! grep -q "SCRIPT ERROR" sim.log flow.log levels.log
+          # Every button on every screen, and battles of every kind played with random touches
+          timeout 1200 "$HOME/godot" --headless --path tower-siege-godot -s tests/buttons.gd 2>&1 | tee buttons.log
+          grep -q "BUTTONS DONE 0 failed" buttons.log
+          ! grep -q "SCRIPT ERROR" sim.log flow.log levels.log buttons.log
 
       - name: Play it like a phone (screen shape, notch, touch, back button), with drawing on
         run: |

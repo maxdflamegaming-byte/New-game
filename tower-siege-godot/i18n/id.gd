@@ -625,4 +625,7 @@ const T := {
 	"The weekend event has started: %s!": "Event akhir pekan sudah dimulai: %s!",
 	"Frame rate: on": "Frame rate: nyala",
 	"Frame rate: off": "Frame rate: mati",
+	"Win a level with 3 stars": "Menangkan satu level dengan 3 bintang",
+	"Play a PvP or practice match": "Main satu pertandingan PvP atau latihan",
+	"Players": "Pemain",
 }

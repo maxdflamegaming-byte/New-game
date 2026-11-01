@@ -309,7 +309,7 @@ const T := {
 	"Story scenes: off": "Сюжетные сцены: выкл",
 	"🎬 Watch the story again": "🎬 Посмотреть историю снова",
 	"Press back again to leave the game": "Нажмите «назад» ещё раз, чтобы выйти из игры",
-	"Daily": "Ежедневно",
+	"Daily": "Вызов",
 	"Conquer": "Захват",
 	"Defend the HQ": "Защити штаб",
 	"Capture the radars": "Захвати радары",
@@ -625,4 +625,7 @@ const T := {
 	"The weekend event has started: %s!": "Началось событие выходных: %s!",
 	"Frame rate: on": "Частота кадров: вкл",
 	"Frame rate: off": "Частота кадров: выкл",
+	"Win a level with 3 stars": "Выиграй уровень на 3 звезды",
+	"Play a PvP or practice match": "Сыграй матч PvP или тренировку",
+	"Players": "Игроки",
 }

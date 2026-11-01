@@ -625,4 +625,7 @@ const T := {
 	"The weekend event has started: %s!": "वीकेंड इवेंट शुरू हो गया: %s!",
 	"Frame rate: on": "फ़्रेम रेट: चालू",
 	"Frame rate: off": "फ़्रेम रेट: बंद",
+	"Win a level with 3 stars": "3 स्टार के साथ एक लेवल जीतें",
+	"Play a PvP or practice match": "एक PvP या प्रैक्टिस मैच खेलें",
+	"Players": "खिलाड़ी",
 }
