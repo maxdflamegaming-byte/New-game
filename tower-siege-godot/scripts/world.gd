@@ -314,6 +314,11 @@ func build(seed_value: int, theme_name: String, battle: Battle) -> void:
 	_blob_list.clear()
 	_add_props(props)
 	_make_prop_blobs()
+	# Every size of this map's buildings is made now, while it loads, rather than in the
+	# middle of the battle the first time one grows
+	for t in battle.towers:
+		for lv in range(1, 5):
+			_build_model(t, lv)
 	_warm = 2
 	for t in battle.towers:
 		_sync_tower(t)
@@ -1618,6 +1623,7 @@ func render(dt: float, battle: Battle, highlight: Callable, shells_list: Array) 
 		_end_warm_up()
 	if level_root == null:
 		return
+	var threats := battle.threatened()
 	for t in battle.towers:
 		var info := _sync_tower(t)
 		# Squash and stretch: a springy bounce after growing, a squash when hit
@@ -1634,14 +1640,19 @@ func render(dt: float, battle: Battle, highlight: Callable, shells_list: Array) 
 			info.kick = maxf(0, info.kick - dt * 7)
 			sy -= info.kick * 0.07
 			sx += info.kick * 0.03
-		info.holder.scale = Vector3(S * pop * sx, S * pop * sy, S * pop * sx)
+		var hs := Vector3(S * pop * sx, S * pop * sy, S * pop * sx)
+		if info.holder.scale != hs:
+			info.holder.scale = hs
 		var flash: float = t.flash
 		# Just captured: the old color wipes to the new one through a white flash
 		if info.color_t < 1.0:
 			info.color_t = minf(1.0, info.color_t + dt * 2.5)
 			info.mat.set_shader_parameter("team_color", info.color_from.lerp(_team_lin(t.owner), smoothstep(0.35, 0.65, info.color_t)))
 			flash = maxf(flash, sin(info.color_t * PI) * 0.9)
-		info.mat.set_shader_parameter("hit_flash", flash)
+		# (shader values only sent when they change: each one is a call into the renderer)
+		if info.get("flash_sent", -1.0) != flash:
+			info.flash_sent = flash
+			info.mat.set_shader_parameter("hit_flash", flash)
 		# ... and the new flag is raised up its pole
 		if info.raise > 0:
 			info.raise = maxf(0, info.raise - dt * 1.3)
@@ -1649,12 +1660,13 @@ func render(dt: float, battle: Battle, highlight: Callable, shells_list: Array) 
 			info.flag.position.y = info.flag_y - 36 * r
 			info.flag.scale = Vector3.ONE * (1.0 - r * 0.5)
 		info.flag.rotation.y = sin(time * 4 + t.id) * 0.4
-		if info.range:
+		if info.range and info.get("range_side", -1) != t.owner:
+			info.range_side = t.owner
 			var rc: Color = Color.WHITE if t.owner == 0 else sides[t.owner].light
 			rc.a = 0.75
 			info.range.material_override.set_shader_parameter("color", rc)
 		var hl: String = highlight.call(t)
-		var threat: bool = t.owner == Battle.PLAYER and battle.threat_on(t) > 0
+		var threat: bool = t.owner == Battle.PLAYER and threats.has(t)
 		info.ring.visible = hl != "" or threat
 		if info.ring.visible:
 			var bad := hl == "bad" or hl == "target" or (hl == "" and threat)

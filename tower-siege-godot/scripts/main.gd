@@ -192,7 +192,18 @@ func load_save() -> void:
 
 ## Written to a new file first and then swapped in, so the app being killed mid-write
 ## can't wipe the save; the last good save is kept as a backup
-func write_save() -> void:
+## Saving writes a file, which on a phone can take long enough to make the game stutter, and
+## a battle changes the save often (quests, achievements: every road and capture). So during
+## a battle a save only marks it to be done, and it's written as soon as the battle ends or
+## pauses, or the app goes to the background (now = true writes it straight away)
+var _save_later := false
+
+
+func write_save(now := false) -> void:
+	if not now and state == "play" and screen_open == "" and not quiet:
+		_save_later = true
+		return
+	_save_later = false
 	var tmp := SAVE_PATH + ".tmp"
 	var f := FileAccess.open(tmp, FileAccess.WRITE)
 	if f == null:
@@ -224,10 +235,10 @@ func _notification(what: int) -> void:
 			# A call, the notification shade or another app: the battle waits for you
 			if state == "play" and screen_open == "" and not cutscene.playing():
 				pause()
-			write_save()
+			write_save(true)
 			PhoneReminders.apply(save)
 		NOTIFICATION_WM_CLOSE_REQUEST:
-			write_save()
+			write_save(true)
 			PhoneReminders.apply(save)
 
 
@@ -324,8 +335,8 @@ func set_gfx(g: String) -> void:
 	apply_gfx()
 
 
-## Auto graphics: every 2 seconds of battle, if more than a third of the frames came late
-## (under ~48 a second), one step cheaper. _perf = [seconds, frames, late frames]
+## Auto graphics: every 2 seconds of battle, if more than one frame in five came late (under
+## ~48 a second), one step cheaper. _perf = [seconds, frames, late frames]
 var _perf := [0.0, 0, 0]
 
 
@@ -338,7 +349,7 @@ func _watch_speed(delta: float) -> void:
 		_perf[2] += 1
 	if _perf[0] < 2.0:
 		return
-	var slow: bool = _perf[2] > _perf[1] / 3
+	var slow: bool = _perf[2] * 5 > _perf[1]
 	_perf = [0.0, 0, 0]
 	if slow and world.lower_quality():
 		save.gfx_auto = "medium" if world.quality > 0 else ("reduced" if world.reduced else "low")
@@ -1368,7 +1379,11 @@ func buy(id: String) -> void:
 
 
 # ---------- Each frame ----------
+var cpu_ms := 0.0  # how long the game's own work takes a frame (for Settings → Frame rate)
+
+
 func _process(delta: float) -> void:
+	var t_start := Time.get_ticks_usec()
 	var dt := minf(0.05, delta)
 	# Menus and screens don't need 60 frames a second: 30 saves the battery and keeps the
 	# phone cool (installed builds only, so the tests run at full speed). Battles have no cap:
@@ -1379,6 +1394,8 @@ func _process(delta: float) -> void:
 		if Engine.max_fps != fps:
 			Engine.max_fps = fps
 	_watch_speed(delta)
+	if _save_later and (state != "play" or screen_open != ""):
+		write_save()
 	if state == "play":
 		for i in speed:
 			step(dt)
@@ -1389,9 +1406,11 @@ func _process(delta: float) -> void:
 	for d in drags.values():
 		d.over = tower_at(d.pos, 1.2)
 	world.render(dt, battle, highlight, shells)
-	shake = maxf(0, shake - dt * 30)
-	world.camera.h_offset = (randf() - 0.5) * shake * 0.6 if shake > 0 else 0.0
-	world.camera.v_offset = (randf() - 0.5) * shake * 0.6 if shake > 0 else 0.0
+	if shake > 0 or world.camera.h_offset != 0.0 or world.camera.v_offset != 0.0:
+		shake = maxf(0, shake - dt * 30)
+		world.camera.h_offset = (randf() - 0.5) * shake * 0.6 if shake > 0 else 0.0
+		world.camera.v_offset = (randf() - 0.5) * shake * 0.6 if shake > 0 else 0.0
+	cpu_ms = lerpf(cpu_ms, (Time.get_ticks_usec() - t_start) / 1000.0 + overlay.draw_ms, 0.05)
 
 
 func step(dt: float) -> void:

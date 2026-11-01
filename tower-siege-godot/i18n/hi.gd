@@ -623,4 +623,6 @@ const T := {
 	"Your daily reward is ready. Come and collect it!": "तुम्हारा दैनिक इनाम तैयार है। आकर ले लो!",
 	"Last day of the weekend event! Win it for a look you can't buy.": "वीकेंड इवेंट का आख़िरी दिन! जीतो और ऐसी सजावट पाओ जो ख़रीदी नहीं जा सकती।",
 	"The weekend event has started: %s!": "वीकेंड इवेंट शुरू हो गया: %s!",
+	"Frame rate: on": "फ़्रेम रेट: चालू",
+	"Frame rate: off": "फ़्रेम रेट: बंद",
 }

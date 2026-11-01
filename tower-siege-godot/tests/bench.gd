@@ -29,6 +29,8 @@ func _run() -> void:
 			if a == "nomsaa": root.msaa_3d = Viewport.MSAA_DISABLED
 			if a == "half": root.scaling_3d_scale = 0.5
 			if a == "noshadow": main.world.sun.shadow_enabled = false
+			if a == "noui": main.ui.visible = false
+			if a == "nooverlay": main.overlay.visible = false
 			if a == "no2d":
 				main.ui.visible = false
 				main.overlay.visible = false

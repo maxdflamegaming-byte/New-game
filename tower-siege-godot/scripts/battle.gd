@@ -87,6 +87,7 @@ class Unit:
 	var y := 0.0
 	var dead := false
 	var tank := false      # started out as a tank (for how it's drawn when knocked out)
+	var length := 0.0      # its road's length (worked out once)
 
 
 class Wall:
@@ -333,9 +334,12 @@ func spawn_unit(from: Tower, to: Tower, power: int) -> void:
 
 ## A soldier's place on its road; returns the road's length
 func place_unit(u: Unit) -> float:
-	var L := dist(u.from.x, u.from.y, u.to.x, u.to.y)
+	var L := u.length
 	if L <= 0.0:
-		L = 1.0
+		L = dist(u.from.x, u.from.y, u.to.x, u.to.y)
+		if L <= 0.0:
+			L = 1.0
+		u.length = L
 	var k := minf(1.0, u.d / L)
 	var nx := -(u.to.y - u.from.y) / L
 	var ny := (u.to.x - u.from.x) / L
@@ -446,12 +450,18 @@ func _fight() -> void:
 	const R := 22.0
 	const CELL := 40.0
 	var grid := {}
+	# Which army a cell holds, or -1 when it holds more than one: most cells are a single
+	# column of one army, which a soldier of that army can skip without looking inside
+	var held := {}
 	for u in units:
 		if u.dead:
 			continue
 		var key := Vector2i(floori(u.x / CELL), floori(u.y / CELL))
 		if not grid.has(key):
 			grid[key] = []
+			held[key] = u.owner
+		elif held[key] != u.owner:
+			held[key] = -1
 		grid[key].append(u)
 	for u in units:
 		if u.dead:
@@ -462,8 +472,9 @@ func _fight() -> void:
 			for dy in range(-1, 2):
 				if u.dead:
 					break
-				var list = grid.get(Vector2i(cx + dx, cy + dy))
-				if list == null:
+				var key := Vector2i(cx + dx, cy + dy)
+				var list = grid.get(key)
+				if list == null or held[key] == u.owner:
 					continue
 				for v in list:
 					if v.dead or v == u or v.owner == u.owner:
@@ -534,6 +545,15 @@ func threat_on(t: Tower) -> int:
 		if u.to == t and u.owner != t.owner:
 			n += u.power
 	return n
+
+
+## For every tower, whether enemies are marching on it now (one pass instead of one per tower)
+func threatened() -> Dictionary:
+	var out := {}
+	for u in units:
+		if u.owner != u.to.owner:
+			out[u.to] = true
+	return out
 
 
 ## `side`'s own strength heading for tower t

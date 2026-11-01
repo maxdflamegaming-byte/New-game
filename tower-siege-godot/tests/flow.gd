@@ -654,6 +654,12 @@ func _graphics() -> void:
 	for side in main.battle.ai_sides:
 		side.timer = 1e9
 	var slow_ok: bool = main.state == "play" and main.screen_open == ""
+	main.mission("roads")
+	ok("During a battle a save waits (writing a file made the phone stutter)", main._save_later)
+	main.pause()
+	main._process(0.02)
+	ok("...and is written as soon as the battle pauses", not main._save_later)
+	main.resume()
 	for i in 70:
 		main._process(0.06)
 	ok("Auto steps the graphics down when a battle runs slowly", slow_ok and w.quality == 0 and main.save.get("gfx_auto", "") == "low", "state ok %s, quality %d" % [slow_ok, w.quality])

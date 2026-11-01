@@ -7,6 +7,7 @@ extends Control
 var main # main.gd
 var font: Font
 var show_labels := true
+var draw_ms := 0.0      # how long the last frame's drawing took
 
 
 func _ready() -> void:
@@ -19,8 +20,15 @@ func _process(_dt: float) -> void:
 	queue_redraw()
 
 
+## Text sizes are rounded to steps of 4: every new size makes the phone draw the letters again
+## (and their outlines), which froze it for a moment when numbers swelled and shrank
+static func step_size(size: float) -> int:
+	return maxi(8, roundi(size / 4.0) * 4)
+
+
 func outlined(text: String, pos: Vector2, size: int, fill: Color, stroke: Color) -> void:
 	text = tr(text)
+	size = step_size(size)
 	var w := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
 	var p := pos + Vector2(-w / 2, size * 0.35)
 	draw_string_outline(font, p, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, maxi(3, int(size * 0.24)), stroke)
@@ -28,6 +36,12 @@ func outlined(text: String, pos: Vector2, size: int, fill: Color, stroke: Color)
 
 
 func _draw() -> void:
+	var t0 := Time.get_ticks_usec()
+	_draw_all()
+	draw_ms = (Time.get_ticks_usec() - t0) / 1000.0
+
+
+func _draw_all() -> void:
 	if main == null or main.battle == null or main.world == null:
 		return
 	var b: Battle = main.battle
@@ -105,7 +119,7 @@ func _labels(towers: Array, w: World) -> void:
 	for t in towers:
 		var s := w.tower_screen(t)
 		# The number swells when soldiers arrive or the building changes hands
-		var size := int(clampf(w.px_per_unit(t.x, t.y) * 50, 18, 42) * (1.0 + t.pop * 0.14))
+		var size := step_size(clampf(w.px_per_unit(t.x, t.y) * 50, 18, 42) * (1.0 + t.pop * 0.14))
 		var n := floori(maxf(0, t.units))
 		var text := "Max" if n >= Battle.CAP else str(n)
 		if t.type == "factory":
@@ -170,7 +184,7 @@ func _marks(w: World) -> void:
 		draw_circle(c + Vector2(0, 3), size * 0.62, Color(0.05, 0.1, 0.2, 0.3))
 		draw_circle(c, size * 0.62, Color.WHITE)
 		draw_arc(c, size * 0.62, 0, TAU, 32, col, 3.5, true)
-		var fs := int(size * 0.66)
+		var fs := step_size(size * 0.66)
 		var tw := font.get_string_size(m[1], HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 		draw_string(font, c + Vector2(-tw / 2, fs * 0.36), m[1], HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
 

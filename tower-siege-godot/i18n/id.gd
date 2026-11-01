@@ -623,4 +623,6 @@ const T := {
 	"Your daily reward is ready. Come and collect it!": "Hadiah harianmu sudah siap. Ayo ambil!",
 	"Last day of the weekend event! Win it for a look you can't buy.": "Hari terakhir event akhir pekan! Menangkan untuk gaya yang tak bisa dibeli.",
 	"The weekend event has started: %s!": "Event akhir pekan sudah dimulai: %s!",
+	"Frame rate: on": "Frame rate: nyala",
+	"Frame rate: off": "Frame rate: mati",
 }

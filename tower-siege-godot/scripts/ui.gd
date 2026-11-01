@@ -74,6 +74,8 @@ var lose_tip: Label
 var vibrate_btn: Button
 var cutscenes_btn: Button
 var reminders_btn: Button
+var fps_btn: Button
+var fps_label: Label  # Settings → Frame rate: what the phone manages, for checking speed
 var stats_btn: Button
 var gfx_btns := {}
 var lang_btns := {}
@@ -167,6 +169,7 @@ func fit_safe(top: float, bottom: float) -> void:
 	var bar: Control = hud.get_child(0)
 	bar.offset_top = 14 + top
 	objective.get_parent().offset_top = 90 + top
+	fps_label.position.y = 150 + top
 	abilities.offset_bottom = -18 - bottom
 	abilities.offset_top = -122 - bottom
 	hint_panel.offset_bottom = -150 - bottom
@@ -484,11 +487,12 @@ func _build_hud() -> void:
 	bar.add_child(level_label.get_parent())
 	var bar_frame := PanelContainer.new()
 	var fs := box(Color(1, 1, 1, 0.85), INK, 16, 3, 0)
-	fs.set_content_margin_all(0)
+	fs.set_content_margin_all(3)
 	bar_frame.add_theme_stylebox_override("panel", fs)
 	bar_frame.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar_frame.custom_minimum_size.y = 34
-	bar_frame.clip_children = CanvasItem.CLIP_CHILDREN_AND_DRAW
+	# (no clip_children here: clipping draws the bar into a picture of its own every frame,
+	# which is slow on phones; the end pieces get rounded corners instead, in update_hud)
 	bar_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	power_bar = HBoxContainer.new()
 	power_bar.add_theme_constant_override("separation", 0)
@@ -506,6 +510,11 @@ func _build_hud() -> void:
 	op.offset_top = 90
 	op.visible = false
 	hud.add_child(op)
+	fps_label = label("", 16, WHITE, 4)
+	fps_label.position = Vector2(16, 150)
+	fps_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fps_label.visible = false
+	hud.add_child(fps_label)
 	speed_btn = button("1×", "blue", 26, func(): main.toggle_speed())
 	speed_btn.custom_minimum_size = Vector2(64, 64)
 	bar.add_child(speed_btn)
@@ -651,12 +660,25 @@ func update_hud() -> void:
 			l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 			r.add_child(l)
 			power_bar.add_child(r)
+	var parts := []
 	for r in power_bar.get_children():
 		if r.is_queued_for_deletion():
 			continue
 		var sd: int = r.get_meta("side")
 		r.set_meta("want", maxf(0.001, tot[sd] / sum))
 		r.get_child(0).text = str(floori(tot[sd])) if sd != 0 and tot[sd] / sum > 0.12 else ""
+		if tot[sd] / sum > 0.01:
+			parts.append(r)
+	# Round the outer corners of the first and last pieces that show, to fit the frame
+	for i in parts.size():
+		var sb: StyleBoxFlat = parts[i].get_theme_stylebox("panel")
+		var left := 13 if i == 0 else 0
+		var right := 13 if i == parts.size() - 1 else 0
+		if sb.corner_radius_top_left != left or sb.corner_radius_top_right != right:
+			sb.corner_radius_top_left = left
+			sb.corner_radius_bottom_left = left
+			sb.corner_radius_top_right = right
+			sb.corner_radius_bottom_right = right
 	var t: float = b.time if main.mode == "campaign" or main.mode == "replay" else maxf(0, Net.PVP_TIME - b.time)
 	time_label.text = "%d:%02d" % [floori(t / 60), floori(fmod(t, 60))]
 	time_label.add_theme_color_override("font_color", Color("#fff3a0") if main.mode != "campaign" and t < 20 else WHITE)
@@ -665,6 +687,13 @@ func update_hud() -> void:
 		var hurry := Missions.urgent(main.goal, b)
 		objective.add_theme_color_override("font_color", Color("#ffe14d") if hurry and int(b.time * 2) % 2 == 0 else WHITE)
 	refresh_abilities()
+	fps_label.visible = bool(main.save.get("show_fps", false))
+	if fps_label.visible:
+		var px := Vector2(DisplayServer.window_get_size()) * get_viewport().scaling_3d_scale
+		var q: String = main.save.gfx
+		if q == "auto":
+			q += " (%s%s)" % [["low", "medium", "high"][main.world.quality], ", smaller" if main.world.reduced else ""]
+		fps_label.text = "%d fps · %s · 3D %dx%d · game %.1f ms" % [Engine.get_frames_per_second(), q, px.x, px.y, main.cpu_ms]
 
 
 func refresh_abilities() -> void:
@@ -1049,6 +1078,7 @@ func refresh_toggles() -> void:
 		vibrate_btn.text = "Vibration: on" if main.save.vibrate else "Vibration: off"
 		cutscenes_btn.text = "Story scenes: on" if main.save.cutscenes else "Story scenes: off"
 		reminders_btn.text = "Reminders: on" if main.save.get("reminders", true) else "Reminders: off"
+		fps_btn.text = "Frame rate: on" if main.save.get("show_fps", false) else "Frame rate: off"
 		stats_btn.text = "Share anonymous level stats: on" if main.save.get("stats", true) else "Share anonymous level stats: off"
 		for g in gfx_btns:
 			var on: bool = main.save.gfx == g
@@ -1637,8 +1667,14 @@ func _build_settings() -> void:
 		main.write_save()
 		PhoneReminders.apply(main.save)
 		refresh_toggles())
-	reminders_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	v.add_child(reminders_btn)
+	fps_btn = button("Frame rate: off", "blue", 22, func():
+		main.save.show_fps = not bool(main.save.get("show_fps", false))
+		main.write_save()
+		refresh_toggles())
+	var row_r := hbox(10)
+	row_r.add_child(reminders_btn)
+	row_r.add_child(fps_btn)
+	v.add_child(row_r)
 	var watch := button("🎬 Watch the story again", "blue", 22, func(): main.watch_story())
 	var lessons := button("🎓 Play the lessons again", "blue", 22, func(): main.replay_lessons())
 	var row3 := hbox(10)
