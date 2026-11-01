@@ -51,7 +51,7 @@ func _drag(index: int, from: Vector2, to: Vector2) -> void:
 
 func _run() -> void:
 	await _frames(10)
-	ok("The daily reward pops up on the first visit of the day", main.screen_open == "reward" and main.state == "menu" and main.battle.towers.size() > 4)
+	ok("The daily reward pops up on the first visit of the day", main.screen_open == "reward" and main.state == "menu" and main.battle.towers.size() > 0 and main.scene_level == 1)
 	main.ui.reward_btn.pressed.emit()
 	await _frames(2)
 	ok("Collecting it pays day 1's coins and opens the menu", int(main.save.coins) == 20 and int(main.save.streak.count) == 1 and main.screen_open == "menu")
@@ -377,7 +377,12 @@ func _run() -> void:
 	var before := int(main.save.coins)
 	main.ui.show_screen("missions")
 	await _frames(2)
+	main.save.quest = {"day": -1, "points": 0, "opened": []}
 	ok("A finished mission can be collected", Progress.claim_mission(main.save, 0) == int(m0.coins) and int(main.save.coins) == before + int(m0.coins))
+	ok("...and it earns quest points: the first chests are ready", int(Progress.quest(main.save).points) == Progress.QUEST_POINTS and Progress.chests_ready(main.save) == 1)
+	var c0 := int(main.save.coins)
+	ok("A ready chest opens once, for its coins", Progress.open_chest(main.save, 0) == int(Progress.CHESTS[0].coins) and int(main.save.coins) == c0 + int(Progress.CHESTS[0].coins) and Progress.open_chest(main.save, 0) == 0)
+	ok("A chest further along waits for more points", not Progress.chest_ready(main.save, 2) and Progress.open_chest(main.save, 2) == 0)
 	ok("Only once", Progress.claim_mission(main.save, 0) == 0)
 
 	# Looks

@@ -103,6 +103,14 @@ func _run() -> void:
 			main.battle.update(0.05)
 		main.upgrade_offer = {"t": t, "life": 2.5}
 		await _frames(20)
+	elif what == "quests":
+		var list := Progress.missions(main.save)
+		list[0].have = list[0].goal
+		Progress.claim_reward(main.save)
+		Progress.claim_mission(main.save, 0)
+		list[1].have = 1
+		main.ui.show_screen("missions")
+		await _frames(40)
 	elif what == "looks":
 		main.save.coins = 500
 		main.ui.show_screen(what)
@@ -122,13 +130,15 @@ func _run() -> void:
 		main.start_level(4)
 		await _frames(5)
 		main.ui.show_win(3, 33, "Rally unlocked! Double your marching power for 8 seconds.", 41.0, {"captured": 6, "killed": 40})
-		await _frames(60)
+		await _frames(120)
 	elif what == "lose":
 		main.start_level(4)
 		await _frames(5)
 		main.show_lose()
 		await _frames(20)
 	elif what == "menu":
+		if OS.get_environment("AT_LEVEL") != "":
+			main.save.level = int(OS.get_environment("AT_LEVEL"))
 		main.reward_shown_day = Progress.today()
 		main.open_menu()
 		await _frames(60)

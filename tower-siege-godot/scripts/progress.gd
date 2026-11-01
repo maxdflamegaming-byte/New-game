@@ -1,11 +1,17 @@
 class_name Progress
 extends RefCounted
 ## Things that bring you back each day, kept in the save: a daily reward that grows over a
-## 7-day streak, 3 daily missions (the same for everyone each day), the daily challenge, and
+## 7-day streak, 3 daily quests (the same for everyone each day) whose points open chests, the
+## daily challenge, and
 ## Looks (hats for your soldiers and flags for your buildings, bought with coins).
 ## Days are counted in UTC, so a new day starts at the same moment everywhere.
 
 const STREAK_COINS := [20, 30, 40, 50, 60, 80, 150]
+## Quest points: collecting the daily reward and each finished quest adds points for the day,
+## and chests along the quests' track open at set points
+const REWARD_POINTS := 10
+const QUEST_POINTS := 20
+const CHESTS := [{"at": 10, "coins": 15}, {"at": 30, "coins": 30}, {"at": 50, "coins": 50}, {"at": 70, "coins": 100}]
 const DAILY_COINS := 100         # winning today's challenge the first time
 const DAILY_REPLAY_COINS := 20
 
@@ -49,6 +55,7 @@ static func defaults() -> Dictionary:
 		"streak": {"day": -1, "count": 0},
 		"missions": {"day": -1, "list": []},
 		"daily_won": -1,
+		"quest": {"day": -1, "points": 0, "opened": []},
 		"looks": {"hat": "helmet", "flag": "plain", "owned": ["helmet", "plain"]},
 	}
 
@@ -74,6 +81,7 @@ static func claim_reward(save: Dictionary, day := today()) -> int:
 	save.streak = {"day": day, "count": n}
 	var coins: int = STREAK_COINS[n - 1]
 	save.coins = int(save.coins) + coins
+	add_points(save, REWARD_POINTS, day)
 	return coins
 
 
@@ -131,7 +139,40 @@ static func claim_mission(save: Dictionary, index: int) -> int:
 		return 0
 	m.claimed = true
 	save.coins = int(save.coins) + int(m.coins)
+	add_points(save, QUEST_POINTS)
 	return int(m.coins)
+
+
+# ---------- Quest points and chests ----------
+## Today's points and the chests opened (a new day starts again from 0)
+static func quest(save: Dictionary, day := today()) -> Dictionary:
+	if not save.has("quest") or int(save.quest.day) != day:
+		save.quest = {"day": day, "points": 0, "opened": []}
+	return save.quest
+
+
+static func add_points(save: Dictionary, n: int, day := today()) -> void:
+	var q := quest(save, day)
+	q.points = int(q.points) + n
+
+
+static func chest_ready(save: Dictionary, i: int) -> bool:
+	var q := quest(save)
+	return int(q.points) >= int(CHESTS[i].at) and not (i in q.opened.map(func(x): return int(x)))
+
+
+static func chests_ready(save: Dictionary) -> int:
+	return range(CHESTS.size()).filter(func(i): return chest_ready(save, i)).size()
+
+
+## Open a chest; returns its coins (0 if it isn't ready)
+static func open_chest(save: Dictionary, i: int) -> int:
+	if i < 0 or i >= CHESTS.size() or not chest_ready(save, i):
+		return 0
+	quest(save).opened.append(i)
+	var coins := int(CHESTS[i].coins)
+	save.coins = int(save.coins) + coins
+	return coins
 
 
 # ---------- Looks ----------

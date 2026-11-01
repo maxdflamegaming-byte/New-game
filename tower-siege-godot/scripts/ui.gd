@@ -61,6 +61,10 @@ var win_stars: Array[Label] = []
 var win_stats: HBoxContainer
 var win_coins: Label
 var win_unlock: Label
+var win_rays: TextureRect
+var win_face: TextureRect
+var win_land: Label
+var win_land_bar: ProgressBar
 var next_btn: Button
 var ad_btn: Button
 var win_ribbon: Control
@@ -79,6 +83,7 @@ var reward_title: Label
 var reward_btn: Button
 var mission_list: VBoxContainer
 var mission_streak: Label
+var quest_track: Control          # the chest track on Quests
 var looks_lists := {}
 var looks_coins: Label
 var look_pics := {}           # "hat:crown" -> a picture of it (made the first time Looks opens)
@@ -118,6 +123,8 @@ func build() -> void:
 
 
 func _process(dt: float) -> void:
+	if main != null and main.screen_open == "win":
+		win_rays.rotation += dt * 0.35
 	if main == null or main.screen_open != "menu":
 		return
 	# On the menu the title bobs and tilts, and PLAY gently breathes
@@ -698,54 +705,201 @@ func toast(text: String, seconds := 2.2) -> void:
 var menu_badges := {}            # tile id -> its little red badge (Label inside a panel)
 
 
+## The home screen, over the map of the level you play next: your name and coins at the top,
+## ☰ (settings, help, leaderboard, looks) and 📜 Quests under them, the level's number and
+## mission in the middle, a big PLAY, the daily challenge beside it, and a bar of tabs along
+## the bottom that open up as you go through the levels
+const TABS := [
+	{"id": "shop", "icon": "🛒", "text": "Shop", "unlock": 4},
+	{"id": "levels", "icon": "🗺", "text": "Map", "unlock": 2},
+	{"id": "home", "icon": "⚔", "text": "Battle", "unlock": 1},
+	{"id": "pvp", "icon": "🏆", "text": "PvP", "unlock": 6},
+	{"id": "clans", "icon": "🛡", "text": "Clans", "unlock": 10},
+]
+const DAILY_UNLOCK := 8
+var tab_btns := {}                # tab id -> its button
+var menu_level: Label             # "LEVEL 7" over the map
+var menu_mission: Label           # the mission's code name and goal
+var menu_name: Label
+var menu_face: TextureRect
+var more_panel: PanelContainer    # what ☰ opens
+
+
 func _build_menu() -> void:
-	var col := screen("menu", Color(0.1, 0.25, 0.55, 0.18))
-	var coins_row := hbox()
-	coins_row.alignment = BoxContainer.ALIGNMENT_END
+	var root := Control.new()
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_STOP
+	root.visible = false
+	# Shade at the top and bottom, so the bars stand out from the map
+	var shade := TextureRect.new()
+	var g := Gradient.new()
+	g.offsets = PackedFloat32Array([0.0, 0.2, 0.72, 1.0])
+	g.colors = PackedColorArray([Color(0.06, 0.1, 0.25, 0.55), Color(0.06, 0.1, 0.25, 0.0), Color(0.06, 0.1, 0.25, 0.0), Color(0.06, 0.1, 0.25, 0.6)])
+	var gt := GradientTexture2D.new()
+	gt.gradient = g
+	gt.fill_from = Vector2(0, 0)
+	gt.fill_to = Vector2(0, 1)
+	gt.width = 8
+	gt.height = 256
+	shade.texture = gt
+	shade.stretch_mode = TextureRect.STRETCH_SCALE
+	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(shade)
+	var frame := Control.new()       # (fit_safe keeps it clear of a notch)
+	frame.set_anchors_preset(Control.PRESET_FULL_RECT)
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(frame)
+	add_child(root)
+	screens["menu"] = root
+
+	# Top bar: your captain's face and name, and your coins
+	var bar := PanelContainer.new()
+	var bs := box(Color("#24345e"), Color("#101a38"), 0, 0, 0)
+	bs.bg_color.a = 0.86
+	bs.set_content_margin_all(10)
+	bar.add_theme_stylebox_override("panel", bs)
+	bar.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	bar.offset_bottom = 92
+	frame.add_child(bar)
+	var row := hbox(12)
+	bar.add_child(row)
+	var face := PanelContainer.new()
+	face.add_theme_stylebox_override("panel", box(Color("#3a9df3"), WHITE, 16, 3, 0))
+	face.custom_minimum_size = Vector2(70, 70)
+	var helmet := label("🎖", 40, WHITE, 0)
+	helmet.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	face.add_child(helmet)
+	menu_face = TextureRect.new()
+	menu_face.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	menu_face.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	face.add_child(menu_face)
+	row.add_child(face)
+	menu_name = label("", 28, WHITE, 6)
+	menu_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	menu_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	menu_name.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	row.add_child(menu_name)
 	menu_coins = _pill("0")
 	menu_coins.add_theme_font_size_override("font_size", 30)
-	coins_row.add_child(menu_coins.get_parent())
-	col.add_child(coins_row)
-	# The title: big, chunky letters with a deep outline and a drop shadow
-	var title := vbox(0)
-	for part in [["TOWER", YELLOW, Color("#b35a00")], ["SIEGE", Color("#ff6fb5"), Color("#8a1f5a")]]:
-		var t := label(part[0], 128, part[1], 22)
-		t.add_theme_color_override("font_outline_color", part[2])
-		t.add_theme_color_override("font_shadow_color", Color(0.05, 0.1, 0.3, 0.45))
-		t.add_theme_constant_override("shadow_offset_y", 9)
-		t.add_theme_constant_override("shadow_outline_size", 22)
-		t.add_theme_constant_override("line_spacing", -34)
-		title_labels.append(t)
-		title.add_child(t)
-	col.add_child(title)
-	col.add_child(spacer(18))
-	play_btn = button("PLAY", "yellow", 54, func(): show_brief(mini(main.save.level, Levels.LAST_LEVEL), "menu"))
-	play_btn.custom_minimum_size = Vector2(470, 124)
-	play_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	col.add_child(play_btn)
-	var pvp := button("⚔ PvP", "red", 40, func(): main.net.open_pvp())
-	pvp.custom_minimum_size = Vector2(470, 92)
-	pvp.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	col.add_child(pvp)
-	col.add_child(spacer(6))
-	# Everything else: a grid of picture tiles
-	var grid := GridContainer.new()
-	grid.columns = 3
-	grid.add_theme_constant_override("h_separation", 14)
-	grid.add_theme_constant_override("v_separation", 14)
-	grid.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	daily_btn = tile("daily", "📅", "Daily", "green", func(): main.start_daily())
-	missions_btn = tile("missions", "🎁", "Missions", "orange", func(): show_screen("missions"))
-	for b in [daily_btn, missions_btn,
-			tile("looks", "🎨", "Looks", "purple", func(): show_screen("looks")),
-			tile("levels", "🗺", "Campaign", "blue", func(): show_screen("levels")),
-			tile("shop", "🔨", "Upgrades", "blue", func(): show_screen("shop")),
-			tile("board", "🏆", "Leaderboard", "blue", func(): main.net.open_board()),
-			tile("clans", "🛡", "Clans", "blue", func(): main.net.open_clans()),
-			tile("settings", "⚙", "Settings", "white", func(): show_screen("settings")),
-			tile("help", "❓", "How to play", "white", func(): show_screen("help"))]:
-		grid.add_child(b)
-	col.add_child(grid)
+	menu_coins.get_parent().size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(menu_coins.get_parent())
+
+	# ☰ on the left, 📜 Quests on the right
+	var more := button("☰", "blue", 40, func(): more_panel.visible = not more_panel.visible)
+	more.custom_minimum_size = Vector2(88, 88)
+	more.position = Vector2(16, 108)
+	frame.add_child(more)
+	missions_btn = _side_button("missions", "📜", "Quests", "orange", func(): show_screen("missions"))
+	missions_btn.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	missions_btn.offset_left = -124
+	missions_btn.offset_right = -16
+	missions_btn.offset_top = 104
+	missions_btn.offset_bottom = 212
+	frame.add_child(missions_btn)
+	more_panel = PanelContainer.new()
+	more_panel.add_theme_stylebox_override("panel", box(Color("#24345e"), WHITE, 18, 3, 6))
+	more_panel.position = Vector2(16, 204)
+	more_panel.visible = false
+	var list := vbox(10)
+	more_panel.add_child(list)
+	for item in [["⚙  Settings", func(): show_screen("settings")], ["❓  How to play", func(): show_screen("help")],
+			["🏆  Leaderboard", func(): main.net.open_board()], ["🎨  Looks", func(): show_screen("looks")]]:
+		var on: Callable = item[1]
+		var b := button(item[0], "blue", 24, func():
+			more_panel.visible = false
+			on.call())
+		b.custom_minimum_size = Vector2(280, 70)
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		list.add_child(b)
+	frame.add_child(more_panel)
+
+	# The level you play next, over its map
+	var mid := vbox(4)
+	mid.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	mid.offset_top = 226
+	mid.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.add_child(mid)
+	var band := PanelContainer.new()
+	var bandst := StyleBoxFlat.new()
+	bandst.bg_color = Color(0.13, 0.4, 0.85, 0.72)
+	bandst.content_margin_top = 4
+	bandst.content_margin_bottom = 6
+	band.add_theme_stylebox_override("panel", bandst)
+	band.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	menu_level = label("", 64, WHITE, 14)
+	menu_level.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	menu_level.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	band.add_child(menu_level)
+	mid.add_child(band)
+	menu_mission = label("", 26, WHITE, 8)
+	menu_mission.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	menu_mission.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	mid.add_child(menu_mission)
+
+	# PLAY, and the daily challenge beside it
+	play_btn = button("PLAY", "green", 64, func(): show_brief(mini(main.save.level, Levels.LAST_LEVEL), "menu"))
+	play_btn.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	play_btn.offset_left = -190
+	play_btn.offset_right = 190
+	play_btn.offset_top = -290
+	play_btn.offset_bottom = -170
+	frame.add_child(play_btn)
+	daily_btn = _side_button("daily", "📅", "Daily", "purple", _daily)
+	daily_btn.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	daily_btn.offset_left = -124
+	daily_btn.offset_right = -16
+	daily_btn.offset_top = -284
+	daily_btn.offset_bottom = -176
+	frame.add_child(daily_btn)
+
+	# The tabs
+	var tabs := PanelContainer.new()
+	var ts := box(Color("#24345e"), Color("#101a38"), 0, 0, 0)
+	ts.bg_color.a = 0.94
+	ts.set_content_margin_all(6)
+	tabs.add_theme_stylebox_override("panel", ts)
+	tabs.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	tabs.offset_top = -138
+	frame.add_child(tabs)
+	var trow := hbox(6)
+	trow.alignment = BoxContainer.ALIGNMENT_CENTER
+	tabs.add_child(trow)
+	for t in TABS:
+		var id: String = t.id
+		var b := tile(id, t.icon, t.text, "blue" if id == "home" else "gray", func(): _open_tab(id))
+		b.custom_minimum_size = Vector2(132, 124)
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tab_btns[id] = b
+		trow.add_child(b)
+
+
+## A round-cornered square button at the side of the home screen: a picture over a word
+func _side_button(id: String, icon: String, text: String, kind: String, on_press: Callable) -> Button:
+	var b := tile(id, icon, text, kind, on_press)
+	b.custom_minimum_size = Vector2(108, 108)
+	b.add_theme_font_size_override("font_size", 18)
+	var dot: Control = menu_badges[id].get_parent()
+	dot.position = Vector2(78, -12)
+	return b
+
+
+## A tab on the home screen: what it opens, or when it opens up
+func _open_tab(id: String) -> void:
+	var t: Dictionary = TABS.filter(func(x): return x.id == id)[0]
+	if int(main.save.level) < int(t.unlock):
+		main.play_sound("beep")
+		toast(tr("Unlocks at level %d") % int(t.unlock))
+		return
+	match id:
+		"shop":
+			show_screen("shop")
+		"levels":
+			show_screen("levels")
+		"pvp":
+			main.net.open_pvp()
+		"clans":
+			main.net.open_clans()
 
 
 ## A menu tile: a big picture over its name, and a little red badge for news (hidden)
@@ -874,18 +1028,23 @@ func refresh_reward() -> void:
 # ---------- Missions ----------
 func _build_missions() -> void:
 	var col := screen("missions")
-	col.add_child(ribbon("Missions"))
+	col.add_child(ribbon("Quests"))
+	# The chest track: today's quest points fill it, and its chests open at set points
+	quest_track = Control.new()
+	quest_track.custom_minimum_size = Vector2(620, 236)
+	col.add_child(quest_track)
 	mission_streak = wrapped(label("", 22, WHITE, 5, font_m), 600)
 	col.add_child(mission_streak)
 	mission_list = vbox(12)
 	col.add_child(mission_list)
-	col.add_child(wrapped(label("New missions every day. They're the same for everyone.", 18, WHITE, 4, font_m), 600))
+	col.add_child(wrapped(label("New quests every day, the same for everyone. Each one you collect earns ⭐ points that open the chests.", 18, WHITE, 4, font_m), 600))
 	col.add_child(back_button())
 
 
 func refresh_missions() -> void:
 	for c in mission_list.get_children():
 		c.queue_free()
+	_refresh_track()
 	if Progress.reward_ready(main.save):
 		var rb := button(tr("🎁 Collect your daily reward (day %d)") % Progress.streak_next(main.save), "yellow", 24, func(): show_screen("reward"))
 		mission_list.add_child(rb)
@@ -912,7 +1071,7 @@ func refresh_missions() -> void:
 		var fill := box(YELLOW, INK, 10, 2, 0)
 		bar.add_theme_stylebox_override("fill", fill)
 		info.add_child(bar)
-		var count := label("%d / %d" % [int(m.have), int(m.goal)], 18, WHITE, 4)
+		var count := label("%d / %d   ·   ⭐ +%d" % [int(m.have), int(m.goal), Progress.QUEST_POINTS], 18, WHITE, 4)
 		count.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 		info.add_child(count)
 		h.add_child(info)
@@ -930,6 +1089,57 @@ func refresh_missions() -> void:
 		h.add_child(b)
 		row.add_child(h)
 		mission_list.add_child(row)
+
+
+## Today's quest points on a bar, with a chest at each step: ready ones bounce and open with a
+## tap, opened ones show a tick
+func _refresh_track() -> void:
+	for c in quest_track.get_children():
+		c.queue_free()
+	var q := Progress.quest(main.save)
+	var most := float(Progress.CHESTS[-1].at)
+	var x0 := 120.0
+	var w := 470.0
+	var y := 104.0
+	var medal := label("⭐\n%d" % int(q.points), 30, YELLOW, 8)
+	medal.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	medal.position = Vector2(8, 58)
+	medal.size = Vector2(96, 90)
+	quest_track.add_child(medal)
+	var bar := ProgressBar.new()
+	bar.max_value = most
+	bar.value = minf(float(q.points), most)
+	bar.show_percentage = false
+	bar.position = Vector2(x0, y)
+	bar.size = Vector2(w, 26)
+	bar.add_theme_stylebox_override("background", box(Color("#1d2a4d"), INK, 10, 2, 0))
+	bar.add_theme_stylebox_override("fill", box(YELLOW, INK, 10, 2, 0))
+	quest_track.add_child(bar)
+	for i in Progress.CHESTS.size():
+		var c: Dictionary = Progress.CHESTS[i]
+		var ready := Progress.chest_ready(main.save, i)
+		var opened: bool = i in q.opened.map(func(v): return int(v))
+		var idx := i
+		var b := button("✓" if opened else "🎁", "yellow" if ready else "gray", 34, func():
+			var coins := Progress.open_chest(main.save, idx)
+			if coins > 0:
+				main.write_save()
+				main.play_sound("coin")
+				toast(tr("+%d coins!") % coins)
+				refresh_missions())
+		b.disabled = not ready
+		b.size = Vector2(76, 70)
+		var cx := x0 + w * float(c.at) / most
+		# Above and below the bar in turn, so they don't crowd
+		b.position = Vector2(cx - 38, y - 78 if i % 2 == 0 else y + 34)
+		quest_track.add_child(b)
+		var at := label(str(int(c.at)), 18, WHITE, 5)
+		at.position = Vector2(cx - 30, y - 104 if i % 2 == 0 else y + 104)
+		at.size = Vector2(60, 24)
+		at.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		quest_track.add_child(at)
+		if ready:
+			pop(b, 0.1 + i * 0.08, 0.6)
 
 
 # ---------- Looks ----------
@@ -1080,12 +1290,48 @@ func _build_settings() -> void:
 
 
 func refresh_menu() -> void:
+	var n := mini(int(main.save.level), Levels.LAST_LEVEL)
 	menu_coins.text = "🪙 %d" % main.save.coins
-	play_btn.text = tr("PLAY  ·  Level %d") % mini(main.save.level, Levels.LAST_LEVEL)
-	var n := Progress.claimable(main.save) + (1 if Progress.reward_ready(main.save) else 0)
-	set_badge("missions", str(n) if n > 0 else "")
-	set_badge("daily", "✓" if int(main.save.daily_won) == Progress.today() else "")
+	menu_name.text = main.save.name if str(main.save.get("name", "")) != "" else tr("Commander")
+	menu_level.text = tr("LEVEL %d") % n
+	menu_mission.text = Missions.title(n) + "\n" + Missions.icon(Missions.goal_for(n)) + "  " + Missions.goal_name(Missions.goal_for(n))
+	more_panel.visible = false
+	var k := Progress.claimable(main.save) + Progress.chests_ready(main.save) + (1 if Progress.reward_ready(main.save) else 0)
+	set_badge("missions", str(k) if k > 0 else "")
+	_lock(daily_btn, "📅", "Daily", DAILY_UNLOCK)
+	set_badge("daily", "✓" if int(main.save.daily_won) == Progress.today() and n >= DAILY_UNLOCK else "")
+	for t in TABS:
+		_lock(tab_btns[t.id], t.icon, t.text, int(t.unlock))
+	_menu_face()
 	refresh_toggles()
+
+
+## A locked button shows a padlock and the level it opens at
+func _lock(b: Button, icon: String, text: String, unlock: int) -> void:
+	var open := int(main.save.level) >= unlock
+	var pic: Label = b.get_child(0)
+	pic.text = icon if open else "🔒"
+	b.text = tr(text) if open else tr("Level %d") % unlock
+	b.modulate = Color.WHITE if open else Color(0.8, 0.85, 0.95)
+
+
+## The daily challenge, once it's open
+func _daily() -> void:
+	if int(main.save.level) < DAILY_UNLOCK:
+		main.play_sound("beep")
+		toast(tr("Unlocks at level %d") % DAILY_UNLOCK)
+		return
+	main.start_daily()
+
+
+## Captain Skye's face in the top bar (a medal until it's drawn)
+func _menu_face() -> void:
+	var cut: Cutscene = main.cutscene
+	if not cut.portraits.has("skye") and not _drawing_face:
+		_drawing_face = true
+		cut.portraits["skye"] = await cut._portrait("skye")
+		_drawing_face = false
+	menu_face.texture = cut.portraits.get("skye")
 
 
 # ---------- The campaign map ----------
@@ -1440,46 +1686,107 @@ func _build_paused() -> void:
 	col.add_child(_toggles())
 
 
+## Victory: Captain Skye cheering on a badge with rays turning behind it, the stars, a big
+## VICTORY band, your reward, how far you are through this land, and Next level
 func _build_win() -> void:
-	var col := screen("win")
-	var p := panel()
-	var v := vbox(16)
-	p.add_child(v)
-	win_ribbon = ribbon("Victory!", ORANGE)
-	v.add_child(win_ribbon)
+	var col := screen("win", Color(0.04, 0.07, 0.2, 0.66))
 	var stars := hbox(8)
 	for i in 3:
 		var s := label("★", 96 if i == 1 else 76, Color(1, 1, 1, 0.35), 10)
 		stars.add_child(s)
 		win_stars.append(s)
-	v.add_child(stars)
-	win_stats = hbox(10)
-	v.add_child(win_stats)
+	col.add_child(stars)
+	var badge := Control.new()
+	badge.custom_minimum_size = Vector2(320, 250)
+	badge.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	win_rays = TextureRect.new()
+	win_rays.texture = _rays_texture()
+	win_rays.size = Vector2(440, 440)
+	win_rays.position = Vector2(-60, -95)
+	win_rays.pivot_offset = Vector2(220, 220)
+	win_rays.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge.add_child(win_rays)
+	var shield := PanelContainer.new()
+	shield.add_theme_stylebox_override("panel", box(Color("#3a9df3"), WHITE, 46, 6, 8))
+	shield.position = Vector2(60, 5)
+	shield.size = Vector2(200, 220)
+	var medal := label("🎖", 110, WHITE, 0)
+	medal.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	medal.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	shield.add_child(medal)
+	win_face = TextureRect.new()
+	win_face.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	win_face.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	shield.add_child(win_face)
+	badge.add_child(shield)
+	col.add_child(badge)
+	win_ribbon = ribbon("Victory!", ORANGE)
+	col.add_child(win_ribbon)
+	# The reward, and how far through this land you are
+	var p := PanelContainer.new()
+	p.add_theme_stylebox_override("panel", box(Color("#c9d3f5"), INK, 22, 3, 5))
+	p.custom_minimum_size.x = 600
+	var v := vbox(10)
+	p.add_child(v)
+	v.add_child(label("Rewards", 26, Color("#3b4a75"), 0))
+	var tile_p := PanelContainer.new()
+	tile_p.add_theme_stylebox_override("panel", box(Color("#4cbc45"), Color("#1d6623"), 18, 4, 3))
+	tile_p.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	tile_p.custom_minimum_size = Vector2(150, 110)
 	win_coins = label("", 34)
-	v.add_child(win_coins)
-	win_unlock = wrapped(label("", 22, Color("#fff3a0")), 540)
+	win_coins.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	win_coins.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	tile_p.add_child(win_coins)
+	v.add_child(tile_p)
+	win_land = label("", 22, Color("#3b4a75"), 0, font_m)
+	v.add_child(win_land)
+	win_land_bar = ProgressBar.new()
+	win_land_bar.show_percentage = false
+	win_land_bar.custom_minimum_size = Vector2(420, 24)
+	win_land_bar.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	win_land_bar.add_theme_stylebox_override("background", box(Color("#8e9cc7"), INK, 10, 2, 0))
+	win_land_bar.add_theme_stylebox_override("fill", box(Color("#4cbc45"), INK, 10, 2, 0))
+	v.add_child(win_land_bar)
+	win_unlock = wrapped(label("", 22, Color("#7a4b00"), 0, font_m), 540)
 	v.add_child(win_unlock)
+	win_stats = hbox(10)
+	win_stats.visible = false
+	v.add_child(win_stats)
+	col.add_child(p)
 	# Double coins for watching an ad (only shown once ads are switched on, see Services)
-	ad_btn = button("📺 Watch an ad: double coins", "green", 24, func():
+	ad_btn = button("📺 Watch an ad: double coins", "yellow", 24, func():
 		ad_btn.disabled = true
 		Services.show_rewarded(func(watched: bool):
 			if watched:
 				main.save.coins += _win_coins
 				main.write_save()
-				win_coins.text = "🪙 +%d" % (_win_coins * 2)
+				win_coins.text = "🪙\n+%d" % (_win_coins * 2)
 				main.play_sound("coin")
 			ad_btn.visible = false))
 	ad_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	v.add_child(ad_btn)
-	next_btn = button("Next level", "yellow", 40, func(): show_brief(mini(main.level + 1, Levels.LAST_LEVEL), "win"))
-	next_btn.custom_minimum_size = Vector2(400, 90)
+	col.add_child(ad_btn)
+	next_btn = button("Next level", "green", 44, func(): show_brief(mini(main.level + 1, Levels.LAST_LEVEL), "win"))
+	next_btn.custom_minimum_size = Vector2(420, 100)
 	next_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	v.add_child(next_btn)
+	col.add_child(next_btn)
 	var row := hbox()
 	row.add_child(button("Replay", "blue", 26, func(): main.restart()))
 	row.add_child(button("Menu", "blue", 26, func(): main.open_menu()))
-	v.add_child(row)
-	col.add_child(p)
+	col.add_child(row)
+
+
+## Rays of light, turning slowly behind the victory badge
+func _rays_texture() -> Texture2D:
+	var n := 256
+	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+	for y in n:
+		for x in n:
+			var d := Vector2(x + 0.5 - n / 2.0, y + 0.5 - n / 2.0)
+			var r := d.length() / (n / 2.0)
+			var ray := 0.5 + 0.5 * cos(atan2(d.y, d.x) * 12.0)
+			var a := clampf(1.0 - r, 0.0, 1.0) * (0.25 + 0.6 * smoothstep(0.45, 0.6, ray))
+			img.set_pixel(x, y, Color(1.0, 0.92, 0.55, a))
+	return ImageTexture.create_from_image(img)
 
 
 func _stat(value: String, name: String) -> Control:
@@ -1501,12 +1808,22 @@ func show_win(stars: int, coins: int, unlock: String, time: float, stats: Dictio
 	win_stats.add_child(_stat("%d:%02d" % [floori(time / 60), floori(fmod(time, 60))], "Time"))
 	win_stats.add_child(_stat(str(stats.captured), "Captured"))
 	win_stats.add_child(_stat(str(stats.killed), "Beaten"))
-	win_coins.text = "🪙 +0"
+	win_coins.text = "🪙\n+0"
 	_win_coins = coins
+	# How far through this land: the land's five levels, and what comes next
+	var n: int = main.level
+	var done := (n - 1) % Missions.PER_CHAPTER + 1
+	win_land.visible = not main.daily
+	win_land_bar.visible = not main.daily
+	win_land_bar.max_value = Missions.PER_CHAPTER
+	win_land_bar.value = done
+	win_land.text = tr("%s: %d of %d") % [Missions.land(n), done, Missions.PER_CHAPTER] if done < Missions.PER_CHAPTER \
+		else tr("New land: %s!") % Missions.land(n + 1)
+	_win_face()
 	var count := create_tween()
 	count.tween_interval(0.5)
 	count.tween_method(func(v: float):
-		win_coins.text = "🪙 +%d" % roundi(v)
+		win_coins.text = "🪙\n+%d" % roundi(v)
 		main.play_sound("tick"), 0.0, float(coins), minf(1.2, 0.3 + coins * 0.01))
 	ad_btn.visible = coins > 0 and Services.rewarded_ready()
 	ad_btn.disabled = false
@@ -1527,8 +1844,17 @@ func show_win(stars: int, coins: int, unlock: String, time: float, stats: Dictio
 				main.play_sound("coin"))
 	show_screen("win")
 	pop(win_ribbon, 0.05, 0.3)
-	for i in win_stats.get_child_count():
-		pop(win_stats.get_child(i), 0.9 + i * 0.1, 0.6)
+	pop(win_face.get_parent(), 0.0, 0.5)
+
+
+## Captain Skye's face on the victory badge (a medal until it's drawn)
+func _win_face() -> void:
+	var cut: Cutscene = main.cutscene
+	if not cut.portraits.has("skye") and not _drawing_face:
+		_drawing_face = true
+		cut.portraits["skye"] = await cut._portrait("skye")
+		_drawing_face = false
+	win_face.texture = cut.portraits.get("skye")
 
 
 func _build_lose() -> void:

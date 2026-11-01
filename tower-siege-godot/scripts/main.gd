@@ -78,7 +78,6 @@ var landscape := false
 var scene_level := 1
 var scene_theme := ""
 var shake := 0.0
-var demo_timer := 0.0
 var quiet := false             # the menu's demo battle makes no sound
 var slow_frames := 0
 const GFX := ["low", "medium", "high"]
@@ -519,7 +518,7 @@ func mission(id: String, n := 1) -> void:
 	if quiet:
 		return
 	for m in Progress.add(save, id, n):
-		ui.toast(tr("Mission done: %s! Collect %d coins in Missions.") % [Progress.mission_text(m), int(m.coins)], 3.0)
+		ui.toast(tr("Quest done: %s! Collect %d coins in Quests.") % [Progress.mission_text(m), int(m.coins)], 3.0)
 		play_sound("coin")
 	write_save()
 
@@ -1045,7 +1044,6 @@ func open_menu() -> void:
 	mode = "campaign"
 	armed = ""
 	scene_theme = ""
-	demo_timer = 0.0
 	battle.rally = 0.0
 	ui.hide_hud()
 	set_hint("")
@@ -1139,7 +1137,7 @@ func _process(delta: float) -> void:
 			step(dt)
 		ui.update_hud()
 	elif state == "menu":
-		_menu_demo(dt)
+		_menu_preview()
 	_update_effects(dt)
 	for d in drags.values():
 		d.over = tower_at(d.pos, 1.2)
@@ -1235,19 +1233,12 @@ func _update_effects(dt: float) -> void:
 			upgrade_offer = {}
 
 
-## A battle between computer armies plays behind the menu
-func _menu_demo(dt: float) -> void:
-	if not battle.towers.is_empty() and (not battle.alive(1) or not battle.alive(2)):
-		demo_timer = minf(demo_timer, 3)
-	if demo_timer <= 0 or battle.towers.is_empty():
-		var n := 7 + randi() % 30
-		mode = "campaign"
-		load_battle(Levels.gen(n), n)
-		for side in [1, 2, 3, 4]:
-			if battle.towers.any(func(t): return t.owner == side):
-				battle.ai_sides.append({"side": side, "timer": 1.0 + side * 0.4, "cfg": {"think": 1.4, "margin": 3.0, "bold": 0.5}})
-		demo_timer = 90.0
-	demo_timer -= dt
-	quiet = true
-	battle.update(dt)
-	quiet = false
+## Behind the home screen: the map of the level you play next, waiting for you
+func _menu_preview() -> void:
+	var n := mini(int(save.level), Levels.LAST_LEVEL)
+	if scene_level == n and scene_theme == "" and not battle.towers.is_empty() and battle.units.is_empty() \
+			and battle.ai_sides.is_empty() and not daily:
+		return
+	mode = "campaign"
+	daily = false
+	load_battle(Levels.data(n), n)

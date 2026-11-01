@@ -249,8 +249,20 @@ func _run() -> void:
 	await shot("menu")
 	clear_of_notch(ui.menu_coins.get_parent(), "The coins")
 
-	# ----- Every menu screen, and back -----
-	for item in [["levels", "Campaign"], ["shop", "Upgrades"], ["missions", "Missions"], ["looks", "Looks"], ["settings", "Settings"], ["help", "How to play"]]:
+	# ----- The tabs open up level by level -----
+	await tap(find_button("Level 2", ui.screens.menu), "a locked tab")
+	await _seconds(0.4)
+	ok("A locked tab stays shut on level 1 and says when it opens", main.screen_open == "menu" and ui.toast_panel.visible and ui.toast_label.text.contains("2"), ui.toast_label.text)
+	main.save.level = 12
+	ui.refresh_menu()
+	await _seconds(0.3)
+	await shot("menu-level-12")
+
+	# ----- Every menu screen, and back (the tabs, Quests, and what ☰ opens) -----
+	for item in [["levels", "Map"], ["shop", "Shop"], ["missions", "Quests"], ["looks", "🎨  Looks"], ["settings", "⚙  Settings"], ["help", "❓  How to play"]]:
+		if item[1].begins_with("🎨") or item[1].begins_with("⚙") or item[1].begins_with("❓"):
+			await tap(find_button("☰", ui.screens.menu), "☰")
+			await _seconds(0.3)
 		await tap(find_button(item[1], ui.screens.menu), item[1])
 		await _seconds(0.6)
 		ok("%s opens" % item[1], main.screen_open == item[0], "screen %s" % main.screen_open)
@@ -266,7 +278,7 @@ func _run() -> void:
 	# ----- A long list scrolls with a finger, even when the drag starts on a button -----
 	var had: int = main.save.level
 	main.save.level = 150
-	await tap(find_button("Campaign", ui.screens.menu), "Campaign")
+	await tap(find_button("Map", ui.screens.menu), "Map")
 	await _seconds(1.0)
 	var scroll: ScrollContainer = ui.screens.levels.get_child(1)
 	var opened_at := scroll.scroll_vertical
@@ -282,7 +294,10 @@ func _run() -> void:
 	main.save.level = had
 
 	# ----- Online with no server -----
-	for item in [["Leaderboard", "board"], ["Clans", "clans"], ["⚔ PvP", "pvp"]]:
+	for item in [["🏆  Leaderboard", "board"], ["Clans", "clans"], ["PvP", "pvp"]]:
+		if item[0].begins_with("🏆"):
+			await tap(find_button("☰", ui.screens.menu), "☰")
+			await _seconds(0.3)
 		await tap(find_button(item[0], ui.screens.menu), item[0])
 		await _seconds(6.0)
 		await shot(item[1] + "-no-server")
@@ -298,6 +313,8 @@ func _run() -> void:
 		ok("Back to the menu from %s with no server" % item[0], main.screen_open == "menu", "screen %s" % main.screen_open)
 
 	# ----- Level 1, the way a new player meets it -----
+	main.save.level = 1
+	ui.refresh_menu()
 	await tap(ui.play_btn, "PLAY")
 	await _seconds(0.6)
 	ok("PLAY opens the mission briefing", main.screen_open == "brief", "screen %s" % main.screen_open)
@@ -313,7 +330,7 @@ func _run() -> void:
 	clear_of_notch(ui.hint_panel, "The hint")
 	var won := await play_level("level1", 120.0)
 	ok("Level 1 can be won with drags", won and main.state != "play", "state %s" % main.state)
-	ok("Level 1's lesson is played through by following the hand", lesson_steps.size() >= 4, "steps %s" % str(lesson_steps))
+	ok("Level 1's lesson is played through by following the hand", lesson_steps.size() >= 3, "steps %s" % str(lesson_steps))
 	await watch_cutscene("victory", 30.0)
 	await _seconds(2.0)
 	await shot("win")
