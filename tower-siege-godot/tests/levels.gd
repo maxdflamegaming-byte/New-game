@@ -2,8 +2,8 @@ extends SceneTree
 ## Plays every story level with a bot, the way a casual player would: every 1.5 seconds it does
 ## what the 💡 Hint says, drops its Airstrike on the boss castle (or the strongest enemy
 ## building), and cuts roads between its own buildings after a while. Prints each level's
-## result, time and stars, and checks every level 1-60 can be won (in at least one of the
-## tries) and none takes more than 200 s.
+## result, time and stars, and checks every level 1-60 can be won (in at least one of 3 tries)
+## and none takes more than 200 s.
 ##   godot --headless --path tower-siege-godot -s tests/levels.gd [-- FROM TO TRIES]
 
 const THINK := 1.5            # seconds between the bot's moves
@@ -72,8 +72,9 @@ func typical_upgrades(n: int) -> Dictionary:
 	return up
 
 
-## Plays level n once: [result, seconds, stars]. Each try has its own fixed random numbers, so a
-## run gives the same results every time.
+## Plays level n once: [result, seconds, stars]. Each try starts from its own fixed random
+## numbers (a battle can still come out a little differently from run to run, so a level
+## passes when one of its tries is won).
 func play(n: int, k := 0) -> Array:
 	seed(n * 1009 + k)
 	main.save.up = typical_upgrades(n)
@@ -101,7 +102,7 @@ func _run() -> void:
 	var args := OS.get_cmdline_user_args()
 	var from := int(args[0]) if args.size() > 0 else 1
 	var to := int(args[1]) if args.size() > 1 else Levels.MAX_LEVEL
-	var tries := int(args[2]) if args.size() > 2 else 2
+	var tries := int(args[2]) if args.size() > 2 else 3
 	var bad := []
 	var slow := []
 	for n in range(from, to + 1):

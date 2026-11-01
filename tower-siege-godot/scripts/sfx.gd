@@ -163,6 +163,11 @@ func _tone(buf: PackedFloat32Array, f0: float, f1: float, dur: float, wave: Stri
 		buf[i] += x * env
 
 
+## (Its own random numbers: the sounds are made on another thread, and the game's shared ones
+## must stay the game's, so a seeded battle plays the same every time)
+var _rng := RandomNumberGenerator.new()
+
+
 func _noise(buf: PackedFloat32Array, dur: float, vol: float, delay: float) -> void:
 	var start := int(delay * RATE)
 	var count := int(dur * RATE)
@@ -170,4 +175,4 @@ func _noise(buf: PackedFloat32Array, dur: float, vol: float, delay: float) -> vo
 		var i := start + k
 		if i >= buf.size():
 			break
-		buf[i] += (randf() * 2.0 - 1.0) * (1.0 - float(k) / count) * vol
+		buf[i] += (_rng.randf() * 2.0 - 1.0) * (1.0 - float(k) / count) * vol

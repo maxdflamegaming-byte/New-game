@@ -78,7 +78,7 @@ static func data(n: int) -> Dictionary:
 
 ## Enemy soldiers on a few generated levels, from playing them with the level bot: less than 1
 ## where it got stuck, more where a late level fell in seconds
-const TUNE := {29: 0.8, 43: 1.4, 44: 0.6, 58: 1.4}
+const TUNE := {24: 0.85, 29: 0.8, 38: 0.85, 41: 0.8, 43: 1.4, 44: 0.6, 58: 1.4}
 
 
 ## A line of wall blocks from one point to another (a block every 44, like the generator's)
