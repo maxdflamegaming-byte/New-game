@@ -144,6 +144,19 @@ fs.mkdirSync(OUT, { recursive: true });
   ok('Both claiming the win is a draw', ra?.delta === 0 && ra?.why === 'dispute');
   [ra, rb] = await play(ann, ben, 1, null);
   ok('A connected player who says nothing makes it a draw', ra?.delta === 0 && ra?.why === 'dispute');
+  // ----- A rematch: both ask, and a new match starts between the same two -----
+  ben.send({ t: 'rematch' });
+  const asked = await ann.wait('rematch');
+  ok('Asking for a rematch tells the other player', asked?.state === 'asked' && asked?.name === 'Ben', JSON.stringify(asked));
+  ann.send({ t: 'rematch' });
+  const [m1, m2] = [await ann.wait('match'), await ben.wait('match')];
+  ok('...and when they ask too, the rematch starts', !!m1 && !!m2 && m1.seed === m2.seed && m1.role !== m2.role, JSON.stringify([m1, m2]));
+  const [rh, rg] = m1?.role === 'host' ? [ann, ben] : [ben, ann];
+  rh.send({ t: 'end', w: 1 });
+  await rg.wait('end');
+  rg.send({ t: 'end', w: 2 });
+  await rh.wait('result', 3000);
+  await rg.wait('result', 3000);
   // The guest's game closes right after the result: the host's word stands
   ann.send({ t: 'room' });
   const room2 = await ann.wait('room');

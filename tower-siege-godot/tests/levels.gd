@@ -72,6 +72,25 @@ func typical_upgrades(n: int) -> Dictionary:
 	return up
 
 
+## Plays the battle `start` begins, to its end: [result, seconds, stars]
+func play_battle(start: Callable) -> Array:
+	start.call()
+	main.tutor = null
+	main.set_hint("")
+	var next := 1.0
+	while main.state == "play" and main.battle.time < LIMIT:
+		if main.battle.time >= next:
+			act()
+			next = main.battle.time + THINK
+		main.step(0.05)
+		main._update_effects(0.05)
+	var result: String = "stuck" if main.state == "play" else ("won" if main.lost_why == "" else "lost:" + main.lost_why)
+	var stars := Missions.stars(main.goal, main.battle) if result == "won" else 0
+	var t: float = main.battle.time
+	main.open_menu()
+	return [result, t, stars]
+
+
 ## Plays level n once: [result, seconds, stars]. Each try starts from its own fixed random
 ## numbers (a battle can still come out a little differently from run to run, so a level
 ## passes when one of its tries is won).
@@ -119,6 +138,28 @@ func _run() -> void:
 		elif times.min() > SLOW:
 			slow.append(n)
 	ok("The bot wins every level from %d to %d" % [from, to], bad.is_empty(), "lost or stuck: %s" % str(bad))
+	# The weekend events: each kind's three battles (on a Saturday of a week it runs), with the
+	# upgrades of a level-30 player
+	var bad_events := []
+	if from == 1:
+		main.save.up = typical_upgrades(30)
+		for k in Events.ORDER:
+			var d := 20000
+			while Events.kind(d) != k or (d + 3) % 7 != 5:
+				d += 1
+			Progress.test_day = d
+			for stage in Events.STAGES:
+				var res := []
+				for tr_i in tries:
+					main.save.event = {"week": Progress.week(d), "kind": k, "stage": stage, "prize": false}
+					seed(stage * 1009 + tr_i + 7)
+					res.append(play_battle(main.start_event))
+					await process_frame
+				print("EV %-8s battle %d  %s" % [k, stage + 1, ", ".join(res.map(func(r): return "%s %.0fs" % [r[0], r[1]]))])
+				if not res.any(func(r): return r[0] == "won"):
+					bad_events.append("%s %d" % [k, stage + 1])
+		Progress.test_day = -1
+		ok("The bot wins every weekend event battle", bad_events.is_empty(), str(bad_events))
 	ok("No level takes more than %d s to win" % int(SLOW), slow.is_empty(), "slow: %s" % str(slow))
 	print("LEVELS DONE %d failed" % fails)
 	quit(1 if fails else 0)

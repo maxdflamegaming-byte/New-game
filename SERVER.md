@@ -128,6 +128,10 @@ The app sends anonymous level stats to the server (`POST /stats`): for each camp
 
 for a table of every level: how many players reached it, the share who won, lost and quit, the average winning time and the stars. A level many players lose or quit is one to make easier or give a better hint. Add `&format=json` for the raw numbers. Without `STATS_KEY` the stats are still collected but there's no report. Players can switch the stats off in the app's Settings.
 
+## Rematches (needs this server version)
+
+After an online match, the app's 🔁 Rematch sends `{"t": "rematch"}`. The other player hears `{"t": "rematch", "state": "asked", "name": ...}`; when both have asked, the server starts a new match between them as usual (`match`). If the other player has gone, the answer is `{"state": "gone"}`. Older apps and the web game never send it, so nothing changes for them; until the server is updated, Rematch just waits.
+
 ## Deleting an account
 
 The privacy policy (`tower-siege/privacy.html`) promises to delete a player's online account on request. In Neon's SQL editor, find it by name: `select k, v->>'name' from tower_siege where k like 'p:%' and v->>'name' = 'TheirName';`, delete it: `delete from tower_siege where k = 'p:<id>';`, then restart the service on Render (**Manual Deploy → Restart service**), since the server keeps accounts in memory while it runs.

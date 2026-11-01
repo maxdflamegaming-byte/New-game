@@ -164,6 +164,8 @@ jobs:
           sed -i "s/^version\/code=.*/version\/code=${{ github.run_number }}/; s/^version\/name=.*/version\/name=\"$v\"/" tower-siege-godot/export_presets.cfg
           sed -i "s/^config\/version=.*/config\/version=\"$v\"/" tower-siege-godot/project.godot
           mkdir -p build
+          # The reminders library (scheduled notifications), which addons/reminders adds to the app
+          sh tower-siege-godot/android/reminders/build_aar.sh "$ANDROID_SDK_ROOT" 36
           "$HOME/godot" --headless --path tower-siege-godot --install-android-build-template --export-release "Android" "$GITHUB_WORKSPACE/build/TowerSiege-$v.apk"
           test -s "build/TowerSiege-$v.apk"
           # The App Bundle is always built (so the Gradle build is checked), but only kept
@@ -180,6 +182,11 @@ jobs:
           "$apksigner" verify --print-certs build/*.apk | head -5
           aapt2="$(ls -d "$ANDROID_SDK_ROOT"/build-tools/36.1.0)/aapt2"
           "$aapt2" dump badging build/*.apk | grep -E "^package|sdkVersion|targetSdkVersion"
+          # The reminders made it in: their code, the receiver and the permission to notify
+          unzip -p build/*.apk 'classes*.dex' | grep -a -q "com/towersiege/reminders/Reminders"
+          "$aapt2" dump xmltree --file AndroidManifest.xml build/*.apk | grep -q "ReminderReceiver"
+          "$aapt2" dump permissions build/*.apk | grep -q "POST_NOTIFICATIONS"
+          echo "Reminders are in the APK."
           jarsigner -verify build/*.aab | tail -1
           if [ "$PLAY_READY" != "1" ]; then
             rm build/*.aab # signed with the test key: not for Google Play

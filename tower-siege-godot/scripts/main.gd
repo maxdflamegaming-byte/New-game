@@ -48,12 +48,16 @@ var music
 var state := "menu"            # menu, play, paused, over, cutscene
 var mode := "campaign"         # campaign, online, duo, practice
 var level := 1
-var daily := false             # playing today's daily challenge
+var daily := false             # playing today's daily challenge (or a weekend event battle)
+var event_on := false          # playing a weekend event battle (daily is set too: no story scenes)
 var goal := {}                 # the campaign mission being played (Missions.setup), or {}
 var lost_why := ""             # how the last mission was lost (Missions.result)
 var last_change := 0.0         # battle time when a building last changed hands
 var stuck_tip := false         # the "gather your soldiers" tip has been shown this battle
 var analytics: Analytics
+var replays: Replays
+var replay := {}               # the replay being watched: {frames, i, units, end, file}
+var replay_flip := false       # the replay was of a guest's battle (seen the other way up)
 var _level_open := -1          # the campaign level being played (for the stats), -1 = none
 var upgrade_offer := {}        # {t, life}: the ⬆ button over one of your buildings
 var reward_shown_day := -1
@@ -131,6 +135,7 @@ func _ready() -> void:
 	net = Net.new()
 	net.main = self
 	add_child(net)
+	replays = Replays.new(self)
 	analytics = Analytics.new()
 	analytics.main = self
 	add_child(analytics)
@@ -148,7 +153,7 @@ func default_save() -> Dictionary:
 	var d := {"level": 1, "stars": {}, "coins": 0, "up": {"drill": 0, "boots": 0, "garrison": 0, "armory": 0},
 		"seen": {}, "muted": false, "music": true, "name": "", "trophies": 0, "pvp_wins": 0, "pvp_losses": 0,
 		"pid": "", "token": "", "clan": null, "gfx": "auto", "vibrate": true, "lang": "", "cutscenes": true,
-		"stats": true, "stats_rows": []}
+		"stats": true, "stats_rows": [], "reminders": true}
 	d.merge(Progress.defaults())
 	d.merge(Achievements.defaults())
 	return d
@@ -218,8 +223,10 @@ func _notification(what: int) -> void:
 			if state == "play" and screen_open == "" and not cutscene.playing():
 				pause()
 			write_save()
+			PhoneReminders.apply(save)
 		NOTIFICATION_WM_CLOSE_REQUEST:
 			write_save()
+			PhoneReminders.apply(save)
 
 
 ## The phone's back button: skip a cut scene, pause or resume a battle, or close the screen
@@ -310,6 +317,7 @@ func set_gfx(g: String) -> void:
 func watch_story() -> void:
 	level = 1
 	daily = false
+	event_on = false
 	mode = "campaign"
 	state = "cutscene"
 	world.drift = false
@@ -378,7 +386,7 @@ func load_battle(data: Dictionary, n: int, theme := "") -> void:
 	last_change = 0.0
 	stuck_tip = false
 	battle.landscape = landscape
-	battle.flipped = net.is_guest()
+	battle.flipped = net.is_guest() or (mode == "replay" and replay_flip)
 	battle.load_map(data, 3 * save.up.garrison if mode == "campaign" and state != "menu" else 0)
 	battle.ai_sides.clear()
 	floats.clear()
@@ -402,6 +410,7 @@ func start_level(n: int) -> void:
 	analytics.track(n, "start")
 	level = n
 	daily = false
+	event_on = false
 	mode = "campaign"
 	state = "play"
 	var data := Levels.data(n)
@@ -456,6 +465,94 @@ func start_daily() -> void:
 	_begin(data, "Daily challenge", level)
 
 
+# ---------- Replays ----------
+## Start writing the battle down (the field as it is now, so a replay can set it up again)
+func record(title: String) -> void:
+	if mode == "replay":
+		return
+	var data := {"towers": battle.towers.map(func(t): return [t.bx, t.by, t.owner, t.units, t.type]),
+		"rocks": battle.rocks.map(func(w): return [w.bx, w.by, w.r])}
+	replays.begin({"title": title, "data": data, "n": scene_level, "theme": scene_theme, "flipped": battle.flipped,
+		"pace": battle.pace, "march": battle.march, "mode": mode, "when": int(Time.get_unix_time_from_system())})
+
+
+## Watch saved replay i (0 = the newest)
+func watch_replay(i: int) -> void:
+	var files := replays._files()
+	if i < 0 or i >= files.size():
+		return
+	var r = replays.load_file(files[i])
+	if not r is Dictionary:
+		ui.toast("This replay can't be played.")
+		return
+	_left_unfinished()
+	replays.stop()
+	cutscene.abort()
+	daily = false
+	event_on = false
+	mode = "replay"
+	replay_flip = bool(r.meta.get("flipped", false))
+	state = "play"
+	world.drift = false
+	load_battle(r.meta.data, int(r.meta.n), str(r.meta.theme))
+	battle.pace = float(r.meta.get("pace", 1.0))
+	battle.march = float(r.meta.get("march", 1.0))
+	battle.time = 0.0
+	goal = {}
+	charges = {"strike": 0, "rally": 0}
+	armed = ""
+	replay = {"frames": r.frames, "i": 0, "units": {}, "end": float(r.meta.get("secs", 0)), "index": i}
+	clear_pointers()
+	ui.show_screen("")
+	ui.start_hud(tr("🎬 Replay: %s") % str(r.meta.title), false)
+	set_hint("")
+	music.play_track("game")
+
+
+## A replay plays on: the soldiers march, and each update is shown when its moment comes
+func _replay_step(dt: float) -> void:
+	if replay.is_empty():
+		return
+	net.guest_update(dt)
+	var frames: Array = replay.frames
+	while int(replay.i) < frames.size() and float(frames[int(replay.i)].tm) <= battle.time:
+		replay.units = net.apply_snap(frames[int(replay.i)], replay.units, false)
+		replay.i = int(replay.i) + 1
+	if int(replay.i) >= frames.size() and battle.time > float(replay.end) + 1.5:
+		state = "over"
+		replay = {}
+		ui.hide_hud()
+		ui.toast("Replay over")
+		ui.show_screen("replays")
+
+
+## This weekend's event: its next battle
+func start_event() -> void:
+	var st := Events.state(save)
+	if not Events.live() or int(st.stage) >= Events.STAGES:
+		return
+	_left_unfinished()
+	_level_open = -1
+	daily = true
+	event_on = true
+	level = maxi(int(save.level), 8)
+	mode = "campaign"
+	state = "play"
+	var k: String = st.kind
+	var stage := int(st.stage)
+	var data := Events.stage_data(k, stage)
+	load_battle(data, 700 + stage, data.theme)
+	for side in [2, 3, 4]:
+		if battle.towers.any(func(t): return t.owner == side):
+			battle.ai_sides.append({"side": side, "timer": 2.5, "cfg": data.ai})
+	goal = Missions.setup(level, battle, Events.info(k).goal)
+	armed = ""
+	shake = 0.0
+	hand_shown = false
+	charges = {"strike": 1 + save.up.armory, "rally": 1 + save.up.armory}
+	_begin(data, tr("%s · Battle %d of %d") % [tr(Events.info(k).name), stage + 1, Events.STAGES], level)
+
+
 ## Before a level: its cut scenes (story, boss, the fly-in), then the HUD, hints and music
 func _begin(data: Dictionary, title: String, n: int, banner := "", sub := "") -> void:
 	world.drift = false
@@ -475,6 +572,7 @@ func _begin(data: Dictionary, title: String, n: int, banner := "", sub := "") ->
 		cutscene.finish(r)
 	state = "play"
 	ui.start_hud(title, true)
+	record(title)
 	if tutor != null:
 		tutor.start()
 		# The lesson explains this mission's goal (level 5's teaches the boss castle), so its
@@ -565,6 +663,7 @@ func _on_captured(t, side: int, old: int) -> void:
 	if not upgrade_offer.is_empty() and upgrade_offer.t == t:
 		upgrade_offer = {}
 	net.event(["cap", t.id, side])
+	replays.event(["cap", t.id, side])
 	if mode == "duo":
 		play_sound("capture")
 		floats.append({"t": t, "text": "Captured!", "color": SIDES[side].light, "life": 1.3})
@@ -586,6 +685,7 @@ func _on_clashed(x: float, y: float, a: int, b: int, ua, ub) -> void:
 		if u.dead:
 			world.knock(u.x, u.y, u.owner, u.tank)
 	net.event(["cl", ua.id, ub.id])
+	replays.event(["cl", ua.id, ub.id])
 	if randf() < 0.3:
 		play_sound("pop")
 
@@ -598,6 +698,7 @@ func _on_shot(t, u) -> void:
 	if u.dead:
 		world.knock(u.x, u.y, u.owner, u.tank)
 	net.event(["sh", t.id, u.id])
+	replays.event(["sh", t.id, u.id])
 	if t.owner == Battle.PLAYER or u.owner == Battle.PLAYER:
 		play_sound("shoot")
 
@@ -635,6 +736,7 @@ func check_end() -> void:
 func end_game(won: bool) -> void:
 	state = "over"
 	tutor = null
+	replays.finish("won" if won else "lost")
 	if won:
 		lost_why = ""
 	if mode == "campaign" and _level_open >= 0:
@@ -688,6 +790,18 @@ func show_win() -> void:
 		count("perfect")
 	if battle.time < 30.0:
 		count("fast")
+	if event_on:
+		var res := Events.won(save)
+		var text := ""
+		if res.done:
+			count("event")
+			text = tr("You won the weekend event! New look: %s.") % tr(res.look) if res.look != "" else tr("You won the weekend event again! Bonus coins.")
+		else:
+			text = tr("Battle %d of %d won. The next one is waiting in the event!") % [int(Events.state(save).stage), Events.STAGES]
+		write_save()
+		check_achievements()
+		ui.show_win(stars, int(res.coins), text, battle.time, battle.stats)
+		return
 	if daily:
 		var first_today: bool = int(save.daily_won) != Progress.today()
 		var prize: int = Progress.DAILY_COINS if first_today else Progress.DAILY_REPLAY_COINS
@@ -763,6 +877,8 @@ func drop_strike(t) -> void:
 # ---------- Input ----------
 ## Which armies the person (or people) at this screen control
 func controls(side: int) -> bool:
+	if mode == "replay":
+		return false
 	return side == 1 or side == 2 if mode == "duo" else side == 1
 
 
@@ -1115,6 +1231,8 @@ func _guide_done(a, b) -> void:
 # ---------- Screens and buttons ----------
 func open_menu() -> void:
 	_left_unfinished()
+	replays.stop()
+	replay = {}
 	relearn = false
 	cutscene.abort()
 	state = "menu"
@@ -1152,7 +1270,11 @@ func resume() -> void:
 
 
 func restart() -> void:
-	if mode == "campaign" and daily:
+	if mode == "replay":
+		watch_replay(int(replay.get("index", 0)))
+	elif mode == "campaign" and event_on:
+		start_event()
+	elif mode == "campaign" and daily:
 		start_daily()
 	elif mode == "campaign":
 		start_level(level)
@@ -1233,10 +1355,14 @@ func _process(delta: float) -> void:
 
 
 func step(dt: float) -> void:
+	if mode == "replay":
+		_replay_step(dt)
+		return
 	if net.pause_tick(dt):
 		return
 	if net.is_guest():
 		net.guest_update(dt)
+		replays.tick(battle, dt)
 		return
 	if tutor != null:
 		tutor.tick(dt)
@@ -1251,6 +1377,7 @@ func step(dt: float) -> void:
 		for a in battle.ai_sides:
 			a.cfg.erase("spare_player")
 	battle.update(dt)
+	replays.tick(battle, dt)
 	_final_push()
 	if hint_text != "" and armed == "":
 		hint_timer -= dt
@@ -1326,4 +1453,5 @@ func _menu_preview() -> void:
 		return
 	mode = "campaign"
 	daily = false
+	event_on = false
 	load_battle(Levels.data(n), n)

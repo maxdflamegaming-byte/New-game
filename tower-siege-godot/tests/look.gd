@@ -111,6 +111,31 @@ func _run() -> void:
 		list[1].have = 1
 		main.ui.show_screen("missions")
 		await _frames(40)
+	elif what == "replay":
+		# A battle played by the computer on both sides, then its replay a few seconds in
+		main.save.level = 60
+		main.start_level(12)
+		await _frames(2)
+		main.battle.ai_sides.append({"side": 1, "timer": 0.3, "cfg": {"think": 0.8, "margin": 2.0, "bold": 0.6}})
+		for i in 900:
+			main.step(0.05)
+			if main.state != "play":
+				break
+		main.replays.finish("won")
+		main.watch_replay(0)
+		for i in 300:
+			main.step(0.05)
+		await _frames(30)
+	elif what == "event":
+		# A Saturday, with the first battle won
+		var d := Progress.today()
+		while (d + 3) % 7 != 5:
+			d += 1
+		Progress.test_day = d
+		main.save.level = 24
+		Events.state(main.save).stage = 1
+		main.ui.show_screen("event")
+		await _frames(40)
 	elif what in ["profile", "achievements", "weekly", "home"]:
 		# Some progress to show: 23 levels with stars, numbers, a few achievements earned
 		main.save.level = 24

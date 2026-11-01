@@ -49,6 +49,12 @@ const HATS := [
 	{"id": "party", "name": "Party Hat", "icon": "🥳", "cost": 300},
 	{"id": "viking", "name": "Viking", "icon": "🪓", "cost": 450},
 	{"id": "crown", "name": "Crown", "icon": "👑", "cost": 800},
+	{"id": "beanie", "name": "Beanie", "icon": "🧶", "cost": 250},
+	{"id": "pilot", "name": "Pilot Cap", "icon": "✈", "cost": 0, "lock": "ach:strike25"},
+	{"id": "general", "name": "Officer's Cap", "icon": "🎖", "cost": 0, "lock": "ach:lv60"},
+	{"id": "laurel", "name": "Laurels", "icon": "🌿", "cost": 0, "lock": "ach:perfect20"},
+	{"id": "goldhelm", "name": "Golden Helmet", "icon": "🪖", "cost": 0, "lock": "event:tanks"},
+	{"id": "knight", "name": "Knight's Helm", "icon": "🛡", "cost": 0, "lock": "event:castles"},
 ]
 const FLAGS := [
 	{"id": "plain", "name": "Plain", "icon": "🏳", "cost": 0},
@@ -57,11 +63,21 @@ const FLAGS := [
 	{"id": "star", "name": "Gold Star", "icon": "⭐", "cost": 250},
 	{"id": "checks", "name": "Checks", "icon": "🏁", "cost": 300},
 	{"id": "skull", "name": "Pirate", "icon": "☠", "cost": 500},
+	{"id": "flame", "name": "Flame", "icon": "🔥", "cost": 300},
+	{"id": "lightning", "name": "Lightning", "icon": "⚡", "cost": 0, "lock": "ach:fast20"},
+	{"id": "swords", "name": "Swords", "icon": "⚔", "cost": 0, "lock": "ach:pvp1"},
+	{"id": "medal", "name": "Medal", "icon": "🏅", "cost": 0, "lock": "ach:boss3"},
+	{"id": "dragon", "name": "Dragon", "icon": "🐉", "cost": 0, "lock": "event:blitz"},
+	{"id": "golden", "name": "Golden", "icon": "🌟", "cost": 0, "lock": "event:puzzle"},
 ]
 
 
+## Tests can pretend it's another day (-1: the real one)
+static var test_day := -1
+
+
 static func today() -> int:
-	return int(Time.get_unix_time_from_system() / 86400.0)
+	return test_day if test_day >= 0 else int(Time.get_unix_time_from_system() / 86400.0)
 
 
 static func defaults() -> Dictionary:
@@ -252,12 +268,25 @@ static func owns(save: Dictionary, id: String) -> bool:
 	return id in save.looks.owned
 
 
+## Some looks aren't bought: an achievement unlocks them ("ach:id", free once it's earned), or
+## a weekend event gives them ("event:kind", yours when you win it)
+static func unlocked(save: Dictionary, item: Dictionary) -> bool:
+	var lock: String = item.get("lock", "")
+	if lock.begins_with("ach:"):
+		return Achievements.earned(save, lock.substr(4))
+	if lock.begins_with("event:"):
+		return owns(save, item.id)
+	return true
+
+
 ## Buy (if needed) and wear a hat or flag; returns "" or why not
 static func pick_look(save: Dictionary, kind: String, id: String) -> String:
 	for item in catalog(kind):
 		if item.id != id:
 			continue
 		if not owns(save, id):
+			if not unlocked(save, item):
+				return "locked"
 			if int(save.coins) < int(item.cost):
 				return "coins"
 			save.coins = int(save.coins) - int(item.cost)

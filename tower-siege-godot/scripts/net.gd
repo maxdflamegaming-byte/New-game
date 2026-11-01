@@ -260,6 +260,8 @@ func _on_message(m: Dictionary) -> void:
 		"room":
 			screens.wait_text("Send this code to a friend. The match starts when they join.")
 			screens.show_code(m.code)
+		"rematch":
+			screens.rematch_state(str(m.get("state", "")), str(m.get("name", "")))
 		"noroom":
 			screens.open_pvp("No room with that code. Check the letters and try again.")
 		"match":
@@ -440,6 +442,7 @@ func start_pvp(kind: String, seed_value: int) -> void:
 	main.set_hint("Blue plays from the bottom, red from the top. Drag from your own buildings!" if kind == "duo"
 		else "PvP: take every enemy building, or have the bigger army when the 3 minutes are up", 8.0)
 	main.music.play_track("boss")
+	main.record("2 Players" if kind == "duo" else "Practice" if kind == "practice" else tr("vs %s") % str(opp.get("name", "Player")))
 
 
 func restart() -> void:
@@ -544,24 +547,30 @@ func _apply_cmd(m: Dictionary) -> void:
 
 # ---------- Guest: show what the host sends ----------
 func _apply_snap(m: Dictionary) -> void:
+	pvp.units = apply_snap(m, pvp.units, true)
+
+
+## Shows an update of the battle (from the host, or from a replay): its effects, buildings and
+## soldiers. old: the soldiers shown so far (id -> Unit); returns them now. swap: the update
+## was written from the other side (the host's), so its armies 1 and 2 change places.
+func apply_snap(m: Dictionary, old: Dictionary, swap: bool) -> Dictionary:
 	var b: Battle = main.battle
-	var old: Dictionary = pvp.units
 	# Effects first, while the soldiers they mention still exist here
 	for e in m.get("ev", []):
-		_guest_event(e, old)
+		_guest_event(e, old, swap)
 	b.time = float(m.tm)
 	var tw: Array = m.get("tw", [])
 	for i in mini(tw.size(), b.towers.size()):
-		_guest_tower(b.towers[i], tw[i])
+		_guest_tower(b.towers[i], tw[i], swap)
 	for row in m.get("tc", []):
 		if int(row[0]) < b.towers.size():
-			_guest_tower(b.towers[int(row[0])], row.slice(1))
+			_guest_tower(b.towers[int(row[0])], row.slice(1), swap)
 	var next: Dictionary
 	if m.get("k", 0):
 		# Every soldier
 		next = {}
 		for row in m.u:
-			var u := _guest_unit(row, old.get(int(row[0])))
+			var u := _guest_unit(row, old.get(int(row[0])), swap)
 			if u != null:
 				next[u.id] = u
 	else:
@@ -574,20 +583,20 @@ func _apply_snap(m: Dictionary) -> void:
 			if u != null:
 				u.power = int(p[1])
 		for row in m.get("nu", []):
-			var u := _guest_unit(row, next.get(int(row[0])))
+			var u := _guest_unit(row, next.get(int(row[0])), swap)
 			if u != null:
 				next[u.id] = u
 	var list: Array[Battle.Unit] = []
 	for u in next.values():
 		list.append(u)
 	b.units = list
-	pvp.units = next
+	return next
 
 
 ## row: [soldiers * 10, owner, [road target ids]]
-func _guest_tower(t: Battle.Tower, row: Array) -> void:
+func _guest_tower(t: Battle.Tower, row: Array, swap := true) -> void:
 	var b: Battle = main.battle
-	var side := swap_side(int(row[1]))
+	var side := swap_side(int(row[1])) if swap else int(row[1])
 	var n := float(row[0]) / 10.0
 	if side == t.owner and n > t.units + 0.5:
 		t.pop = 1.0
@@ -608,7 +617,7 @@ func _guest_tower(t: Battle.Tower, row: Array) -> void:
 	t.roads = roads
 
 
-func _guest_unit(row: Array, u: Battle.Unit) -> Battle.Unit:
+func _guest_unit(row: Array, u: Battle.Unit, swap := true) -> Battle.Unit:
 	var b: Battle = main.battle
 	if u == null:
 		if int(row[1]) >= b.towers.size() or int(row[2]) >= b.towers.size():
@@ -624,16 +633,19 @@ func _guest_unit(row: Array, u: Battle.Unit) -> Battle.Unit:
 	var d := float(row[3])
 	u.d = d if absf(u.d - d) > 40 else u.d + (d - u.d) * 0.5
 	u.power = int(row[4])
-	u.owner = swap_side(int(row[5]))
+	u.owner = swap_side(int(row[5])) if swap else int(row[5])
 	b.place_unit(u)
 	return u
 
 
-func _guest_event(e: Array, old: Dictionary) -> void:
+func _guest_event(e: Array, old: Dictionary, swap := true) -> void:
 	var b: Battle = main.battle
+	if swap:
+		# (a guest's replay keeps these, from its own side)
+		main.replays.event(["cap", e[1], swap_side(int(e[2]))] if e[0] == "cap" else e)
 	if e[0] == "cap" and int(e[1]) < b.towers.size():
 		var t := b.towers[int(e[1])]
-		var side := swap_side(int(e[2]))
+		var side := swap_side(int(e[2])) if swap else int(e[2])
 		var was := t.owner
 		t.owner = side
 		main.world.capture(t.x, t.y, side)
@@ -724,6 +736,7 @@ func finish(winner: int, why: String) -> void:
 	if pvp.is_empty() or main.mode == "campaign":
 		return # a PvP result never ends a campaign level
 	pvp.over = true
+	main.replays.finish("won" if winner == 1 else "draw" if winner == 0 else "lost")
 	main.mission("pvp")
 	main.mission("beat", main.battle.stats.killed)
 	if winner == 1 and main.mode != "duo":

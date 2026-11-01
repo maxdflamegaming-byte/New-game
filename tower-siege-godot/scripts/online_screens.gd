@@ -27,6 +27,9 @@ var wait_time: Label
 var wait_practice: Button
 var _wait_started := 0
 var _wait_room := false
+var wait_copy: Button
+var rematch_btn: Button
+var replay_end_btn: Button
 # VS and the result
 var vs_row: HBoxContainer
 var end_title: Label
@@ -319,6 +322,12 @@ func _build_wait() -> void:
 	cp.add_child(wait_code)
 	cp.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	col.add_child(cp)
+	# Copy the code, to paste into a message to a friend
+	wait_copy = ui.button("📋 Copy the code", "blue", 22, func():
+		DisplayServer.clipboard_set(wait_code.text)
+		ui.toast("Copied! Send it to a friend."))
+	wait_copy.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	col.add_child(wait_copy)
 	wait_time = ui.label("0:00", 24)
 	col.add_child(wait_time)
 	wait_practice = ui.button("🤖 Practice vs a bot while you wait", "blue", 22, func():
@@ -333,6 +342,7 @@ func show_wait(room: bool) -> void:
 	_wait_started = Time.get_ticks_msec()
 	wait_l.text = "Connecting…"
 	wait_code.get_parent().visible = false
+	wait_copy.visible = false
 	wait_practice.visible = false
 	ui.show_screen("pvp-wait")
 	_timer_tick()
@@ -342,9 +352,24 @@ func wait_text(t: String) -> void:
 	wait_l.text = t
 
 
+## The server's word on a rematch: "waiting" (we asked), "asked" (they did), "gone" (they left)
+func rematch_state(state: String, name: String) -> void:
+	if main.screen_open != "pvp-end":
+		return
+	match state:
+		"asked":
+			ui.toast(I18n.t("%s wants a rematch!") % name, 3.0)
+			if not rematch_btn.disabled:
+				rematch_btn.text = I18n.t("🔁 Rematch: they're ready!")
+		"gone":
+			rematch_btn.disabled = true
+			rematch_btn.text = I18n.t("Your opponent has left")
+
+
 func show_code(code: String) -> void:
 	wait_code.text = code
 	wait_code.get_parent().visible = true
+	wait_copy.visible = true
 
 
 # ---------- VS ----------
@@ -407,6 +432,17 @@ func _build_end() -> void:
 	again_btn.custom_minimum_size = Vector2(420, 86)
 	again_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	v.add_child(again_btn)
+	# Online: play the same opponent again, when they want to too
+	rematch_btn = ui.button("🔁 Rematch", "green", 30, func():
+		rematch_btn.disabled = true
+		rematch_btn.text = I18n.t("Waiting for your opponent…")
+		net.send({"t": "rematch"}))
+	rematch_btn.custom_minimum_size = Vector2(420, 80)
+	rematch_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	v.add_child(rematch_btn)
+	replay_end_btn = ui.button("🎬 Watch the replay", "blue", 24, func(): main.watch_replay(0))
+	replay_end_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	v.add_child(replay_end_btn)
 	var row: HBoxContainer = ui.hbox()
 	row.add_child(ui.button("PvP", "blue", 26, func():
 		if main.mode == "online":
@@ -431,6 +467,10 @@ func show_end(winner: int, why: String) -> void:
 		"lost": "The connection to the server was lost, so the match counts as a loss."}.get(why,
 		"Every enemy building taken!" if winner == 1 or mode == "duo" else "Your last building has fallen.")
 	again_btn.text = "Find a new match" if mode == "online" else "Play again"
+	rematch_btn.visible = mode == "online" and winner >= 0
+	rematch_btn.disabled = false
+	rematch_btn.text = I18n.t("🔁 Rematch")
+	replay_end_btn.visible = not main.replays.list().is_empty()
 	main.ui.hide_hud()
 	ui.show_screen("pvp-end")
 	show_trophy_change()

@@ -73,6 +73,7 @@ var _win_coins := 0
 var lose_tip: Label
 var vibrate_btn: Button
 var cutscenes_btn: Button
+var reminders_btn: Button
 var stats_btn: Button
 var gfx_btns := {}
 var lang_btns := {}
@@ -123,6 +124,8 @@ func build() -> void:
 	_build_reward()
 	_build_missions()
 	_build_profile()
+	_build_event()
+	_build_replays()
 	_build_achievements()
 	_build_looks()
 	_build_paused()
@@ -450,6 +453,10 @@ func show_screen(id: String) -> void:
 			refresh_missions()
 		"profile":
 			refresh_profile()
+		"event":
+			refresh_event()
+		"replays":
+			refresh_replays()
 		"achievements":
 			refresh_achievements()
 		"looks":
@@ -650,7 +657,7 @@ func update_hud() -> void:
 		var sd: int = r.get_meta("side")
 		r.set_meta("want", maxf(0.001, tot[sd] / sum))
 		r.get_child(0).text = str(floori(tot[sd])) if sd != 0 and tot[sd] / sum > 0.12 else ""
-	var t: float = b.time if main.mode == "campaign" else maxf(0, Net.PVP_TIME - b.time)
+	var t: float = b.time if main.mode == "campaign" or main.mode == "replay" else maxf(0, Net.PVP_TIME - b.time)
 	time_label.text = "%d:%02d" % [floori(t / 60), floori(fmod(t, 60))]
 	time_label.add_theme_color_override("font_color", Color("#fff3a0") if main.mode != "campaign" and t < 20 else WHITE)
 	if objective.get_parent().visible and not main.goal.is_empty():
@@ -744,6 +751,14 @@ var menu_mission: Label           # the mission's code name and goal
 var menu_name: Label
 var menu_rank: Label             # your rank under your name
 var medals_btn: Button
+var event_btn: Button
+var replay_list: VBoxContainer
+var event_name: Label
+var event_desc: Label
+var event_when: Label
+var event_stages: HBoxContainer
+var event_prize: Label
+var event_play: Button
 var profile_btn: Button          # your face and name on the home screen
 var menu_face: TextureRect
 var more_panel: PanelContainer    # what ☰ opens
@@ -860,7 +875,8 @@ func _build_menu() -> void:
 	var list := vbox(10)
 	more_panel.add_child(list)
 	for item in [["⚙  Settings", func(): show_screen("settings")], ["❓  How to play", func(): show_screen("help")],
-			["🏆  Leaderboard", func(): main.net.open_board()], ["🎨  Looks", func(): show_screen("looks")]]:
+			["🏆  Leaderboard", func(): main.net.open_board()], ["🎨  Looks", func(): show_screen("looks")],
+			["🎬  Replays", func(): show_screen("replays")]]:
 		var on: Callable = item[1]
 		var b := button(item[0], "blue", 24, func():
 			more_panel.visible = false
@@ -901,6 +917,13 @@ func _build_menu() -> void:
 	play_btn.offset_top = -290
 	play_btn.offset_bottom = -170
 	frame.add_child(play_btn)
+	event_btn = _side_button("event", "🎪", "Event", "red", _event)
+	event_btn.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	event_btn.offset_left = 16
+	event_btn.offset_right = 124
+	event_btn.offset_top = -284
+	event_btn.offset_bottom = -176
+	frame.add_child(event_btn)
 	daily_btn = _side_button("daily", "📅", "Daily", "purple", _daily)
 	daily_btn.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	daily_btn.offset_left = -124
@@ -1025,6 +1048,7 @@ func refresh_toggles() -> void:
 	if vibrate_btn:
 		vibrate_btn.text = "Vibration: on" if main.save.vibrate else "Vibration: off"
 		cutscenes_btn.text = "Story scenes: on" if main.save.cutscenes else "Story scenes: off"
+		reminders_btn.text = "Reminders: on" if main.save.get("reminders", true) else "Reminders: off"
 		stats_btn.text = "Share anonymous level stats: on" if main.save.get("stats", true) else "Share anonymous level stats: off"
 		for g in gfx_btns:
 			var on: bool = main.save.gfx == g
@@ -1048,6 +1072,10 @@ func _build_reward() -> void:
 	v.add_child(wrapped(label("Come back every day: the reward grows for 7 days in a row.", 20, WHITE, 4, font_m), 540))
 	reward_btn = button("Collect", "yellow", 40, func():
 		var coins := Progress.claim_reward(main.save)
+		# The first time: Android asks if the game may remind you when the next one is ready
+		if not main.save.seen.has("reminders") and main.save.get("reminders", true):
+			main.save.seen["reminders"] = true
+			PhoneReminders.ask()
 		main.write_save()
 		main.check_achievements()
 		if coins > 0:
@@ -1189,6 +1217,120 @@ func progress_row(icon: String, title: String, sub: String, have: int, goal: int
 	h.add_child(b)
 	row.add_child(h)
 	return row
+
+
+# ---------- Replays ----------
+## Your last battles, to watch again
+func _build_replays() -> void:
+	var col := screen("replays")
+	col.add_child(ribbon("Replays"))
+	col.add_child(wrapped(label("Your last battles are kept here, so you can watch them again.", 20, WHITE, 4, font_m), 600))
+	replay_list = vbox(12)
+	col.add_child(replay_list)
+	col.add_child(back_button())
+
+
+func refresh_replays() -> void:
+	for c in replay_list.get_children():
+		c.queue_free()
+	var list: Array = main.replays.list()
+	if list.is_empty():
+		replay_list.add_child(wrapped(label("No replays yet. Play a battle, and it will be here.", 24, WHITE, 6, font_m), 600))
+		return
+	var now := int(Time.get_unix_time_from_system())
+	for i in list.size():
+		var r: Dictionary = list[i]
+		var row := PanelContainer.new()
+		row.add_theme_stylebox_override("panel", box(PANEL, INK, 20, 3, 4))
+		row.custom_minimum_size.x = 620
+		var h := hbox(12)
+		var res: String = r.result
+		var pic := label("🏆" if res == "won" else "🤝" if res == "draw" else "💀", 38, WHITE, 0)
+		pic.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		h.add_child(pic)
+		var info := vbox(2)
+		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var t := label(str(r.title), 24)
+		t.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		t.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		info.add_child(t)
+		var ago := now - int(r.when)
+		var when := tr("just now") if ago < 120 else (tr("%d min ago") % (ago / 60) if ago < 7200 else (tr("%d h ago") % (ago / 3600) if ago < 172800 else tr("%d days ago") % (ago / 86400)))
+		var sub := label("%s  ·  %d:%02d  ·  %s" % [tr({"won": "Victory", "lost": "Defeat", "draw": "Draw"}.get(res, "Defeat")), int(r.secs) / 60, int(r.secs) % 60, when], 18, WHITE, 4, font_m)
+		sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		sub.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+		info.add_child(sub)
+		h.add_child(info)
+		var idx := i
+		h.add_child(button("▶ Watch", "green", 24, func(): main.watch_replay(idx)))
+		row.add_child(h)
+		replay_list.add_child(row)
+
+
+# ---------- Weekend event ----------
+## This weekend's event: what it is, its three battles, the look for winning them all, and
+## Play (on weekdays: which event comes next, and when)
+func _build_event() -> void:
+	var col := screen("event")
+	col.add_child(ribbon("Weekend event", RED))
+	var p := panel()
+	var v := vbox(12)
+	p.add_child(v)
+	event_name = label("", 40, YELLOW, 10)
+	event_name.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	v.add_child(event_name)
+	event_desc = wrapped(label("", 22, WHITE, 5, font_m), 560)
+	event_desc.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	v.add_child(event_desc)
+	event_stages = hbox(12)
+	v.add_child(event_stages)
+	event_prize = wrapped(label("", 24, YELLOW, 6), 560)
+	event_prize.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	v.add_child(event_prize)
+	event_when = wrapped(label("", 20, WHITE, 4, font_m), 560)
+	event_when.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	v.add_child(event_when)
+	col.add_child(p)
+	event_play = button("", "green", 40, func(): main.start_event())
+	event_play.custom_minimum_size = Vector2(420, 100)
+	event_play.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	col.add_child(event_play)
+	col.add_child(back_button())
+
+
+func refresh_event() -> void:
+	var live := Events.live()
+	var st := Events.state(main.save)
+	var k: String = st.kind if live else Events.kind()
+	var e := Events.info(k)
+	event_name.text = e.icon + "  " + tr(e.name)
+	event_desc.text = tr(e.desc)
+	for c in event_stages.get_children():
+		c.queue_free()
+	for i in Events.STAGES:
+		var done := live and int(st.stage) > i
+		var next := live and int(st.stage) == i
+		var card := PanelContainer.new()
+		card.add_theme_stylebox_override("panel", box(Color("#4cbc45") if done else (YELLOW if next else Color(1, 1, 1, 0.22)), INK, 18, 3, 3))
+		card.custom_minimum_size = Vector2(176, 120)
+		var cv := vbox(2)
+		cv.add_child(label(tr("Battle %d") % (i + 1), 22, WHITE if not next else INK, 5 if not next else 0))
+		cv.add_child(label("✓" if done else ("▶" if next else "🔒"), 34, WHITE if not next else INK, 5 if not next else 0))
+		cv.add_child(label("🪙 %d" % Events.STAGE_COINS[i], 20, WHITE if not next else INK, 5 if not next else 0))
+		card.add_child(cv)
+		event_stages.add_child(card)
+	var pz := Events.prize(k)
+	event_prize.text = tr("Win all three: %s (a look you can't buy)") % tr(pz[2])
+	if live:
+		event_when.text = tr("Ends tonight at midnight (UTC).") if (Progress.today() + 3) % 7 == 6 else tr("On until Sunday midnight (UTC).")
+		event_play.visible = int(st.stage) < Events.STAGES
+		event_play.text = tr("Play battle %d") % (int(st.stage) + 1)
+		if int(st.stage) >= Events.STAGES:
+			event_when.text = tr("You won this weekend's event! A new one comes next weekend.")
+	else:
+		var dd := Events.days_until()
+		event_when.text = tr("Next weekend's event starts in %d days (Saturday, UTC).") % dd if dd > 1 else tr("Next weekend's event starts tomorrow (Saturday, UTC).")
+		event_play.visible = false
 
 
 # ---------- Profile and achievements ----------
@@ -1441,11 +1583,20 @@ func refresh_looks() -> void:
 			else:
 				card.add_child(label(item.icon, 52, WHITE, 0))
 			card.add_child(label(item.name, 22))
-			card.add_child(label(state if owned else "🪙 %d" % item.cost, 20, WHITE, 6))
+			# Bought with coins, or unlocked by an achievement or a weekend event
+			var lock: String = item.get("lock", "")
+			var open := Progress.unlocked(main.save, item)
+			var price := "🪙 %d" % item.cost
+			if lock.begins_with("ach:"):
+				price = tr("Free!") if open else "🔒 " + tr(Achievements.info(lock.substr(4))[3])
+			elif lock.begins_with("event:"):
+				price = "🎪 " + tr("Weekend event")
+			var price_l := wrapped(label(state if owned else price, 17 if not owned and lock != "" else 20, WHITE, 6), 160)
+			card.add_child(price_l)
 			for c in card.get_children():
 				c.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			b.add_child(card)
-			b.disabled = not owned and int(main.save.coins) < int(item.cost)
+			b.disabled = not owned and (not open or int(main.save.coins) < int(item.cost))
 			var id: String = item.id
 			var k: String = kind
 			b.pressed.connect(func():
@@ -1479,6 +1630,15 @@ func _build_settings() -> void:
 		refresh_toggles())
 	row2.add_child(cutscenes_btn)
 	v.add_child(row2)
+	reminders_btn = button("Reminders: on", "blue", 22, func():
+		main.save.reminders = not bool(main.save.get("reminders", true))
+		if main.save.reminders:
+			PhoneReminders.ask()
+		main.write_save()
+		PhoneReminders.apply(main.save)
+		refresh_toggles())
+	reminders_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	v.add_child(reminders_btn)
 	var watch := button("🎬 Watch the story again", "blue", 22, func(): main.watch_story())
 	var lessons := button("🎓 Play the lessons again", "blue", 22, func(): main.replay_lessons())
 	var row3 := hbox(10)
@@ -1541,6 +1701,9 @@ func refresh_menu() -> void:
 	var k := Progress.claimable(main.save) + Progress.weekly_claimable(main.save) + Progress.chests_ready(main.save) + (1 if Progress.reward_ready(main.save) else 0)
 	set_badge("missions", str(k) if k > 0 else "")
 	_lock(daily_btn, "📅", "Daily", DAILY_UNLOCK)
+	_lock(event_btn, "🎪", "Event", DAILY_UNLOCK)
+	var ev := Events.state(main.save)
+	set_badge("event", "!" if Events.live() and int(ev.stage) < Events.STAGES and n >= DAILY_UNLOCK else "")
 	set_badge("daily", "✓" if int(main.save.daily_won) == Progress.today() and n >= DAILY_UNLOCK else "")
 	for t in TABS:
 		_lock(tab_btns[t.id], t.icon, t.text, int(t.unlock))
@@ -1555,6 +1718,15 @@ func _lock(b: Button, icon: String, text: String, unlock: int) -> void:
 	pic.text = icon if open else "🔒"
 	b.text = tr(text) if open else tr("Level %d") % unlock
 	b.modulate = Color.WHITE if open else Color(0.8, 0.85, 0.95)
+
+
+## The weekend event's screen, once it's open (it opens with the daily challenge)
+func _event() -> void:
+	if int(main.save.level) < DAILY_UNLOCK:
+		main.play_sound("beep")
+		toast(tr("Unlocks at level %d") % DAILY_UNLOCK)
+		return
+	show_screen("event")
 
 
 ## The daily challenge, once it's open
@@ -2016,6 +2188,7 @@ func _build_win() -> void:
 	col.add_child(next_btn)
 	var row := hbox()
 	row.add_child(button("Replay", "blue", 26, func(): main.restart()))
+	row.add_child(button("🎬 Watch", "purple", 26, func(): main.watch_replay(0)))
 	row.add_child(button("Menu", "blue", 26, func(): main.open_menu()))
 	col.add_child(row)
 
@@ -2123,6 +2296,7 @@ func _build_lose() -> void:
 	v.add_child(r)
 	var row := hbox()
 	row.add_child(button("Upgrades", "blue", 26, func(): show_screen("shop")))
+	row.add_child(button("🎬 Watch", "purple", 26, func(): main.watch_replay(0)))
 	row.add_child(button("Menu", "blue", 26, func(): main.open_menu()))
 	v.add_child(row)
 	col.add_child(p)

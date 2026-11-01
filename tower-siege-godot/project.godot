@@ -46,3 +46,7 @@ environment/defaults/default_clear_color=Color(0.74902, 0.913725, 1, 1)
 [debug]
 
 file_logging/enable_file_logging=true
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/reminders/plugin.cfg")

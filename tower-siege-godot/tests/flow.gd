@@ -440,6 +440,7 @@ func _run() -> void:
 	await _cutscenes()
 
 	# Graphics settings
+	await _extras()
 	await _graphics()
 
 
@@ -536,6 +537,91 @@ func _cutscenes() -> void:
 	Engine.time_scale = 1.0
 	main.cinematics = false
 	main.cutscene.auto = false
+
+
+## Replays, weekend events and looks you unlock
+func _extras() -> void:
+	main.cinematics = false
+	# A battle is written down as it plays, and kept when it ends
+	DirAccess.make_dir_recursive_absolute("user://replays")
+	for n in DirAccess.get_files_at("user://replays"):
+		DirAccess.remove_absolute("user://replays/" + n)
+	main.save.level = 60
+	main.start_level(12)
+	await _frames(2)
+	for i in 200:
+		main.step(0.05)
+	var at_end: int = main.battle.towers.filter(func(t): return t.owner == 1).size()
+	for t in main.battle.towers:
+		if t.owner >= 2:
+			t.owner = 1
+	main.battle.units.clear()
+	main.step(0.05)
+	ok("A finished battle is kept as a replay", main.replays.list().size() == 1 and main.replays.list()[0].result == "won" and main.replays.list()[0].secs > 5, str(main.replays.list()))
+	main.watch_replay(0)
+	await _frames(2)
+	ok("Watching it sets the battle up again", main.mode == "replay" and main.state == "play" and main.battle.towers.size() > 5 and not main.controls(1))
+	for i in 120:
+		main.step(0.05)
+	ok("...and it plays: the field follows what happened", int(main.replay.i) > 20 and main.battle.time > 4.5, "frame %d time %.1f" % [int(main.replay.get("i", 0)), main.battle.time])
+	for i in 400:
+		main.step(0.05)
+	ok("At its end, the replays list opens", main.state == "over" and main.screen_open == "replays" and main.ui.replay_list.get_child_count() == 1, "state %s screen %s" % [main.state, main.screen_open])
+	ok("...and replays never change the game's records", main.battle.towers.filter(func(t): return t.owner == 1).size() >= at_end)
+	main.open_menu()
+
+	# A weekend event: three battles, then its look
+	var sat := Progress.today()
+	while (sat + 3) % 7 != 5:
+		sat += 1
+	Progress.test_day = sat
+	main.save.event = {}
+	var st := Events.state(main.save)
+	var p := Events.prize(st.kind)
+	main.save.looks.owned.erase(p[1])
+	ok("Events run at weekends: Saturday yes, Friday no", Events.live(sat) and not Events.live(sat - 1) and Events.days_until(sat - 1) == 1)
+	var coins_e := int(main.save.coins)
+	for stage in Events.STAGES:
+		main.start_event()
+		await _frames(2)
+		ok("Event battle %d starts" % (stage + 1), main.event_on and main.daily and main.state == "play" and main.goal.goal == Events.info(st.kind).goal, "state %s" % main.state)
+		for t in main.battle.towers:
+			if t.owner >= 2:
+				t.owner = 1
+		main.battle.units.clear()
+		main.step(0.05)
+		await _until(func(): return main.screen_open == "win", 6)
+	ok("Winning all three pays and gives the event's look", int(Events.state(main.save).stage) == 3 and Progress.owns(main.save, p[1]) and int(main.save.coins) >= coins_e + 250 and Achievements.earned(main.save, "event1"), "stage %d coins %d" % [int(Events.state(main.save).stage), int(main.save.coins) - coins_e])
+	main.start_event()
+	ok("...and then there's nothing more to play this weekend", main.state != "play" or not main.event_on)
+	Progress.test_day = -1
+	main.open_menu()
+
+	# Phone reminders: when they'd go off (the phone part only runs on Android)
+	var day0 := 20000
+	while (day0 + 3) % 7 != 1:   # a Tuesday
+		day0 += 1
+	var noon := float(day0 * 86400 + 12 * 3600)
+	main.save.streak = {"day": day0 - 1, "count": 3}
+	var pl := PhoneReminders.plan(main.save, noon, 0)
+	ok("The daily reward reminder: 6 in the evening, the same day when it's waiting", pl[0][0] == PhoneReminders.REWARD and int(pl[0][1]) == day0 * 86400 + 18 * 3600, str(pl))
+	main.save.streak = {"day": day0, "count": 3}
+	pl = PhoneReminders.plan(main.save, noon, 0)
+	ok("...the next day when it's been collected", int(pl[0][1]) == (day0 + 1) * 86400 + 18 * 3600, str(pl))
+	pl = PhoneReminders.plan(main.save, noon, 330)
+	ok("...at 6 in the evening on the phone's own clock", (int(pl[0][1]) + 330 * 60) % 86400 == 18 * 3600, str(pl))
+	var ev_r := PhoneReminders.plan(main.save, noon, 0).filter(func(r): return r[0] == PhoneReminders.EVENT)
+	ok("The weekend event reminder: Saturday at 10", ev_r.size() == 1 and int(ev_r[0][1]) == (day0 + 4) * 86400 + 10 * 3600, str(ev_r))
+	PhoneReminders.apply(main.save)   # (does nothing off Android)
+
+	# Looks an achievement unlocks
+	main.save.ach.done.erase("strike25")
+	main.save.looks.owned.erase("pilot")
+	ok("A look an achievement unlocks can't be had before it", Progress.pick_look(main.save, "hat", "pilot") == "locked")
+	main.save.ach.done.append("strike25")
+	var c0 := int(main.save.coins)
+	ok("...and is free once it's earned", Progress.pick_look(main.save, "hat", "pilot") == "" and int(main.save.coins) == c0 and main.save.looks.hat == "pilot")
+	main.save.looks.hat = "helmet"
 
 
 func _graphics() -> void:

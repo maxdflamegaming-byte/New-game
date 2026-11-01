@@ -592,6 +592,38 @@ func _flag_mesh(style := "plain") -> ArrayMesh:
 			k.sphere(2.8, Vector3(7.4, 0.8, 0), W, Vector3(1, 1, 0.3), false, 8, 4)
 			k.box(2.6, 1.8, 1.0, Vector3(7.4, -2.2, 0), W)
 			k.box(1, 1, 1.4, Vector3(6.3, 0.9, 0), Color("#27304a")).box(1, 1, 1.4, Vector3(8.5, 0.9, 0), Color("#27304a"))
+		"flame":
+			var orange := Color("#ff9a2e")
+			var yellow := Color("#ffd23f")
+			for f in [[4.4, -1.2, 5.5, 0.25], [7.4, -0.5, 7.5, 0.0], [10.4, -1.2, 5.5, -0.25]]:
+				k.add(_box_mesh(2.8, f[2], 1.0), Transform3D(Basis(Vector3.BACK, f[3]), Vector3(f[0], f[1] + 0.6, 0)), orange)
+			k.add(_box_mesh(1.6, 4.0, 1.2), Transform3D(Basis(), Vector3(7.4, -1.6, 0)), yellow)
+		"lightning":
+			var y2 := Color("#ffd23f")
+			k.add(_box_mesh(1.8, 5.5, 1.0), Transform3D(Basis(Vector3.BACK, -0.5), Vector3(8.4, 1.8, 0)), y2)
+			k.add(_box_mesh(5.0, 1.4, 1.0), Transform3D(Basis(), Vector3(7.4, 0, 0)), y2)
+			k.add(_box_mesh(1.8, 5.5, 1.0), Transform3D(Basis(Vector3.BACK, -0.5), Vector3(6.4, -1.8, 0)), y2)
+		"swords":
+			for sd in [-1, 1]:
+				k.add(_box_mesh(1.1, 9.5, 1.0), Transform3D(Basis(Vector3.BACK, sd * PI / 4), Vector3(7.4, 0, 0)), W)
+				k.add(_box_mesh(3.2, 0.9, 1.1), Transform3D(Basis(Vector3.BACK, sd * PI / 4), Vector3(7.4 - sd * 2.4, -2.4, 0)), Color("#ffd23f"))
+		"medal":
+			k.add(_box_mesh(1.4, 4.0, 1.0), Transform3D(Basis(Vector3.BACK, 0.4), Vector3(6.4, 2.2, 0)), Color("#ff5257"))
+			k.add(_box_mesh(1.4, 4.0, 1.0), Transform3D(Basis(Vector3.BACK, -0.4), Vector3(8.4, 2.2, 0)), Color("#3d9bff"))
+			k.cyl(2.6, 2.6, 1.2, 10, Vector3(7.4, -1.2, 0), Color("#ffd23f"), Basis(Vector3.RIGHT, PI / 2))
+		"dragon":
+			# The weekend Blitz event's prize: a golden dragon's wing
+			var g2 := Color("#ffd23f")
+			for i in 4:
+				k.add(_box_mesh(1.2, 6.5 - i * 1.2, 1.0), Transform3D(Basis(Vector3.BACK, 0.5 - i * 0.35), Vector3(5 + i * 1.9, 0.3, 0)), g2)
+			k.sphere(1.3, Vector3(4.2, 3.0, 0), Color("#ff5257"), Vector3(1, 1, 0.5), false, 6, 3)
+		"golden":
+			# The weekend Puzzle event's prize: a gold flag with a white star
+			k.box(14.2, 9.2, 1.0, Vector3(7.4, 0, 0), Color("#ffc21f"))
+			var d2 := BoxMesh.new()
+			d2.size = Vector3(4.2, 4.2, 1.2)
+			k.add(d2, Transform3D(Basis(Vector3.BACK, PI / 4), Vector3(7.4, 0, 0)), W)
+			k.add(d2, Transform3D(Basis(), Vector3(7.4, 0, 0)), W)
 	return k.mesh()
 
 
@@ -757,6 +789,40 @@ func _soldier_mesh(hat: String) -> ArrayMesh:
 			k.cone(4.2, 11, 10, Vector3(0, 29, 0), T)
 			k.cyl(4.4, 4.4, 1.2, 10, Vector3(0, 23.8, 0), gold)
 			k.sphere(1.5, Vector3(0, 35, 0), gold, Vector3.ONE, false, 6, 3)
+		"beanie":
+			# A knitted hat in the army's colour, a white band and a bobble
+			k.sphere(5.0, Vector3(0, 22, 0), T, Vector3(1, 1.05, 1), true, 10, 3)
+			k.cyl(5.2, 5.2, 1.8, 10, Vector3(0, 22.6, 0), Color.WHITE)
+			k.sphere(1.8, Vector3(0, 27.6, 0), Color.WHITE, Vector3.ONE, false, 6, 3)
+		"pilot":
+			# A leather flying cap with goggles pushed up on the forehead
+			k.sphere(5.1, Vector3(0, 21.6, 0), Color("#7a4e2d"), Vector3(1, 0.95, 1), true, 10, 3)
+			k.box(10.4, 1.0, 1.0, Vector3(0, 23.2, 3.4), Color("#3a2a20"))
+			for sd in [-1, 1]:
+				k.cyl(1.5, 1.5, 1.2, 8, Vector3(sd * 1.9, 23.4, 4.6), Color("#9fd8ff"), Basis(Vector3.RIGHT, PI / 2))
+		"general":
+			# An officer's peaked cap: a wide top, a gold band and badge, a black peak
+			k.cyl(5.8, 4.8, 3.2, 10, Vector3(0, 24.4, 0), MeshKit.DARK)
+			k.cyl(4.9, 4.9, 1.2, 10, Vector3(0, 23, 0), gold)
+			k.box(7, 0.8, 3.2, Vector3(0, 22.6, 4.6), Color("#1d2235"))
+			k.sphere(1.0, Vector3(0, 24.6, 5.3), gold, Vector3.ONE, false, 6, 3)
+		"laurel":
+			# A wreath of golden leaves round the helmet
+			k.sphere(5.2, Vector3(0, 21.6, 0), MeshKit.DARK, Vector3(1, 0.88, 1), true, 8, 3)
+			for i in 10:
+				var a := i * TAU / 10
+				k.box(1.4, 0.8, 2.6, Vector3(sin(a) * 5.4, 23.4, cos(a) * 5.4), gold, a + 0.6)
+		"goldhelm":
+			# The weekend Tank event's prize: a golden helmet with a red plume
+			k.sphere(5.3, Vector3(0, 21.6, 0), gold, Vector3(1, 0.9, 1), true, 8, 3)
+			k.cyl(6.0, 6.0, 1.2, 8, Vector3(0, 21.8, 0), Color("#e0a91a"))
+			k.box(1.4, 3.6, 6, Vector3(0, 27, -0.5), Color("#ff5257"))
+		"knight":
+			# The weekend Castle event's prize: a steel helm with a visor slit and a plume
+			k.cyl(5.2, 5.2, 7.5, 10, Vector3(0, 22.6, 0), Color("#c3cbd8"))
+			k.sphere(5.2, Vector3(0, 26.3, 0), Color("#c3cbd8"), Vector3(1, 0.5, 1), true, 10, 3)
+			k.box(6, 0.9, 1.2, Vector3(0, 22.6, 5), Color("#27304a"))
+			k.box(1.3, 4, 5, Vector3(0, 29.5, -0.8), T)
 		_:
 			# The standard helmet, in a darker shade of the army's colour
 			k.sphere(5.2, Vector3(0, 21.6, 0), MeshKit.DARK, Vector3(1, 0.88, 1), true, 8, 3)

@@ -244,6 +244,7 @@ function unqueue(ws) {
 function pair(host, guest) {
   unqueue(host);
   unqueue(guest);
+  host.wantRematch = guest.wantRematch = null;
   const seed = Math.floor(Math.random() * 1e9);
   const match = { host, guest, done: false, seed, timers: {}, claims: {} };
   host.peer = guest; guest.peer = host;
@@ -460,6 +461,23 @@ wss.on('connection', (ws, req) => {
         const host = rooms.get(String(msg.code || '').toUpperCase().trim());
         if (!host || host === ws || host.readyState !== host.OPEN || host.player.id === p.id) { send(ws, { t: 'noroom' }); return; }
         pair(host, ws);
+        break;
+      }
+      case 'rematch': {
+        // After a match, both players asking for a rematch get a new one together
+        if (ws.peer) return;
+        const last = ws.ending;
+        const opp = last && (last.host === ws ? last.guest : last.host);
+        if (!opp || opp.readyState !== opp.OPEN || opp.peer) { send(ws, { t: 'rematch', state: 'gone' }); return; }
+        if (opp.wantRematch === ws) {
+          opp.wantRematch = null;
+          ws.wantRematch = null;
+          pair(opp, ws);
+        } else {
+          ws.wantRematch = opp;
+          send(ws, { t: 'rematch', state: 'waiting' });
+          send(opp, { t: 'rematch', state: 'asked', name: ws.player.name });
+        }
         break;
       }
       case 'cancel':
