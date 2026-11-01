@@ -269,6 +269,7 @@ func build(seed_value: int, theme_name: String, battle: Battle) -> void:
 			var dd := rng.randf() * w.r * 0.45
 			props["w_" + th.wall].append([w.x + cos(a) * dd, w.y + sin(a) * dd, (w.r / 40) * (1.25 + rng.randf() * 0.35), roundi(rng.randf() * 4) * PI / 2 + (rng.randf() - 0.5) * 0.3, rng.randf()])
 	_add_props(props)
+	_warm = 2
 	for t in battle.towers:
 		_sync_tower(t)
 	# Frame the buildings: their spread plus room for the buildings themselves, at least 640
@@ -317,8 +318,8 @@ func _add_props(P: Dictionary) -> void:
 	var trunk := Color("#b07a48")
 	# Round trees: a trunk and a cluster of soft green balls
 	var tree := MeshKit.new().cyl(3.5, 4.8, 18, 7, Vector3(0, 9, 0), trunk)
-	tree.sphere(19, Vector3(0, 33, 0), T, Vector3(1, 0.92, 1), false, 10, 6)
-	tree.sphere(13, Vector3(11, 27, 5), T, Vector3.ONE, false, 9, 5).sphere(12, Vector3(-10, 29, -6), T, Vector3.ONE, false, 9, 5)
+	tree.sphere(19, Vector3(0, 33, 0), T, Vector3(1, 0.92, 1), false, 8, 5)
+	tree.sphere(13, Vector3(11, 27, 5), T, Vector3.ONE, false, 7, 4).sphere(12, Vector3(-10, 29, -6), T, Vector3.ONE, false, 7, 4)
 	_instanced(tree.mesh(), P.tree, func(c): return Color.from_hsv(0.29 + c * 0.05, 0.62, 0.66 + c * 0.12), true, 0.5)
 	# Pine trees, plain or with snow on top
 	for kind in ["pine", "snowpine"]:
@@ -381,7 +382,19 @@ func _box_mesh(w: float, h: float, d: float) -> BoxMesh:
 
 
 # ---------- Buildings ----------
+## Each kind of building at each size is built once and then reused: a tower crossing 10 or
+## 30 soldiers back and forth would otherwise build its model again every time
+var _models_made := {}
+
+
 func _build_model(t, lv: int) -> Dictionary:
+	var key := "%s:%d" % [t.type, lv]
+	if not _models_made.has(key):
+		_models_made[key] = _make_model(t, lv)
+	return _models_made[key]
+
+
+func _make_model(t, lv: int) -> Dictionary:
 	var k := MeshKit.new()
 	var info := {"top": 60.0, "smoke": [], "flag_at": Vector3.ZERO, "muzzle": Vector3(0, 30, 0), "range": false}
 	var CON := Color("#d2d7dd")      # concrete
@@ -1085,6 +1098,8 @@ func _make_fx() -> void:
 	var shell := SphereMesh.new()
 	shell.radius = 3
 	shell.height = 6
+	shell.radial_segments = 8    # (the default, 64 by 32, was 4,000 triangles for a pebble)
+	shell.rings = 4
 	var dark := paint_material(Color("#27304a"))
 	for i in 40:
 		var m := MeshInstance3D.new()
@@ -1429,6 +1444,8 @@ func _move_clouds() -> void:
 ## highlight: Callable(tower) -> "" / "source" / "over" / "bad" / "target"
 func render(dt: float, battle: Battle, highlight: Callable, shells_list: Array) -> void:
 	time += dt
+	if not _warmed.is_empty():
+		_end_warm_up()
 	if level_root == null:
 		return
 	for t in battle.towers:
@@ -1522,7 +1539,37 @@ func render(dt: float, battle: Battle, highlight: Callable, shells_list: Array) 
 		b.scale = Vector3.ONE * S
 	_update_fx(dt, battle.towers)
 	_move_clouds()
+	if _warm > 0:
+		_warm -= 1
+		_warm_up()
 	_apply_camera(dt)
+
+
+## The first time a phone draws something with a new look, it has to prepare (compile) it,
+## which can freeze the game for a moment: the first explosion or airstrike would stutter.
+## So when a battle is built, every effect is drawn once, out of sight under the ground.
+var _warm := 0
+var _warmed: Array[Node3D] = []
+
+
+func _warm_up() -> void:
+	var c := focus.get_center() if focus.has_area() else Vector2(fw / 2, fh / 2)
+	for pool in [fires, rings, shells, bombs, [plane]]:
+		for n in pool:
+			if not n.visible:
+				n.visible = true
+				n.set_meta("warm_from", n.position)
+				n.position = Vector3(c.x, -60, c.y)
+				_warmed.append(n)
+				break
+
+
+func _end_warm_up() -> void:
+	for n in _warmed:
+		if is_instance_valid(n):
+			n.visible = false
+			n.position = n.get_meta("warm_from", n.position)
+	_warmed.clear()
 
 
 ## The camera: where layout put it, slowly circling on the menu, or left alone during a cut scene

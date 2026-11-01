@@ -1124,8 +1124,14 @@ func buy(id: String) -> void:
 # ---------- Each frame ----------
 func _process(delta: float) -> void:
 	var dt := minf(0.05, delta)
-	# On Auto, if the game keeps running below ~35 frames a second, step the graphics down
-	if save.gfx == "auto" and world.quality > 0 and delta < 0.5:
+	# Menus and screens don't need 60 frames a second: 30 saves the battery and keeps the
+	# phone cool (installed builds only, so the tests run at full speed)
+	if OS.has_feature("template"):
+		var fps := 60 if state == "play" and screen_open == "" or state == "cutscene" else 30
+		if Engine.max_fps != fps:
+			Engine.max_fps = fps
+	# On Auto, if a battle keeps running below ~35 frames a second, step the graphics down
+	if save.gfx == "auto" and world.quality > 0 and delta < 0.5 and state == "play" and screen_open == "":
 		slow_frames = slow_frames + 1 if delta > 1.0 / 35 else maxi(0, slow_frames - 2)
 		if slow_frames > 150:
 			slow_frames = 0

@@ -417,6 +417,8 @@ func show_screen(id: String) -> void:
 	for k in screens:
 		screens[k].visible = k == id
 	main.screen_open = id
+	# A lesson's words stay on the battle, not over a screen (pause, results)
+	hint_panel.visible = id == "" and hint_label.text != ""
 	if id != "" and id != was:
 		_pop_in(screens[id])
 	match id:
@@ -692,8 +694,9 @@ func toast(text: String, seconds := 2.2) -> void:
 	if _toast_tween:
 		_toast_tween.kill()
 	_toast_tween = create_tween()
-	# Under the top bar, and under the mission's goal when it shows
-	var y := (150.0 if objective.get_parent().is_visible_in_tree() else 104.0) + safe_top
+	# Under the top bar, and under the mission's goal when it shows (on the home screen,
+	# under the level's name, clear of ☰ and Quests)
+	var y := (150.0 if objective.get_parent().is_visible_in_tree() else 380.0 if main.screen_open == "menu" else 104.0) + safe_top
 	toast_panel.offset_top = y - 34
 	_toast_tween.tween_property(toast_panel, "modulate:a", 1.0, 0.2)
 	_toast_tween.parallel().tween_property(toast_panel, "offset_top", y, 0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
@@ -1602,7 +1605,10 @@ func _build_shop() -> void:
 						main.write_save()
 						refresh_shop())))
 		col.add_child(packs)
-	col.add_child(back_button())
+	var row := hbox()
+	row.add_child(button("🎨  Looks", "purple", 26, func(): show_screen("looks")))
+	row.add_child(back_button())
+	col.add_child(row)
 
 
 func refresh_shop() -> void:
@@ -1777,6 +1783,10 @@ func _build_win() -> void:
 
 ## Rays of light, turning slowly behind the victory badge
 func _rays_texture() -> Texture2D:
+	return ImageTexture.create_from_image(UISkin._cached("rays", _draw_rays, 256))
+
+
+func _draw_rays() -> Image:
 	var n := 256
 	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
 	for y in n:
@@ -1786,7 +1796,7 @@ func _rays_texture() -> Texture2D:
 			var ray := 0.5 + 0.5 * cos(atan2(d.y, d.x) * 12.0)
 			var a := clampf(1.0 - r, 0.0, 1.0) * (0.25 + 0.6 * smoothstep(0.45, 0.6, ray))
 			img.set_pixel(x, y, Color(1.0, 0.92, 0.55, a))
-	return ImageTexture.create_from_image(img)
+	return img
 
 
 func _stat(value: String, name: String) -> Control:

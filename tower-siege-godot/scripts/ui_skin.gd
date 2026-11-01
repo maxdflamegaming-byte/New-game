@@ -27,22 +27,20 @@ const PAD := 8            # transparent room around the picture for the shadow
 static var _cache := {}
 
 
-## A button's look in one colour: "normal", "hover", "pressed" or "disabled"
+## A button's look in one colour: "normal", "hover", "pressed" or "disabled". A phone has
+## no hover, so hover looks like normal; every disabled button is the same gray.
 static func button(color: String, state := "normal") -> StyleBoxTexture:
+	if state == "hover":
+		state = "normal"
+	if state == "disabled":
+		color = "gray"
 	var key := "btn:%s:%s" % [color, state]
 	if _cache.has(key):
 		return _cache[key]
 	var c: Dictionary = COLORS.get(color, COLORS.blue)
-	if state == "disabled":
-		c = COLORS.gray
-	var top := Color(c.top)
-	var bottom := Color(c.bottom)
-	if state == "hover":
-		top = top.lightened(0.08)
-		bottom = bottom.lightened(0.08)
 	var pressed := state == "pressed"
 	var lip := 3.0 if pressed else LIP
-	var img := _draw(top, bottom, Color(c.lip), Color(c.line), lip, LIP - lip, true, 0.22)
+	var img := _cached(key, func(): return _draw(Color(c.top), Color(c.bottom), Color(c.lip), Color(c.line), lip, LIP - lip, true, 0.22))
 	var sb := _box(img, RADIUS, LIP)
 	sb.content_margin_top = 8 + (LIP - lip)
 	sb.content_margin_bottom = 10 + lip
@@ -54,7 +52,7 @@ static func button(color: String, state := "normal") -> StyleBoxTexture:
 static func panel() -> StyleBoxTexture:
 	if _cache.has("panel"):
 		return _cache.panel
-	var img := _draw(Color(PANEL.top), Color(PANEL.bottom), Color(PANEL.bottom).darkened(0.25), Color(PANEL.line), 6.0, 0.0, false, 0.3, Color(PANEL.rim))
+	var img := _cached("panel", func(): return _draw(Color(PANEL.top), Color(PANEL.bottom), Color(PANEL.bottom).darkened(0.25), Color(PANEL.line), 6.0, 0.0, false, 0.3, Color(PANEL.rim)))
 	var sb := _box(img, RADIUS, 6.0)
 	sb.set_content_margin_all(22)
 	sb.content_margin_bottom = 28
@@ -68,7 +66,7 @@ static func pill(color: String) -> StyleBoxTexture:
 	if _cache.has(key):
 		return _cache[key]
 	var c: Dictionary = COLORS.get(color, COLORS.blue)
-	var img := _draw(Color(c.top), Color(c.bottom), Color(c.lip), Color(c.line), 4.0, 0.0, false, 0.2, Color(0, 0, 0, 0), 15.0)
+	var img := _cached(key, func(): return _draw(Color(c.top), Color(c.bottom), Color(c.lip), Color(c.line), 4.0, 0.0, false, 0.2, Color(0, 0, 0, 0), 15.0))
 	var sb := _box(img, 15.0, 4.0)
 	sb.content_margin_left = 16
 	sb.content_margin_right = 16
@@ -76,6 +74,25 @@ static func pill(color: String) -> StyleBoxTexture:
 	sb.content_margin_bottom = 8
 	_cache[key] = sb
 	return sb
+
+
+## Drawing a picture pixel by pixel is slow on a phone, so each one is kept on the phone after
+## it's first drawn, and later launches just load it. (Change SKIN_VERSION when the drawing
+## changes, so the old pictures aren't used.)
+const SKIN_VERSION := 1
+const SKIN_DIR := "user://skin"
+
+
+static func _cached(key: String, draw: Callable, width := SIZE + PAD * 2) -> Image:
+	var path := "%s/%d-%s.png" % [SKIN_DIR, SKIN_VERSION, key.replace(":", "-")]
+	if FileAccess.file_exists(path):
+		var img := Image.load_from_file(path)
+		if img != null and img.get_width() == width:
+			return img
+	var made: Image = draw.call()
+	DirAccess.make_dir_recursive_absolute(SKIN_DIR)
+	made.save_png(path)
+	return made
 
 
 static func _box(img: Image, r: float, lip: float) -> StyleBoxTexture:

@@ -62,8 +62,33 @@ func _ready() -> void:
 		var p := AudioStreamPlayer.new()
 		add_child(p)
 		_players.append(p)
-	for sound in _recipes:
-		_streams[sound] = _build(_recipes[sound][1])
+	# The sounds are made on another thread, so the game opens sooner (a sound asked for in
+	# the first moment, before they're ready, is simply skipped)
+	var box := {}
+	_task = WorkerThreadPool.add_task(func():
+		for sound in _recipes:
+			box[sound] = _samples(_recipes[sound][1]))
+	_made = box
+
+
+var _task := -1
+var _made := {}
+
+
+func _process(_dt: float) -> void:
+	if _task < 0 or not WorkerThreadPool.is_task_completed(_task):
+		return
+	WorkerThreadPool.wait_for_task_completion(_task)
+	_task = -1
+	for sound in _made:
+		var s := AudioStreamWAV.new()
+		s.format = AudioStreamWAV.FORMAT_16_BITS
+		s.mix_rate = RATE
+		s.stereo = false
+		s.data = _made[sound]
+		_streams[sound] = s
+	_made = {}
+	set_process(false)
 
 
 func play(sound: String) -> void:
@@ -80,7 +105,8 @@ func play(sound: String) -> void:
 			return
 
 
-func _build(parts: Array) -> AudioStreamWAV:
+## A sound's 16-bit samples (safe to make on another thread)
+func _samples(parts: Array) -> PackedByteArray:
 	var voices := [] # [freq, to, dur, wave, vol, delay] and ["noise", dur, vol, delay]
 	for part in parts:
 		match part[0]:
@@ -107,12 +133,7 @@ func _build(parts: Array) -> AudioStreamWAV:
 	data.resize(n * 2)
 	for i in n:
 		data.encode_s16(i * 2, int(clampf(buf[i] * LOUD, -1.0, 1.0) * 32767))
-	var s := AudioStreamWAV.new()
-	s.format = AudioStreamWAV.FORMAT_16_BITS
-	s.mix_rate = RATE
-	s.stereo = false
-	s.data = data
-	return s
+	return data
 
 
 func _tone(buf: PackedFloat32Array, f0: float, f1: float, dur: float, wave: String, vol: float, delay: float) -> void:

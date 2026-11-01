@@ -512,7 +512,17 @@ func _graphics() -> void:
 	main.state = "menu"
 	for i in 200:
 		main._process(0.06)
-	ok("Auto steps the graphics down when the game runs slowly", main.world.quality == 0)
+	ok("Slow frames on a menu don't count (menus run at 30 frames a second)", main.world.quality == 1)
+	main.cinematics = false
+	main.start_level(12)
+	await _frames(2)
+	for side in main.battle.ai_sides:
+		side.timer = 1e9
+	var slow_ok: bool = main.state == "play" and main.screen_open == ""
+	for i in 200:
+		main._process(0.06)
+	main.open_menu()
+	ok("Auto steps the graphics down when a battle runs slowly", slow_ok and main.world.quality == 0, "state ok %s, quality %d" % [slow_ok, main.world.quality])
 	main.ui.show_screen("settings")
 	await _frames(2)
 	ok("The settings screen opens", main.screen_open == "settings")
