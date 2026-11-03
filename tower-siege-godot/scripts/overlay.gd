@@ -121,7 +121,8 @@ func _labels(towers: Array, w: World) -> void:
 		# The number swells when soldiers arrive or the building changes hands
 		var size := step_size(clampf(w.px_per_unit(t.x, t.y) * 50, 18, 42) * (1.0 + t.pop * 0.14))
 		var n := floori(maxf(0, t.units))
-		var text := "Max" if n >= Battle.CAP else str(n)
+		# (with no reinforcements nothing trains, so a full building shows its real number)
+		var text := "Max" if n >= Battle.CAP and not main.battle.frozen else str(n)
 		if t.type == "factory":
 			text = "⇡" + text
 		var tw := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x

@@ -6,6 +6,26 @@ extends SceneTree
 var fails := 0
 
 
+## Soldiers walking into one of your own buildings
+func _gathering() -> void:
+	var b := Battle.new()
+	b.mode = "campaign"
+	b.load_map({"towers": [[300, 1000, 1, 200, "barracks"], [600, 1000, 1, 40, "barracks"]], "rocks": []})
+	b.frozen = true
+	var big: Battle.Tower = b.towers[0]
+	var small: Battle.Tower = b.towers[1]
+	b.spawn_unit(small, big, 1)
+	for i in 400:
+		b.update(0.05, false)
+	ok("No reinforcements: gathering into a building that holds more than 150 loses nobody", is_equal_approx(big.units, 201.0), "%.1f" % big.units)
+	b.frozen = false
+	big.units = 200.0
+	b.spawn_unit(small, big, 1)
+	for i in 400:
+		b.update(0.05, false)
+	ok("...and elsewhere, a building above 150 isn't cut back down when soldiers arrive", big.units >= 200.0, "%.1f" % big.units)
+
+
 func ok(name: String, cond: bool, extra := "") -> void:
 	print(("PASS " if cond else "FAIL ") + name + ("  " + extra if extra != "" else ""))
 	if not cond:
@@ -281,6 +301,7 @@ func _initialize() -> void:
 	ok("The battle runs fast enough", ms < 60000, "%d ms for 6 games" % ms)
 
 	_pace()
+	_gathering()
 
 	print("SIM DONE %d failed" % fails)
 	quit(1 if fails else 0)

@@ -534,6 +534,7 @@ func record(title: String) -> void:
 
 ## Watch saved replay i (0 = the newest)
 func watch_replay(i: int) -> void:
+	replays.wait()
 	var files := replays._files()
 	if i < 0 or i >= files.size():
 		return
@@ -736,10 +737,12 @@ func _on_captured(t, side: int, old: int) -> void:
 
 
 func _on_clashed(x: float, y: float, a: int, b: int, ua, ub) -> void:
-	world.clash(x, y, a, b)
-	for u in [ua, ub]:
-		if u.dead:
-			world.knock(u.x, u.y, u.owner, u.tank)
+	_clash_fx += 1
+	if _clash_fx <= CLASH_FX_PER_FRAME:
+		world.clash(x, y, a, b)
+		for u in [ua, ub]:
+			if u.dead:
+				world.knock(u.x, u.y, u.owner, u.tank)
 	net.event(["cl", ua.id, ub.id])
 	replays.event(["cl", ua.id, ub.id])
 	if randf() < 0.3:
@@ -1382,8 +1385,15 @@ func buy(id: String) -> void:
 var cpu_ms := 0.0  # how long the game's own work takes a frame (for Settings → Frame rate)
 
 
+## Clashes shown with sparks and flying helmets this frame: when two big columns meet, dozens
+## clash at once, and drawing every one made the frame stall
+var _clash_fx := 0
+const CLASH_FX_PER_FRAME := 10
+
+
 func _process(delta: float) -> void:
 	var t_start := Time.get_ticks_usec()
+	_clash_fx = 0
 	var dt := minf(0.05, delta)
 	# Menus and screens don't need 60 frames a second: 30 saves the battery and keeps the
 	# phone cool (installed builds only, so the tests run at full speed). Battles have no cap:

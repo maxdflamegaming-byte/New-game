@@ -15,6 +15,7 @@ const KEY_EVERY := 10
 var main
 var rec := {}                 # the battle being written down
 var _t := 0.0
+var _task := -1               # the last replay being saved on a background thread
 
 
 func _init(m) -> void:
@@ -97,17 +98,35 @@ func finish(result: String) -> void:
 		return # too short to be worth watching
 	r.meta.result = result
 	r.meta.secs = float(r.frames[-1].tm)
-	DirAccess.make_dir_recursive_absolute(DIR)
+	# Packing and compressing a long battle took long enough to freeze a phone for a moment
+	# just as the battle ended, so it's written on a background thread (the recording is only
+	# numbers and arrays, which nothing else touches any more)
+	wait()
 	var path := "%s/%d.rep" % [DIR, int(Time.get_unix_time_from_system() * 1000)]
-	var f := FileAccess.open_compressed(path, FileAccess.WRITE, FileAccess.COMPRESSION_ZSTD)
+	_task = WorkerThreadPool.add_task(_write.bind(path, {"meta": r.meta, "frames": r.frames}))
+
+
+static func _write(path: String, data: Dictionary) -> void:
+	DirAccess.make_dir_recursive_absolute(DIR)
+	# Written under another name first, so a half-written file is never listed
+	var tmp := path + ".part"
+	var f := FileAccess.open_compressed(tmp, FileAccess.WRITE, FileAccess.COMPRESSION_ZSTD)
 	if f == null:
 		return
-	f.store_var({"meta": r.meta, "frames": r.frames})
+	f.store_var(data)
 	f.close()
+	DirAccess.rename_absolute(tmp, path)
 	# Only the newest MAX are kept
 	var files := _files()
 	for i in range(MAX, files.size()):
 		DirAccess.remove_absolute(DIR + "/" + files[i])
+
+
+## Waits for a replay still being saved (before reading the list, or saving another)
+func wait() -> void:
+	if _task >= 0:
+		WorkerThreadPool.wait_for_task_completion(_task)
+		_task = -1
 
 
 func stop() -> void:
@@ -115,7 +134,7 @@ func stop() -> void:
 
 
 ## Saved replays, newest first: file names
-func _files() -> Array:
+static func _files() -> Array:
 	var d := DirAccess.open(DIR)
 	if d == null:
 		return []
@@ -127,6 +146,7 @@ func _files() -> Array:
 
 ## What each saved replay is: [{file, title, result, secs, when}], newest first
 func list() -> Array:
+	wait()
 	var out := []
 	for n in _files():
 		var r = load_file(n, true)
@@ -137,6 +157,7 @@ func list() -> Array:
 
 
 func load_file(name: String, _meta_only := false) -> Variant:
+	wait()
 	var f := FileAccess.open_compressed(DIR + "/" + name, FileAccess.READ, FileAccess.COMPRESSION_ZSTD)
 	if f == null:
 		return null

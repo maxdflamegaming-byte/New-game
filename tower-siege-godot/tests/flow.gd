@@ -566,6 +566,7 @@ func _extras() -> void:
 			t.owner = 1
 	main.battle.units.clear()
 	main.step(0.05)
+	ok("The replay is written in the background, not while the battle ends", main.replays._task >= 0 or main.replays.list().size() == 1)
 	ok("A finished battle is kept as a replay", main.replays.list().size() == 1 and main.replays.list()[0].result == "won" and main.replays.list()[0].secs > 5, str(main.replays.list()))
 	main.watch_replay(0)
 	await _frames(2)

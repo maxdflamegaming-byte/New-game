@@ -413,7 +413,14 @@ func update(dt: float, run_ai := true) -> void:
 func _arrive(u: Unit) -> void:
 	var t := u.to
 	if t.owner == u.owner:
-		t.units = minf(HARD_CAP, t.units + u.power)
+		# With no reinforcements every soldier counts, and a puzzle can start you with more than
+		# a building could ever train: gathering them must never lose any. Otherwise a building
+		# can't be filled above HARD_CAP, but one already above it isn't cut back down (in PvP
+		# nothing ever goes above it, so the web version's rules are unchanged)
+		if frozen:
+			t.units += u.power
+		else:
+			t.units = maxf(t.units, minf(HARD_CAP, t.units + u.power))
 		t.pop = 1.0
 		return
 	t.units -= u.power / TYPES[t.type].defense
