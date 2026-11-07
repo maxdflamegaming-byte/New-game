@@ -4,7 +4,9 @@ extends SceneTree
 ## kind with random taps, drags and swipes, uses the pause, speed, hint and airstrike buttons,
 ## and presses every button on the win, defeat and pause screens. Any script or engine error
 ## along the way is a FAIL, with what was being done when it happened.
-##   godot --headless --path tower-siege-godot -s tests/buttons.gd
+##   godot --headless --path tower-siege-godot -s tests/buttons.gd -- --server=ws://127.0.0.1:9
+## (the online buttons then meet a server that isn't there, the same on every machine; with
+## the real address, whether it answers decides what happens)
 ## Prints PASS/FAIL lines and "BUTTONS DONE n failed".
 
 ## Errors that come from the test machine, not the game

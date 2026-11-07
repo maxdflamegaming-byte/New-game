@@ -71,7 +71,7 @@ jobs:
           timeout 900 "$HOME/godot" --headless --path tower-siege-godot -s tests/fuzz.gd -- quick 2>&1 | tee fuzz.log
           grep -q "FUZZ DONE 0 failed" fuzz.log
           # Every button on every screen, and battles of every kind played with random touches
-          timeout 1200 "$HOME/godot" --headless --path tower-siege-godot -s tests/buttons.gd 2>&1 | tee buttons.log
+          timeout 1200 "$HOME/godot" --headless --path tower-siege-godot -s tests/buttons.gd -- --server=ws://127.0.0.1:9 2>&1 | tee buttons.log
           grep -q "BUTTONS DONE 0 failed" buttons.log
           ! grep -q "SCRIPT ERROR" sim.log flow.log levels.log fuzz.log buttons.log
 
