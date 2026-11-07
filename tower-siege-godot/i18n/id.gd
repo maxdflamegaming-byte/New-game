@@ -628,4 +628,7 @@ const T := {
 	"Win a level with 3 stars": "Menangkan satu level dengan 3 bintang",
 	"Play a PvP or practice match": "Main satu pertandingan PvP atau latihan",
 	"Players": "Pemain",
+	"📋 Copy speed report": "📋 Salin laporan kecepatan",
+	"Speed report copied. Paste it in a message to us.": "Laporan disalin. Tempel di pesan untuk kami.",
+	"The game is running slowly on this phone. Settings → Graphics → Auto makes it smoother.": "Game berjalan lambat di ponsel ini. Pengaturan → Grafis → Otomatis membuatnya lebih mulus.",
 }

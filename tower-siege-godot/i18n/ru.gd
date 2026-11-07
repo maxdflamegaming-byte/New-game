@@ -628,4 +628,7 @@ const T := {
 	"Win a level with 3 stars": "Выиграй уровень на 3 звезды",
 	"Play a PvP or practice match": "Сыграй матч PvP или тренировку",
 	"Players": "Игроки",
+	"📋 Copy speed report": "📋 Скопировать отчёт о скорости",
+	"Speed report copied. Paste it in a message to us.": "Отчёт скопирован. Вставь его в сообщение нам.",
+	"The game is running slowly on this phone. Settings → Graphics → Auto makes it smoother.": "Игра тормозит на этом телефоне. Настройки → Графика → Авто сделает её плавнее.",
 }

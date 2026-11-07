@@ -1775,20 +1775,24 @@ func _apply_camera(dt: float) -> void:
 ##   High: real soft shadows, 4x smoothing, full resolution
 ##   Medium: soft round shadows under things instead, 4x smoothing, full resolution
 ##   Low: round shadows, 2x smoothing, the 3D a little smaller (at most 1700 pixels tall)
-## On Auto, a phone still too slow on Low gets one more step (reduced): the 3D at most 1280
-## pixels tall. Text and buttons always stay at full sharpness.
-var reduced := false
+## On Auto, a phone still too slow on Low gets further steps (reduced): 1, the 3D at most 1280
+## pixels tall; 2, at most 1100 with no smoothing; 3, the same at a steady 30 frames a second
+## (main.gd), which looks smoother than a frame rate jumping between 30 and 60.
+## Text and buttons always stay at full sharpness.
+const STEPS := 3
+var reduced := 0
 
 
 func set_quality(q: int) -> void:
 	quality = clampi(q, 0, 2)
-	if quality > 0:
-		reduced = false
 	var vp := get_viewport()
 	var h := maxf(1.0, float(DisplayServer.window_get_size().y))
 	vp.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR
-	vp.scaling_3d_scale = 1.0 if quality > 0 else clampf((1280.0 if reduced else 1700.0) / h, 0.5, 1.0)
-	vp.msaa_3d = Viewport.MSAA_2X if quality == 0 else Viewport.MSAA_4X
+	if quality > 0:
+		reduced = 0
+	var tall: float = [1700.0, 1280.0, 1100.0, 1100.0][clampi(reduced, 0, STEPS)]
+	vp.scaling_3d_scale = 1.0 if quality > 0 else clampf(tall / h, 0.4, 1.0)
+	vp.msaa_3d = Viewport.MSAA_4X if quality > 0 else (Viewport.MSAA_2X if reduced < 2 else Viewport.MSAA_DISABLED)
 	sun.shadow_enabled = quality == 2
 	sun.shadow_blur = 1.5
 	RenderingServer.directional_shadow_atlas_set_size(2048, true)
@@ -1809,9 +1813,9 @@ func set_quality(q: int) -> void:
 ## One step cheaper (Auto, when the phone can't keep up): false when there's nothing left
 func lower_quality() -> bool:
 	if quality == 0:
-		if reduced:
+		if reduced >= STEPS:
 			return false
-		reduced = true
+		reduced += 1
 		set_quality(0)
 		return true
 	set_quality(quality - 1)

@@ -628,4 +628,7 @@ const T := {
 	"Win a level with 3 stars": "Vença um nível com 3 estrelas",
 	"Play a PvP or practice match": "Jogue uma partida PvP ou de treino",
 	"Players": "Jogadores",
+	"📋 Copy speed report": "📋 Copiar relatório de velocidade",
+	"Speed report copied. Paste it in a message to us.": "Relatório copiado. Cole numa mensagem para nós.",
+	"The game is running slowly on this phone. Settings → Graphics → Auto makes it smoother.": "O jogo está lento neste celular. Configurações → Gráficos → Auto deixa mais suave.",
 }

@@ -628,4 +628,7 @@ const T := {
 	"Win a level with 3 stars": "Bir bölümü 3 yıldızla kazan",
 	"Play a PvP or practice match": "Bir PvP ya da antrenman maçı oyna",
 	"Players": "Oyuncular",
+	"📋 Copy speed report": "📋 Hız raporunu kopyala",
+	"Speed report copied. Paste it in a message to us.": "Rapor kopyalandı. Bize bir mesajda yapıştır.",
+	"The game is running slowly on this phone. Settings → Graphics → Auto makes it smoother.": "Oyun bu telefonda yavaş çalışıyor. Ayarlar → Grafik → Otomatik daha akıcı yapar.",
 }

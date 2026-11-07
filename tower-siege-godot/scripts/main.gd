@@ -318,11 +318,12 @@ func build_scene() -> void:
 func apply_gfx() -> void:
 	var g: String = save.gfx
 	if g in GFX:
-		world.reduced = false
+		world.reduced = 0
 		world.set_quality(GFX.find(g))
 	else:
+		# "medium", "low", or how many steps below Low ("low1".."low3"; "reduced" from older versions)
 		var learned: String = save.get("gfx_auto", "medium")
-		world.reduced = learned == "reduced"
+		world.reduced = 1 if learned == "reduced" else (int(learned.substr(3)) if learned.begins_with("low") and learned.length() > 3 else 0)
 		world.set_quality(1 if learned == "medium" else 0)
 	_perf = [0.0, 0, 0]
 
@@ -340,8 +341,13 @@ func set_gfx(g: String) -> void:
 var _perf := [0.0, 0, 0]
 
 
+var _told_slow := false  # (once a session: a fixed graphics setting is too much for this phone)
+
+
 func _watch_speed(delta: float) -> void:
-	if save.gfx != "auto" or state != "play" or screen_open != "" or delta > 0.5 or battle.time < 1.5:
+	if state != "play" or screen_open != "" or delta > 0.5 or battle.time < 1.5:
+		return
+	if save.gfx != "auto" and (_told_slow or save.gfx == "low"):
 		return
 	_perf[0] += delta
 	_perf[1] += 1
@@ -351,8 +357,14 @@ func _watch_speed(delta: float) -> void:
 		return
 	var slow: bool = _perf[2] * 5 > _perf[1]
 	_perf = [0.0, 0, 0]
+	if save.gfx != "auto":
+		# Picked by hand: Auto can't help, so say what would
+		if slow:
+			_told_slow = true
+			ui.toast("The game is running slowly on this phone. Settings → Graphics → Auto makes it smoother.", 4.0)
+		return
 	if slow and world.lower_quality():
-		save.gfx_auto = "medium" if world.quality > 0 else ("reduced" if world.reduced else "low")
+		save.gfx_auto = "medium" if world.quality > 0 else ("low%d" % world.reduced if world.reduced > 0 else "low")
 		ui.toast("Graphics lowered to keep the game smooth")
 
 
@@ -425,6 +437,7 @@ func _connect_battle() -> void:
 
 
 func load_battle(data: Dictionary, n: int, theme := "") -> void:
+	run_stats = {}
 	battle.mode = mode
 	battle.boost = {"drill": save.up.drill, "boots": save.up.boots}
 	# The campaign plays faster and more decisively than PvP (whose rules match the web version)
@@ -793,6 +806,7 @@ func check_end() -> void:
 
 
 func end_game(won: bool) -> void:
+	run_stats = {}
 	state = "over"
 	tutor = null
 	replays.finish("won" if won else "lost")
@@ -1384,6 +1398,57 @@ func buy(id: String) -> void:
 # ---------- Each frame ----------
 var cpu_ms := 0.0  # how long the game's own work takes a frame (for Settings → Frame rate)
 
+## How the last battle ran, for Settings → Copy speed report: {what, frames, secs, late, worst,
+## cpu, draws}. Kept per battle while it's played (_note_speed) and when it ends.
+var run_stats := {}
+var last_run := {}
+
+
+func _note_speed(delta: float) -> void:
+	if state != "play" or screen_open != "" or delta > 1.0:
+		return
+	if run_stats.is_empty():
+		run_stats = {"what": "level %d" % level if mode == "campaign" else mode, "frames": 0, "secs": 0.0,
+			"late": 0, "worst": 0.0, "cpu": 0.0, "draws": 0}
+	run_stats.frames += 1
+	run_stats.secs += delta
+	if delta > 1.0 / 48:
+		run_stats.late += 1
+	run_stats.worst = maxf(run_stats.worst, delta)
+	run_stats.cpu += cpu_ms
+	run_stats.draws = maxi(run_stats.draws, int(Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME)))
+	last_run = run_stats
+
+
+## Everything about this phone and how battles run on it, as text to paste into a message
+func speed_report() -> String:
+	var vp := get_viewport()
+	var win := DisplayServer.window_get_size()
+	var px := Vector2(win) * vp.scaling_3d_scale
+	var q: String = save.gfx
+	if q == "auto":
+		q += " (%s%s)" % [["low", "medium", "high"][world.quality], ", step %d" % world.reduced if world.reduced > 0 else ""]
+	var lines := [
+		"Tower Siege %s speed report" % ProjectSettings.get_setting("application/config/version", "?"),
+		"Phone: %s, %s %s" % [OS.get_model_name(), OS.get_name(), OS.get_version()],
+		"Processor: %s, %d cores" % [OS.get_processor_name(), OS.get_processor_count()],
+		"Graphics chip: %s (%s), %s" % [RenderingServer.get_video_adapter_name(), RenderingServer.get_video_adapter_vendor(), RenderingServer.get_video_adapter_api_version()],
+		"Screen: %dx%d at %.0f Hz" % [win.x, win.y, DisplayServer.screen_get_refresh_rate()],
+		"Graphics: %s, 3D %dx%d, smoothing %s" % [q, px.x, px.y, ["off", "2x", "4x", "8x"][vp.msaa_3d]],
+	]
+	var s: Dictionary = last_run
+	if s.is_empty() or int(s.frames) == 0:
+		lines.append("No battle played yet since the game started: play one, then copy again.")
+	else:
+		lines.append("Last battle: %s, %.0f s, %.0f fps on average, %d%% of frames late, slowest %.0f ms, game work %.1f ms a frame, %d draw calls" % [
+			s.what, s.secs, s.frames / maxf(s.secs, 0.001), roundi(100.0 * s.late / s.frames), s.worst * 1000.0, s.cpu / s.frames, s.draws])
+	return "\n".join(lines)
+
+
+func copy_speed_report() -> void:
+	DisplayServer.clipboard_set(speed_report())
+	ui.toast("Speed report copied. Paste it in a message to us.", 3.5)
+
 
 ## Clashes shown with sparks and flying helmets this frame: when two big columns meet, dozens
 ## clash at once, and drawing every one made the frame stall
@@ -1400,10 +1465,14 @@ func _process(delta: float) -> void:
 	# they follow the screen (vsync), since a timer cap can't line frames up with the screen
 	# and makes the soldiers judder
 	if OS.has_feature("template"):
+		# (Auto's last step: a steady 30 in battle, on a phone that can't hold 60 even on Low)
 		var fps := 0 if state == "play" and screen_open == "" or state == "cutscene" else 30
+		if fps == 0 and world.quality == 0 and world.reduced >= World.STEPS:
+			fps = 30
 		if Engine.max_fps != fps:
 			Engine.max_fps = fps
 	_watch_speed(delta)
+	_note_speed(delta)
 	if _save_later and (state != "play" or screen_open != ""):
 		write_save()
 	if state == "play":

@@ -692,7 +692,7 @@ func update_hud() -> void:
 		var px := Vector2(DisplayServer.window_get_size()) * get_viewport().scaling_3d_scale
 		var q: String = main.save.gfx
 		if q == "auto":
-			q += " (%s%s)" % [["low", "medium", "high"][main.world.quality], ", smaller" if main.world.reduced else ""]
+			q += " (%s%s)" % [["low", "medium", "high"][main.world.quality], ", step %d" % main.world.reduced if main.world.reduced > 0 else ""]
 		fps_label.text = "%d fps · %s · 3D %dx%d · game %.1f ms" % [Engine.get_frames_per_second(), q, px.x, px.y, main.cpu_ms]
 
 
@@ -1678,6 +1678,9 @@ func _build_settings() -> void:
 	row_r.add_child(reminders_btn)
 	row_r.add_child(fps_btn)
 	v.add_child(row_r)
+	var report := button("📋 Copy speed report", "blue", 22, func(): main.copy_speed_report())
+	report.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	v.add_child(report)
 	var watch := button("🎬 Watch the story again", "blue", 22, func(): main.watch_story())
 	var lessons := button("🎓 Play the lessons again", "blue", 22, func(): main.replay_lessons())
 	var row3 := hbox(10)

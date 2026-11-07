@@ -667,10 +667,19 @@ func _graphics() -> void:
 	ok("Auto steps the graphics down when a battle runs slowly", slow_ok and w.quality == 0 and main.save.get("gfx_auto", "") == "low", "state ok %s, quality %d" % [slow_ok, w.quality])
 	for i in 40:
 		main._process(0.06)
-	ok("...and once more on Low: the 3D drawn smaller", w.quality == 0 and w.reduced and main.save.gfx_auto == "reduced")
+	ok("...and once more on Low: the 3D drawn smaller", w.quality == 0 and w.reduced == 1 and main.save.gfx_auto == "low1")
+	for i in 80:
+		main._process(0.06)
+	ok("...then without smoothing, then at a steady 30 frames a second, and no further", w.quality == 0 and w.reduced == World.STEPS and main.save.gfx_auto == "low%d" % World.STEPS and get_root().msaa_3d == Viewport.MSAA_DISABLED and not w.lower_quality(), "step %d" % w.reduced)
 	main.open_menu()
 	main.apply_gfx()
-	ok("Auto remembers where it got to", w.quality == 0 and w.reduced)
+	ok("Auto remembers where it got to", w.quality == 0 and w.reduced == World.STEPS)
+	main.save.gfx_auto = "reduced"
+	main.apply_gfx()
+	ok("...including the step older versions saved", w.reduced == 1)
+	var rep: String = main.speed_report()
+	ok("The speed report says the phone, the graphics and how the last battle ran", rep.contains("Graphics chip:") and rep.contains("Last battle: level 12") and rep.contains("fps on average"), rep)
+	main.copy_speed_report()
 	main.set_gfx("auto")
 	ok("Picking Auto again starts over from Medium", w.quality == 1 and not w.reduced and not main.save.has("gfx_auto"))
 	main.ui.show_screen("settings")
