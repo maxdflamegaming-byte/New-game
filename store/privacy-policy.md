@@ -1,10 +1,10 @@
 # Color Claim – Privacy Policy
 
-*Effective 30 September 2026 · Applies to the Color Claim game for Android (package com.maxdflamegaming.colorclaimhd), made by maxdflamegaming.*
+*Effective 8 November 2026 · Applies to the Color Claim game for Android (package com.maxdflamegaming.colorclaimhd), made by maxdflamegaming.*
 
 ## The short version
 
-Color Claim does not sell or share your personal information, and it has no accounts of its own, no ads, no analytics and no in-app purchases. Playing offline, nothing leaves your phone. Playing **Online**, the game sends the server only what it needs to run the game you're in (below), and the server keeps none of it after you leave. If you choose to sign in with Google Play Games, your save is also kept in your own Google account (below).
+Color Claim does not sell your personal information, and it has no accounts of its own and no in-app purchases. It shows ads from Google AdMob and sends anonymous gameplay statistics to Google Analytics (both below). Apart from those, playing offline sends nothing (and without internet, nothing at all). Playing **Online**, the game sends the server only what it needs to run the game you're in (below), and the server keeps none of it after you leave. If you choose to sign in with Google Play Games, your save is also kept in your own Google account (below).
 
 ## What the game keeps on your phone
 
@@ -36,17 +36,29 @@ Versions of the game that include Google Play Games sign-in show it under **Sett
 
 Google's handling of this data is covered by the [Google Privacy Policy](https://policies.google.com/privacy) and the [Google Play Games Services terms](https://developers.google.com/games/services/terms).
 
+## Ads (Google AdMob)
+
+From version 1.0.50, the game shows ads from Google AdMob: a short video you can choose to watch for double coins after a game, and a full-screen ad after every few games (never during play). There are no banner ads.
+
+To show ads, Google's AdMob software on your phone collects and shares with Google: your device's advertising ID, your IP address and approximate location, basic device information, and how you interact with the ads. Google uses this to show ads, measure them and prevent fraud. In the European Economic Area, the UK and Switzerland, the game first asks for your consent, and ads are only personalised if you agree; you can change your choice later in Settings. Anywhere, you can reset or delete your advertising ID, or opt out of personalised ads, in your phone's Settings → Google → Ads (or Privacy → Ads).
+
+How Google uses this data is described at [policies.google.com/technologies/partner-sites](https://policies.google.com/technologies/partner-sites) and in the [Google Privacy Policy](https://policies.google.com/privacy).
+
+## Analytics (Google Analytics)
+
+From version 1.0.50, the game sends anonymous gameplay statistics to Google Analytics, so we can see which modes and maps people enjoy and fix what's too hard: for example "a Classic game on the Maze ended in a win at 34%", level-ups, unlocks, coins spent in the shop, and how often the game is opened. Each phone gets a random ID made by the game; no name, email, advertising ID or other personal information is sent. Google sees your IP address while receiving the data and uses it only to estimate your country. You can switch analytics off at any time in **Settings → Privacy**.
+
 ## Permissions
 
-The game asks for two permissions: **internet**, used for Online play and, if you sign in, Google Play Games, and **vibration**, to buzz your phone when you're knocked out or claim land (you can turn this off in Settings). It does not ask for location, contacts, camera, microphone or storage.
+The game asks for two permissions: **internet**, used for Online play and, if you sign in, Google Play Games, and **vibration**, to buzz your phone when you're knocked out or claim land (you can turn this off in Settings). From version 1.0.50, Google's ad software also adds the advertising ID and network state permissions. The game does not ask for location, contacts, camera, microphone or storage.
 
 ## Children
 
-The game doesn't ask for anyone's age, email or real name. Online, players see only the in-game names others chose; there is no chat. If you're a parent and want to keep your child offline, choose any mode other than Online.
+The game doesn't ask for anyone's age, email or real name. Online, players see only the in-game names others chose; there is no chat. If you're a parent and want to keep your child offline, choose any mode other than Online. The game is meant for players aged 13 and over, and its ads are not aimed at children.
 
 ## Changes
 
-If the game ever starts collecting more (for example, if ads are added), this policy will be updated first, and the change will be described in the game's store listing.
+If the game ever starts collecting more, this policy will be updated first, and the change will be described in the game's store listing.
 
 ## Contact
 
