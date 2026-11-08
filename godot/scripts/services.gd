@@ -5,15 +5,19 @@ extends RefCounted
 ## (the end of a game, the shop and so on), and everything here does nothing until it's
 ## switched on.
 ##
-## Switching on needs accounts and IDs that only the game's owner can create, and an Android
-## plugin for each service; see ONLINE-AND-MONEY.md at the top of the repository. Until
-## then no ad, purchase or sign-in code is in the game at all, so nothing changes for players
-## and no data is collected.
+## Switching each on needs accounts and IDs that only the game's owner can create, and an
+## Android plugin; see ONLINE-AND-MONEY.md at the top of the repository. Ads (AdMob) are on:
+## see scripts/ads.gd. Purchases and Play Games stay off until their IDs are filled in.
 
 ## Filled in once the accounts exist (see ONLINE-AND-MONEY.md). Empty means off.
 const CONFIG := {
-	# AdMob: the rewarded ad unit (double coins after a game)
-	"admob_rewarded_unit": "",
+	# AdMob (the app ID is in project.godot, under [admob]): the rewarded unit (double coins
+	# after a game) and the full-screen ad between games
+	"admob_rewarded_unit": "ca-app-pub-3925367501335445/5228029416",
+	"admob_interstitial_unit": "ca-app-pub-3925367501335445/1065423124",
+	# true: Google's test ads instead of real ones (for trying things without breaking AdMob's
+	# rules about clicking your own ads)
+	"admob_test_ads": false,
 	# Google Play Billing: product ids from Play Console -> Monetize -> In-app products
 	"product_remove_ads": "",
 	"product_coins_small": "",
@@ -36,9 +40,9 @@ static func _plugin(name: String) -> Object:
 
 # ---------- Rewarded ads ----------
 
-## Can the results screen offer "watch an ad for double coins"?
+## Can the results screen offer "watch an ad for double coins"? (a video is loaded)
 static func rewarded_ready() -> bool:
-	return CONFIG.admob_rewarded_unit != "" and _plugin("AdMob") != null
+	return CONFIG.admob_rewarded_unit != "" and Ads.me != null and Ads.me.rewarded_ready()
 
 
 ## Shows the ad; `done` is called with true if the player watched it to the end
@@ -46,8 +50,7 @@ static func show_rewarded(done: Callable) -> void:
 	if not rewarded_ready():
 		done.call(false)
 		return
-	# Wired up with the AdMob plugin when ads are switched on
-	done.call(false)
+	Ads.me.show_rewarded(done)
 
 
 # ---------- Purchases ----------

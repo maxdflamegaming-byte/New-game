@@ -125,6 +125,7 @@ var connect_label: Label
 var connect_cancel: Button
 var online # the online client (scripts/net/client.gd)
 var pg: PlayGames # Google Play Games: sign-in and the cloud save (quiet without the plugin)
+var ads: Ads # AdMob: double coins and the ad between games (quiet without the plugin)
 var ad_btn: Button # results: double coins for watching an ad (off until ads are set up)
 var _earned_this_game := 0
 var _last_earned := 0
@@ -197,6 +198,8 @@ func _ready() -> void:
 	pg = PlayGames.new()
 	pg.save_path = SAVE_PATH
 	add_child(pg)
+	ads = Ads.new()
+	add_child(ads)
 	pg.cloud_newer.connect(_apply_cloud)
 	pg.changed.connect(func():
 		if settings_screen and settings_screen.visible:
@@ -570,7 +573,10 @@ func _game_over(won: bool, reason: String, who: Player = null) -> void:
 		wallet += r.coins
 	# Online extras (they do nothing until switched on, see Services)
 	_last_earned = 0 if play_mode == "tutorial" or world.p2 else _earned_this_game
-	ad_btn.visible = _last_earned > 0 and Services.rewarded_ready()
+	# (no ads online: one covers the game long enough to drop the connection)
+	ad_btn.visible = _last_earned > 0 and play_mode != "online" and Services.rewarded_ready()
+	if play_mode != "tutorial":
+		ads.game_finished()
 	if play_mode != "tutorial" and not world.p2:
 		Services.submit_scores(prog.stats.best_pct, prog.stats.wins)
 	_save()
@@ -2536,7 +2542,7 @@ func _build_over() -> void:
 	var again := _button("Play again", YELLOW, Color("#5a3200"), Color("#d27a06"), 46)
 	again.custom_minimum_size = Vector2(380, 104)
 	again.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	again.pressed.connect(func(): start_game())
+	again.pressed.connect(func(): ads.between_games(games, play_mode, start_game))
 	col.add_child(again)
 	again_btn = again
 	# Double coins for watching an ad (only shown once ads are switched on, see Services)
@@ -2559,7 +2565,7 @@ func _build_over() -> void:
 	var menu_btn := _button("Menu", Color(1, 1, 1, 0.92), INK, Color("#c7cfe0"), 32)
 	menu_btn.custom_minimum_size = Vector2(380, 84)
 	menu_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	menu_btn.pressed.connect(_to_menu)
+	menu_btn.pressed.connect(func(): ads.between_games(games, play_mode, _to_menu))
 	col.add_child(menu_btn)
 
 

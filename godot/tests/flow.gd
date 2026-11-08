@@ -704,6 +704,7 @@ func _run() -> void:
 	await _phase5()
 	await _bot_skills()
 	await _unlocks()
+	await _ads()
 	# Online: hidden until there's a server; if picked anyway, it says so instead of breaking
 	ok("Online is in the menu (there's a server)", OnlineConfig.server_url() != "" and preload("res://scripts/modes_screen.gd").ORDER.has("online"))
 	OnlineConfig.off = true # the checks never touch the real server
@@ -926,3 +927,20 @@ func _unlocks() -> void:
 	main.map_id = keep[1]
 	main.new_unlocks = keep[2]
 	main._refresh_menu()
+
+
+## Ads: off on a computer (no plugin), and the rules for the ad between games
+func _ads() -> void:
+	ok("Ads stay off without the phone plugin", not Ads.is_on() and not Services.rewarded_ready() and not main.ads.privacy_options_required())
+	ok("Your AdMob ad units are set", Services.CONFIG.admob_rewarded_unit.ends_with("/5228029416") and Services.CONFIG.admob_interstitial_unit.ends_with("/1065423124") and not Services.CONFIG.admob_test_ads)
+	ok("No full-screen ad in a new player's first games", not Ads.should_show(3, "classic", 3, 999.0))
+	ok("A full-screen ad after every 3rd game", Ads.should_show(10, "classic", 3, 999.0) and not Ads.should_show(10, "classic", 2, 999.0))
+	ok("...and never within 2 minutes of the last one", not Ads.should_show(10, "classic", 5, 60.0))
+	ok("...nor in the tutorial, 2 Players or Online", not Ads.should_show(10, "tutorial", 5, 999.0) and not Ads.should_show(10, "duo", 5, 999.0) and not Ads.should_show(10, "online", 5, 999.0))
+	# Without an ad ready, leaving the results goes straight on
+	var went := [false]
+	main.ads.between_games(50, "classic", func(): went[0] = true)
+	ok("No ad loaded: the game carries straight on", went[0])
+	var watched := [true]
+	Services.show_rewarded(func(w: bool): watched[0] = w)
+	ok("No video loaded: no double coins", watched[0] == false)

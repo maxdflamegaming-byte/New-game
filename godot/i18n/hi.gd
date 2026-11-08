@@ -432,4 +432,7 @@ const T := {
 	"The same for everyone, all day.": "सबके लिए एक जैसा, पूरे दिन।",
 	"A new map every round, picked by the server.": "हर राउंड नया नक्शा, सर्वर चुनता है।",
 	"Beat the %s": "%s को हराएँ",
+	"PRIVACY": "गोपनीयता",
+	"Ad privacy options": "विज्ञापन गोपनीयता विकल्प",
+	"Choose how Google may use your data for the ads in this game.": "चुनें कि इस गेम के विज्ञापनों के लिए Google आपके डेटा का उपयोग कैसे करे।",
 }

@@ -416,4 +416,7 @@ const T := {
 	"The same for everyone, all day.": "Sama untuk semua, sepanjang hari.",
 	"A new map every round, picked by the server.": "Peta baru setiap ronde, dipilih server.",
 	"Beat the %s": "Kalahkan %s",
+	"PRIVACY": "PRIVASI",
+	"Ad privacy options": "Opsi privasi iklan",
+	"Choose how Google may use your data for the ads in this game.": "Pilih cara Google boleh memakai datamu untuk iklan di game ini.",
 }

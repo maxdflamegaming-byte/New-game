@@ -432,4 +432,7 @@ const T := {
 	"The same for everyone, all day.": "Одна для всех, весь день.",
 	"A new map every round, picked by the server.": "Новая карта каждый раунд, её выбирает сервер.",
 	"Beat the %s": "Победите: %s",
+	"PRIVACY": "КОНФИДЕНЦИАЛЬНОСТЬ",
+	"Ad privacy options": "Настройки конфиденциальности рекламы",
+	"Choose how Google may use your data for the ads in this game.": "Выберите, как Google может использовать ваши данные для рекламы в этой игре.",
 }

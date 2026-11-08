@@ -17,11 +17,14 @@ cat >> project.godot <<'EOF'
 [autoload]
 
 GodotPlayGameServices="*res://addons/GodotPlayGameServices/scripts/autoloads/godot_play_game_services.gd"
-
-[editor_plugins]
-
-enabled=PackedStringArray("res://addons/GodotPlayGameServices/plugin.cfg")
 EOF
+# Add the plugin to the enabled list (the AdMob plugin is already on it)
+if grep -q '^enabled=PackedStringArray(' project.godot; then
+  sed -i 's|^enabled=PackedStringArray(\(.*\))$|enabled=PackedStringArray(\1, "res://addons/GodotPlayGameServices/plugin.cfg")|' project.godot
+else
+  printf '\n[editor_plugins]\n\nenabled=PackedStringArray("res://addons/GodotPlayGameServices/plugin.cfg")\n' >> project.godot
+fi
+grep '^enabled=' project.godot
 
 # Both presets: the ID, and the Gradle build
 sed -i "s/^gradle_build\/use_gradle_build=.*/gradle_build\/use_gradle_build=true/" export_presets.cfg

@@ -79,6 +79,16 @@ func refresh() -> void:
 		visible = false
 		m.start_tutorial())
 	box.add_child(play)
+	if m.ads and m.ads.privacy_options_required():
+		heading("PRIVACY")
+		box = card()
+		var pt: Label = m._label("Choose how Google may use your data for the ads in this game.", 22, m.MUTED, 0, m.INK, m.font_med)
+		pt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		box.add_child(pt)
+		var pb: Button = m._button("Ad privacy options", Color(1, 1, 1, 0.92), m.INK, Color("#c7cfe0"), 28)
+		pb.custom_minimum_size = Vector2(0, 80)
+		pb.pressed.connect(m.ads.show_privacy_options)
+		box.add_child(pb)
 	heading("HELP")
 	box = card()
 	var hl: Label = m._label("If the game closes by itself, copy this log and send it to the developer.", 24, m.INK, 0, m.INK, m.font_med)

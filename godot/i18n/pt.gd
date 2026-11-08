@@ -421,4 +421,7 @@ const T := {
 	"The same for everyone, all day.": "O mesmo para todos, o dia inteiro.",
 	"A new map every round, picked by the server.": "Um mapa novo a cada rodada, escolhido pelo servidor.",
 	"Beat the %s": "Vença o %s",
+	"PRIVACY": "PRIVACIDADE",
+	"Ad privacy options": "Opções de privacidade de anúncios",
+	"Choose how Google may use your data for the ads in this game.": "Escolha como o Google pode usar seus dados para os anúncios deste jogo.",
 }

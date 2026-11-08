@@ -425,4 +425,7 @@ const T := {
 	"The same for everyone, all day.": "Herkes için aynı, bütün gün.",
 	"A new map every round, picked by the server.": "Her tur yeni bir harita, sunucu seçer.",
 	"Beat the %s": "%s'ı yen",
+	"PRIVACY": "GİZLİLİK",
+	"Ad privacy options": "Reklam gizlilik seçenekleri",
+	"Choose how Google may use your data for the ads in this game.": "Google'ın bu oyundaki reklamlar için verilerinizi nasıl kullanabileceğini seçin.",
 }
