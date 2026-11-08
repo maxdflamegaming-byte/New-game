@@ -705,6 +705,7 @@ func _run() -> void:
 	await _bot_skills()
 	await _unlocks()
 	await _ads()
+	await _analytics()
 	# Online: hidden until there's a server; if picked anyway, it says so instead of breaking
 	ok("Online is in the menu (there's a server)", OnlineConfig.server_url() != "" and preload("res://scripts/modes_screen.gd").ORDER.has("online"))
 	OnlineConfig.off = true # the checks never touch the real server
@@ -944,3 +945,32 @@ func _ads() -> void:
 	var watched := [true]
 	Services.show_rewarded(func(w: bool): watched[0] = w)
 	ok("No video loaded: no double coins", watched[0] == false)
+
+
+## Analytics: events are recorded with the right details, never sent from a computer, and the
+## Settings switch stops them
+func _analytics() -> void:
+	var an: Analytics = main.analytics
+	ok("Your Google Analytics Measurement ID is set", Services.CONFIG.ga_measurement_id == "G-GVP6HT4VDH")
+	ok("A computer never sends analytics", not Analytics.can_send())
+	Analytics.test_mode = true
+	an.set_enabled(true)
+	an.queue.clear()
+	var sent_before: int = an.sent
+	await _play("classic")
+	main._game_over(true, "test")
+	var names: Array = an.queue.map(func(e): return e.name)
+	ok("A game is recorded (start and end)", names.has("game_start") and names.has("game_end"), str(names))
+	var end: Dictionary = an.queue.filter(func(e): return e.name == "game_end")[0].params
+	ok("...with mode, map, result and an anonymous session", end.mode == "classic" and end.result == "win" and end.has("map")
+		and end.has("session_id") and end.engagement_time_msec >= 1 and not end.has("name"), str(end))
+	ok("Each phone has a random ID", an.client_id.contains(".") and an.client_id.length() > 8)
+	an.flush()
+	ok("Sending empties the queue (counted, not sent, off the phone)", an.queue.is_empty() and an.sent > sent_before)
+	an.set_enabled(false)
+	an.track("game_start", {"mode": "classic"})
+	ok("Switched off in Settings: nothing is recorded", an.queue.is_empty())
+	an.set_enabled(true)
+	Analytics.test_mode = false
+	main._to_menu()
+	await _wait(0.3)

@@ -419,4 +419,6 @@ const T := {
 	"PRIVACY": "PRIVASI",
 	"Ad privacy options": "Opsi privasi iklan",
 	"Choose how Google may use your data for the ads in this game.": "Pilih cara Google boleh memakai datamu untuk iklan di game ini.",
+	"Share anonymous game stats": "Bagikan statistik game anonim",
+	"Which modes and maps get played, and how games go. No name or personal details. Helps make the game better.": "Mode dan peta mana yang dimainkan, dan bagaimana permainan berjalan. Tanpa nama atau data pribadi. Membantu membuat game lebih baik.",
 }

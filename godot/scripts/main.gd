@@ -126,6 +126,7 @@ var connect_cancel: Button
 var online # the online client (scripts/net/client.gd)
 var pg: PlayGames # Google Play Games: sign-in and the cloud save (quiet without the plugin)
 var ads: Ads # AdMob: double coins and the ad between games (quiet without the plugin)
+var analytics: Analytics # anonymous stats to Google Analytics (the player can switch it off)
 var ad_btn: Button # results: double coins for watching an ad (off until ads are set up)
 var _earned_this_game := 0
 var _last_earned := 0
@@ -200,6 +201,10 @@ func _ready() -> void:
 	add_child(pg)
 	ads = Ads.new()
 	add_child(ads)
+	analytics = Analytics.new()
+	add_child(analytics)
+	analytics.enabled = get_meta("analytics", true)
+	analytics.track("game_open", {"lang": I18n.current(), "level": prog.level})
 	pg.cloud_newer.connect(_apply_cloud)
 	pg.changed.connect(func():
 		if settings_screen and settings_screen.visible:
@@ -282,6 +287,7 @@ func start_game(mode := "") -> void:
 	world.event = "" if play_mode == "tutorial" or Events.current() == "none" else Events.current()
 	CrashLog.note("game  mode %s  map %s  boss %s  %s" % [play_mode, world.map_id, world.boss_kind, difficulty])
 	world.setup(my_color, player_name, false, map_id, play_mode)
+	analytics.track("game_start", {"mode": play_mode, "map": world.map_id, "difficulty": difficulty, "level": prog.level})
 	music.play_track("boss" if world.mode.get("boss", false) else "game")
 	view.rebuild()
 	if world.p2:
@@ -577,6 +583,11 @@ func _game_over(won: bool, reason: String, who: Player = null) -> void:
 	ad_btn.visible = _last_earned > 0 and play_mode != "online" and Services.rewarded_ready()
 	if play_mode != "tutorial":
 		ads.game_finished()
+	analytics.track("game_end", {"mode": play_mode, "map": world.map_id, "result": "win" if won else "lose",
+		"pct": snappedf(peak, 0.1), "kos": world.me.kills if world.me else 0, "duration_s": roundi(play_time),
+		"difficulty": difficulty, "level": prog.level})
+	if prog.level > level_at_start:
+		analytics.track("level_up", {"level": prog.level})
 	if play_mode != "tutorial" and not world.p2:
 		Services.submit_scores(prog.stats.best_pct, prog.stats.wins)
 	_save()
@@ -606,6 +617,7 @@ func _unlock_rewards(level_before: int) -> Array:
 			continue
 		var name: String = world.MODES[u[1]].name if u[0] == "mode" else world.MAPS[u[1]]
 		out.append({"text": (tr("New mode: %s!") if u[0] == "mode" else tr("New map: %s!")) % tr(name), "coins": 0, "kind": "unlock"})
+		analytics.track("unlock", {"kind": u[0], "item": u[1], "level": prog.level})
 		if not new_unlocks.has(u[0] + ":" + u[1]):
 			new_unlocks.append(u[0] + ":" + u[1])
 	return out
@@ -886,6 +898,8 @@ func _notification(what: int) -> void:
 		_pause()
 		if what == NOTIFICATION_APPLICATION_PAUSED and pg:
 			pg.flush() # the latest save goes to the cloud before Android can close the game
+		if what == NOTIFICATION_APPLICATION_PAUSED and analytics:
+			analytics.flush()
 	# Going to the background or closing on purpose isn't a crash (Android may close the game
 	# while it's in the background)
 	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_PREDELETE:
@@ -2555,6 +2569,7 @@ func _build_over() -> void:
 		Services.show_rewarded(func(watched: bool):
 			ad_btn.disabled = false
 			if watched and _last_earned > 0:
+				analytics.track("ad_reward", {"coins": _last_earned})
 				wallet += _last_earned
 				over_coins.text = tr("+%d coins") % (_last_earned * 2)
 				_last_earned = 0
@@ -2656,6 +2671,9 @@ func _load() -> void:
 	Patterns.on = c.get_value("settings", "colorblind", false)
 	set_meta("music", c.get_value("settings", "music", true))
 	set_meta("muted", c.get_value("settings", "muted", false))
+	set_meta("analytics", c.get_value("settings", "analytics", true))
+	if analytics:
+		analytics.enabled = get_meta("analytics", true)
 
 
 static func world_difficulties() -> Array:
@@ -2701,6 +2719,7 @@ func _save() -> void:
 	c.set_value("settings", "colorblind", Patterns.on)
 	c.set_value("settings", "music", music.enabled)
 	c.set_value("settings", "muted", sfx.muted)
+	c.set_value("settings", "analytics", analytics.enabled if analytics else get_meta("analytics", true))
 	# Write a new file and then swap it in, so a crash while saving can't wipe progress
 	var tmp := SAVE_PATH + ".new"
 	if c.save(tmp) == OK:

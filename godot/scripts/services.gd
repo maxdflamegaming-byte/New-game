@@ -18,6 +18,10 @@ const CONFIG := {
 	# true: Google's test ads instead of real ones (for trying things without breaking AdMob's
 	# rules about clicking your own ads)
 	"admob_test_ads": false,
+	# Google Analytics (GA4): the web data stream's Measurement ID and a Measurement Protocol
+	# API secret (Admin -> Data streams). Both needed; see scripts/analytics.gd
+	"ga_measurement_id": "G-GVP6HT4VDH",
+	"ga_api_secret": "", # filled in by the build from the GA_API_SECRET repo secret (never committed)
 	# Google Play Billing: product ids from Play Console -> Monetize -> In-app products
 	"product_remove_ads": "",
 	"product_coins_small": "",

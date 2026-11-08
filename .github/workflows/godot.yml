@@ -113,6 +113,26 @@ jobs:
             echo "No Play Games ID in godot/scripts/services.gd yet: building without sign-in and cloud save."
           fi
 
+      - name: Put in the Google Analytics secret (from the repo's secrets, never committed)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GA_API_SECRET: ${{ secrets.GA_API_SECRET }}
+        run: |
+          if [ -n "$GA_API_SECRET" ]; then
+            python3 - <<'PY'
+          import os
+          p = "godot/scripts/services.gd"
+          s = open(p).read()
+          old = '"ga_api_secret": "",'
+          assert s.count(old) == 1, "placeholder not found"
+          s = s.replace(old, '"ga_api_secret": "%s",' % os.environ["GA_API_SECRET"])
+          open(p, "w").write(s)
+          PY
+            echo "Google Analytics is on for this build."
+          else
+            echo "::warning::No GA_API_SECRET in the repo's secrets, so this build sends no analytics."
+          fi
+
       - name: Pick the signing key
         if: github.event_name == 'workflow_dispatch'
         env:

@@ -79,9 +79,15 @@ func refresh() -> void:
 		visible = false
 		m.start_tutorial())
 	box.add_child(play)
+	heading("PRIVACY")
+	box = card()
+	_toggle(box, "Share anonymous game stats", m.analytics.enabled, func():
+		m.analytics.set_enabled(not m.analytics.enabled)
+		m.set_meta("analytics", m.analytics.enabled))
+	var st: Label = m._label("Which modes and maps get played, and how games go. No name or personal details. Helps make the game better.", 22, m.MUTED, 0, m.INK, m.font_med)
+	st.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(st)
 	if m.ads and m.ads.privacy_options_required():
-		heading("PRIVACY")
-		box = card()
 		var pt: Label = m._label("Choose how Google may use your data for the ads in this game.", 22, m.MUTED, 0, m.INK, m.font_med)
 		pt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		box.add_child(pt)

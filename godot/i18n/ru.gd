@@ -435,4 +435,6 @@ const T := {
 	"PRIVACY": "КОНФИДЕНЦИАЛЬНОСТЬ",
 	"Ad privacy options": "Настройки конфиденциальности рекламы",
 	"Choose how Google may use your data for the ads in this game.": "Выберите, как Google может использовать ваши данные для рекламы в этой игре.",
+	"Share anonymous game stats": "Отправлять анонимную статистику",
+	"Which modes and maps get played, and how games go. No name or personal details. Helps make the game better.": "Какие режимы и карты выбирают и как проходят игры. Без имени и личных данных. Помогает сделать игру лучше.",
 }

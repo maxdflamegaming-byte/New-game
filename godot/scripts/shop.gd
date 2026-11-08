@@ -191,6 +191,8 @@ func tap(kind: String, id: String) -> void:
 			_shake(kind, id)
 			return
 		m.wallet -= cost
+		if m.analytics:
+			m.analytics.track("shop_buy", {"kind": kind, "item": id, "cost": cost})
 		m.owned[kind].append(id)
 		m.equipped[kind] = id
 		m.sfx.play("coin")

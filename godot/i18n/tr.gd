@@ -428,4 +428,6 @@ const T := {
 	"PRIVACY": "GİZLİLİK",
 	"Ad privacy options": "Reklam gizlilik seçenekleri",
 	"Choose how Google may use your data for the ads in this game.": "Google'ın bu oyundaki reklamlar için verilerinizi nasıl kullanabileceğini seçin.",
+	"Share anonymous game stats": "Anonim oyun istatistiklerini paylaş",
+	"Which modes and maps get played, and how games go. No name or personal details. Helps make the game better.": "Hangi modların ve haritaların oynandığı ve oyunların nasıl geçtiği. İsim veya kişisel bilgi yok. Oyunu iyileştirmeye yardımcı olur.",
 }
