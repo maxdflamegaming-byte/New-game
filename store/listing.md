@@ -29,6 +29,7 @@ Color Claim is a fast, colourful territory game you can play in short bursts or 
 • Boss Battle: take down the King, then unlock the Queen (she drops spiky traps) and the Wizard (he teleports away)
 • 2 Players: split screen on one phone, first to 40% wins
 • King of the Hill: own the glowing hill in the middle and be first to 100 points
+New modes and maps unlock as you level up, so there's always something new to reach.
 
 11 MAPS
 Square, Round, Pillars, Maze and Islands, plus 6 special maps: Saw Mill (blades cut trails), Storm (the arena closes in), Conveyor (belts carry you), Portals (jump across the map, trail and all), Ice Rink (slide fast, turn slowly) and Pinball (bumpers bounce you away).
@@ -37,7 +38,7 @@ POWER-UPS
 Speed, Shield, Freeze, Ghost and Paint Bomb. Grab them before the bots do!
 
 SMART BOTS
-Hunters chase your trail, Turtles play it safe, Explorers take big risks and Collectors go for every coin. Pick Easy, Normal or Hard (Hard pays 1.5× coins).
+Hunters chase your trail, Turtles play it safe, Explorers take big risks and Collectors go for every coin. Every bot is a Rookie, a Regular or a Pro, and online the bots match your level. Pick Easy, Normal or Hard (Hard pays 1.5× coins).
 
 MAKE IT YOURS
 Spend the coins you win on 8 skins (from Ninja to Galaxy), 7 trail effects (Stars, Fire, Rainbow and more) and 5 pets that follow you around. Level up to earn exclusive rewards you can't buy: Ice, Lava and Gold skins, Snow and Lightning trails, and a Fox.

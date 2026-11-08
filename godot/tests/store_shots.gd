@@ -116,9 +116,24 @@ func _run() -> void:
 	await _shot("4-shop")
 	main.shop.close()
 
-	# 5. The menu
+	# 5. The home screen, and the Modes screen (some modes still to unlock)
+	main.mode_id = "classic"
+	main.map_id = "square"
+	main.prog.level = maxi(main.prog.level, 7) # a player who's been at it a while
+	main.prog.xp = Progress.need(main.prog.level) / 2
+	main.games = maxi(main.games, 25)
+	main.wins = maxi(main.wins, 12)
+	main.bests["classic"] = maxf(main.bests.get("classic", 0.0), 46.3)
+	main._start_demo()
 	await _wait(3.0)
 	await _shot("5-menu")
+	var keep_level: int = main.prog.level
+	main.prog.level = 6
+	main.modes_screen.open()
+	await _wait(1.0)
+	await _shot("9-modes")
+	main.modes_screen.close()
+	main.prog.level = keep_level
 
 	# 6. A win, with rewards
 	await _game("hill", "square", 30.0)
