@@ -59,9 +59,9 @@ On GitHub: repo **Settings** → **Pages** → under **Build and deployment**, s
 | **Ads** | **Yes**, my app contains ads (Google AdMob, from version 1.0.50) |
 | **App access** | **All functionality is available without special access** |
 | **Content rating** | Start the questionnaire. Category: **Game**. Answer honestly; the game has no blood, gore, fear, sexual content, bad language, drugs, gambling or real-money purchases, and no chat or user content. Knockouts are cartoon shapes bumping into each other. Expected result: **Everyone / PEGI 3** |
-| **Target audience** | Simplest: **13 and over** (13–15, 16–17, 18+). If you include under-13s, Google's stricter Families policy applies; the game already meets it (no ads, no data), but there are more forms |
+| **Target audience** | Simplest: **13 and over** (13–15, 16–17, 18+). If you include under-13s, Google's stricter Families policy applies, and the game has ads and analytics, so stay with 13 and over |
 | **Data safety** | Does your app collect or share user data? **Yes** (because of Online play). Is all data encrypted in transit? **Yes**. Can users ask for data to be deleted? **No data is stored**. Data types to tick: **Personal info → Name**, **App activity → App interactions** and **Device or other IDs** (the IP address the server sees). For each: *Collected* only (not shared), **processed ephemerally**, **required** only for Online play, purpose **App functionality**. See `privacy.html` for the wording |
-| **Data safety: ads and analytics (from 1.0.50)** | Add to the answers above. **Device or other IDs** (the advertising ID): *Collected and shared* (with Google, by AdMob), purpose **Advertising or marketing** and **Fraud prevention**, not optional. **Location -> Approximate location** (AdMob estimates it from the IP address): *Collected and shared*, purpose **Advertising or marketing**. **App activity -> App interactions** (ad interactions, and the anonymous game stats sent to Google Analytics): *Collected*, purposes **Advertising or marketing** and **Analytics**; the game stats are **optional** (Settings -> Privacy). Is data encrypted in transit? **Yes**. Google lists what the AdMob SDK collects on its AdMob help pages (search "Data disclosure"); check it when filling in the form |
+| **Data safety: ads and analytics (from 1.0.50)** | Add to the answers above. **Device or other IDs** (the advertising ID): *Collected and shared* (with Google, by AdMob), purpose **Advertising or marketing** and **Fraud prevention**, not optional. **Location -> Approximate location** (AdMob estimates it from the IP address): *Collected and shared*, purpose **Advertising or marketing**. **App activity -> App interactions** (ad interactions, and the anonymous game stats sent to Google Analytics): *Collected*, purposes **Advertising or marketing** and **Analytics**; the game stats are **optional** (Settings -> Privacy; off by default in Europe, the UK and Switzerland). Is data encrypted in transit? **Yes**. Google lists what the AdMob SDK collects on its AdMob help pages (search "Data disclosure"); check it when filling in the form |
 | **Data safety, once Google Play Games is on** | Only after the Play Games ID is added (see `ONLINE-AND-MONEY.md`). Keep the answers above and add: **Personal info → User IDs** (the Play Games player ID) and **App activity → Other user-generated content** (the cloud save). For both: *Collected* (not shared), **not** ephemeral, **optional** (users choose to sign in), purpose **App functionality**. Can users ask for data to be deleted? **Yes**: they can delete the cloud save in the Google Play Games app or their Google Account. Google's own guidance on what Play Games Services collects can change, so check the help link next to the form |
 | **Government apps** | No |
 | **Financial features** | My app doesn't provide any financial features |
@@ -74,7 +74,7 @@ On GitHub: repo **Settings** → **Pages** → under **Build and deployment**, s
 
 - App icon: `icon-512.png`
 - Feature graphic: `feature-graphic.png`
-- Phone screenshots: `screenshots/1-classic.png` to `8-profile.png`
+- Phone screenshots: `screenshots/1-classic.png` to `9-modes.png`
 
 Also under **Store settings**: category **Arcade**, and your contact email.
 
@@ -108,8 +108,8 @@ Make the changes, then run the workflow again (step 3). Upload the new `.aab` as
 - Targets Android 16 (API 36); works on Android 7.0 and newer, on 64-bit phones
 - 16 KB memory page support (built with Godot 4.7.2)
 - App Bundle (.aab) built and checked automatically; signed with your private upload key
-- Only permission: vibration. No internet, ads, analytics, accounts or purchases
+- Permissions: internet (Online play, ads, analytics) and vibration, plus the ones Google's ad software adds (advertising ID, network state, basic phone state, wake lock, foreground service). No accounts or purchases
 - Privacy policy (`privacy.html`, `store/privacy-policy.md`)
-- Store listing text, icon, feature graphic and 8 screenshots (this folder)
+- Store listing text, icon, feature graphic and 9 screenshots (this folder)
 - Themed (monochrome) icon for Android 13+ home screens
 - The game in 7 languages, and store listings translated into Spanish, Portuguese, Hindi, Indonesian, Russian and Turkish (`listing-translations.md`): add them in Play Console under **Main store listing → Manage translations**

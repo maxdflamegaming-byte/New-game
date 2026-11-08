@@ -81,9 +81,10 @@ func refresh() -> void:
 	box.add_child(play)
 	heading("PRIVACY")
 	box = card()
-	_toggle(box, "Share anonymous game stats", m.analytics.enabled, func():
-		m.analytics.set_enabled(not m.analytics.enabled)
-		m.set_meta("analytics", m.analytics.enabled))
+	_toggle(box, "Share anonymous game stats", m.analytics.shows_on(), func():
+		m.analytics.choose(not m.analytics.shows_on())
+		m.set_meta("analytics", m.analytics.enabled)
+		m.set_meta("analytics_chosen", true))
 	var st: Label = m._label("Which modes and maps get played, and how games go. No name or personal details. Helps make the game better.", 22, m.MUTED, 0, m.INK, m.font_med)
 	st.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(st)

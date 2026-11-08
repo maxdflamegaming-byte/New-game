@@ -46,11 +46,11 @@ How Google uses this data is described at [policies.google.com/technologies/part
 
 ## Analytics (Google Analytics)
 
-From version 1.0.50, the game sends anonymous gameplay statistics to Google Analytics, so we can see which modes and maps people enjoy and fix what's too hard: for example "a Classic game on the Maze ended in a win at 34%", level-ups, unlocks, coins spent in the shop, and how often the game is opened. Each phone gets a random ID made by the game; no name, email, advertising ID or other personal information is sent. Google sees your IP address while receiving the data and uses it only to estimate your country. You can switch analytics off at any time in **Settings → Privacy**.
+From version 1.0.50, the game sends anonymous gameplay statistics to Google Analytics, so we can see which modes and maps people enjoy and fix what's too hard: for example "a Classic game on the Maze ended in a win at 34%", level-ups, unlocks, coins spent in the shop, and how often the game is opened. Each phone gets a random ID made by the game; no name, email, advertising ID or other personal information is sent. Google sees your IP address while receiving the data and uses it only to estimate your country. In the European Economic Area, the UK and Switzerland, analytics stays off unless you switch it on yourself. Anywhere, you can switch it on or off at any time in **Settings → Privacy**.
 
 ## Permissions
 
-The game asks for two permissions: **internet**, used for Online play and, if you sign in, Google Play Games, and **vibration**, to buzz your phone when you're knocked out or claim land (you can turn this off in Settings). From version 1.0.50, Google's ad software also adds the advertising ID and network state permissions. The game does not ask for location, contacts, camera, microphone or storage.
+The game asks for two permissions: **internet**, used for Online play and, if you sign in, Google Play Games, and **vibration**, to buzz your phone when you're knocked out or claim land (you can turn this off in Settings). From version 1.0.50, Google's ad software also adds the permissions it needs to work: advertising ID, network state, basic phone state, keep awake (wake lock) and foreground service (used by Google's background task helper, not by the game). The game does not ask for location, contacts, camera, microphone or storage.
 
 ## Children
 

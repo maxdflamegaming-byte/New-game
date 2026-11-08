@@ -3,8 +3,10 @@ extends Node
 ## Anonymous gameplay statistics for Google Analytics, sent straight to Google over HTTPS
 ## (GA4's Measurement Protocol: no plugin and nothing extra inside the app).
 ##
-## Each phone gets a random ID made here; nothing personal is sent (no name, no advertising
-## ID). Players can switch it off in Settings -> Privacy. Events wait in a queue and go out in
+## Each phone gets a random ID made here (only once something is really sent); nothing personal
+## is sent (no name, no advertising ID). Players can switch it off in Settings -> Privacy. Where
+## the law asks for consent first (Europe, the UK, Switzerland: see Ads.consent_region), it stays
+## off unless the player switches it on there themselves. Events wait in a queue and go out in
 ## small batches every FLUSH_EVERY seconds and when the game goes to the background.
 ## Only sends from a phone: on a computer (tests, the editor) events are only counted.
 
@@ -16,8 +18,10 @@ const MAX_QUEUE := 200
 
 static var me: Analytics
 static var test_mode := false # tests: record events as if configured (never sent: not a phone)
+static var test_region := -2 # tests: pretend Ads.consent_region() said this (-2: ask Ads)
 
-var enabled := true # the player's choice (saved with the game's settings)
+var enabled := true # the switch in Settings (saved with the game's settings)
+var chosen := false # the player set that switch themselves (also saved)
 var client_id := ""
 var session_id := ""
 var queue: Array[Dictionary] = []
@@ -35,7 +39,6 @@ func _ready() -> void:
 	_http.timeout = 10.0
 	add_child(_http)
 	_http.request_completed.connect(func(_result, _code, _headers, _body): _busy = false)
-	client_id = _load_id()
 	session_id = str(int(Time.get_unix_time_from_system()))
 	_last_event_ms = Time.get_ticks_msec()
 
@@ -70,10 +73,34 @@ func _load_id() -> String:
 	return id
 
 
+## May stats be sent? 1: yes, 0: no, -1: not known yet (waiting to hear from Google whether
+## this is a country that asks for consent first)
+func allowed() -> int:
+	if not enabled:
+		return 0
+	if chosen:
+		return 1
+	var region := Ads.consent_region() if test_region < -1 else test_region
+	if region < 0:
+		return -1
+	return 0 if region == 1 else 1
+
+
+## What the switch in Settings shows
+func shows_on() -> bool:
+	return allowed() != 0
+
+
+## The player flipped the switch in Settings
+func choose(on: bool) -> void:
+	chosen = true
+	set_enabled(on)
+
+
 ## Records an event. Names and params follow GA4's rules: letters, digits and _, at most 40
 ## characters; values are numbers or short strings.
 func track(name: String, params := {}) -> void:
-	if not enabled or not configured():
+	if allowed() == 0 or not configured():
 		return
 	var now := Time.get_ticks_msec()
 	var p := params.duplicate()
@@ -106,14 +133,22 @@ func _process(dt: float) -> void:
 ## Sends what's waiting (one batch at a time)
 func flush() -> void:
 	_last_flush = _clock
-	if queue.is_empty() or _busy or not enabled:
+	if queue.is_empty() or _busy:
 		return
+	var ok := allowed()
+	if ok == 0:
+		queue.clear()
+		return
+	if ok < 0:
+		return # still waiting to hear from Google; the events wait (up to MAX_QUEUE)
 	var batch := queue.slice(0, MAX_BATCH)
 	if not can_send():
 		# Off the phone: count them and drop them
 		sent += batch.size()
 		queue = queue.slice(batch.size())
 		return
+	if client_id == "":
+		client_id = _load_id()
 	var body := JSON.stringify({"client_id": client_id, "events": batch})
 	var url := ENDPOINT % [Services.CONFIG.ga_measurement_id, Services.CONFIG.ga_api_secret]
 	if _http.request(url, ["Content-Type: application/json"], HTTPClient.METHOD_POST, body) == OK:

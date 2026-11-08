@@ -34,6 +34,7 @@ var _last_shown := -1000.0
 var _clock := 0.0
 var _showing := false
 var shown := {"rewarded": 0, "interstitial": 0} # for the crash log and tests
+var _was_muted := false
 
 
 func _ready() -> void:
@@ -51,6 +52,20 @@ func _exit_tree() -> void:
 ## Is AdMob in this build (on a phone)?
 static func is_on() -> bool:
 	return Engine.has_singleton(PLUGIN)
+
+
+## Does the law ask for consent here? 1: yes (Google shows its consent message here: Europe,
+## the UK, Switzerland), 0: no, -1: not known yet (still asking Google). Without AdMob in the
+## build (the computer tests) there's nothing to ask: 0.
+static func consent_region() -> int:
+	if not is_on():
+		return 0
+	match UserMessagingPlatform.consent_information.get_consent_status():
+		ConsentInformation.ConsentStatus.NOT_REQUIRED:
+			return 0
+		ConsentInformation.ConsentStatus.REQUIRED, ConsentInformation.ConsentStatus.OBTAINED:
+			return 1
+	return -1
 
 
 func _rewarded_id() -> String:
@@ -178,6 +193,7 @@ func show_rewarded(done: Callable) -> void:
 	var reward := OnUserEarnedRewardListener.new()
 	reward.on_user_earned_reward = func(_item: RewardedItem): earned[0] = true
 	shown.rewarded += 1
+	_mute(true)
 	_last_shown = _clock # a rewarded video counts as an ad break too
 	_games_since = 0
 	ad.show(reward)
@@ -220,6 +236,7 @@ func between_games(games_ever: int, mode: String, then: Callable) -> void:
 		_load_interstitial()
 	ad.full_screen_content_callback = content
 	shown.interstitial += 1
+	_mute(true)
 	_games_since = 0
 	_last_shown = _clock
 	ad.show()
@@ -227,5 +244,15 @@ func between_games(games_ever: int, mode: String, then: Callable) -> void:
 
 func _finish(ad) -> void:
 	_showing = false
+	_mute(false)
 	if ad:
 		ad.destroy()
+
+
+## The game's music and sounds go quiet while an ad plays (ads have their own sound)
+func _mute(on: bool) -> void:
+	if on:
+		_was_muted = AudioServer.is_bus_mute(0)
+		AudioServer.set_bus_mute(0, true)
+	else:
+		AudioServer.set_bus_mute(0, _was_muted)

@@ -204,6 +204,7 @@ func _ready() -> void:
 	analytics = Analytics.new()
 	add_child(analytics)
 	analytics.enabled = get_meta("analytics", true)
+	analytics.chosen = get_meta("analytics_chosen", false)
 	analytics.track("game_open", {"lang": I18n.current(), "level": prog.level})
 	pg.cloud_newer.connect(_apply_cloud)
 	pg.changed.connect(func():
@@ -2672,8 +2673,10 @@ func _load() -> void:
 	set_meta("music", c.get_value("settings", "music", true))
 	set_meta("muted", c.get_value("settings", "muted", false))
 	set_meta("analytics", c.get_value("settings", "analytics", true))
+	set_meta("analytics_chosen", c.get_value("settings", "analytics_chosen", false))
 	if analytics:
 		analytics.enabled = get_meta("analytics", true)
+		analytics.chosen = get_meta("analytics_chosen", false)
 
 
 static func world_difficulties() -> Array:
@@ -2720,6 +2723,7 @@ func _save() -> void:
 	c.set_value("settings", "music", music.enabled)
 	c.set_value("settings", "muted", sfx.muted)
 	c.set_value("settings", "analytics", analytics.enabled if analytics else get_meta("analytics", true))
+	c.set_value("settings", "analytics_chosen", analytics.chosen if analytics else get_meta("analytics_chosen", false))
 	# Write a new file and then swap it in, so a crash while saving can't wipe progress
 	var tmp := SAVE_PATH + ".new"
 	if c.save(tmp) == OK:

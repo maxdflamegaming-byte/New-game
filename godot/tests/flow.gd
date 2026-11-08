@@ -945,6 +945,10 @@ func _ads() -> void:
 	var watched := [true]
 	Services.show_rewarded(func(w: bool): watched[0] = w)
 	ok("No video loaded: no double coins", watched[0] == false)
+	main.ads._mute(true)
+	var quiet := AudioServer.is_bus_mute(0)
+	main.ads._mute(false)
+	ok("The game goes quiet during an ad, and its sound comes back after", quiet and not AudioServer.is_bus_mute(0))
 
 
 ## Analytics: events are recorded with the right details, never sent from a computer, and the
@@ -964,13 +968,34 @@ func _analytics() -> void:
 	var end: Dictionary = an.queue.filter(func(e): return e.name == "game_end")[0].params
 	ok("...with mode, map, result and an anonymous session", end.mode == "classic" and end.result == "win" and end.has("map")
 		and end.has("session_id") and end.engagement_time_msec >= 1 and not end.has("name"), str(end))
-	ok("Each phone has a random ID", an.client_id.contains(".") and an.client_id.length() > 8)
+	var id1 := an._load_id()
+	ok("Each phone has a random ID (kept)", id1.contains(".") and id1.length() > 8 and an._load_id() == id1)
 	an.flush()
 	ok("Sending empties the queue (counted, not sent, off the phone)", an.queue.is_empty() and an.sent > sent_before)
 	an.set_enabled(false)
 	an.track("game_start", {"mode": "classic"})
 	ok("Switched off in Settings: nothing is recorded", an.queue.is_empty())
 	an.set_enabled(true)
+	# Countries that ask for consent first (Europe): off unless the player switches it on
+	var was_chosen := an.chosen
+	an.chosen = false
+	an.queue.clear()
+	Analytics.test_region = 1
+	an.track("game_start", {"mode": "classic"})
+	ok("Europe: nothing recorded until the player switches stats on", an.queue.is_empty() and not an.shows_on())
+	an.choose(true)
+	an.track("game_start", {"mode": "classic"})
+	ok("Europe: recorded once the player switches stats on", an.queue.size() == 1 and an.shows_on())
+	an.chosen = false
+	Analytics.test_region = -1
+	an.track("game_start", {"mode": "classic"})
+	an.flush()
+	ok("Not known yet whether consent is needed: events wait, unsent", an.queue.size() == 2)
+	Analytics.test_region = 0
+	an.flush()
+	ok("Outside Europe: they go out", an.queue.is_empty())
+	Analytics.test_region = -2
+	an.chosen = was_chosen
 	Analytics.test_mode = false
 	main._to_menu()
 	await _wait(0.3)
