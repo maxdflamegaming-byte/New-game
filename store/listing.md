@@ -11,55 +11,58 @@ Color Claim: Paint the Map
 ## Short description (80 characters max)
 
 ```
-Loop out, paint the map and cut rival trails. 7 modes, bosses, skins and pets!
+Loop out, paint the map and cut rival trails. 8 modes, bosses, skins and pets!
 ```
 
 ## Full description (4,000 characters max)
 
 ```
-Leave your land, draw a trail, and loop back home to claim everything inside. The bigger your land, the bigger your score. But be careful: if anyone touches your trail while you're out, you're knocked out!
+Leave your land, draw a trail, and loop back home to claim everything inside. The more land you own, the bigger your score. But watch out: if anyone crosses your trail while you're out, you're knocked out!
 
-Color Claim is a fast, colourful territory game you can play in short bursts or for hours. Cut through rival trails, grab power-ups, and paint the whole map in your colour.
+Color Claim is a fast, colourful territory game for quick bursts or long sessions. Cut through rival trails, grab power-ups, beat bosses and paint the whole map in your colour.
 
-7 WAYS TO PLAY
-• Classic: be the first to claim 50% of the map
-• Timed: be the biggest when the 3-minute clock runs out
-• Daily: today's map and start, the same for everyone
-• Teams: you and 3 bots against 4, claim half the map together
-• Boss Battle: take down the King, then unlock the Queen (she drops spiky traps) and the Wizard (he teleports away)
-• 2 Players: split screen on one phone, first to 40% wins
-• King of the Hill: own the glowing hill in the middle and be first to 100 points
-New modes and maps unlock as you level up, so there's always something new to reach.
+8 WAYS TO PLAY (new ones unlock as you level up)
+• Classic: the first to claim 50% of the map wins
+• Online (level 2): play people from around the world in rooms of 8, with bots filling any empty places
+• Timed (level 3): be the biggest when the 3-minute clock runs out
+• 2 Players (level 3): split screen on one phone, first to 40% wins
+• Teams (level 4): you and 3 bots against 4, first team to 50%
+• Daily (level 5): today's map and start, the same for everyone
+• King of the Hill (level 6): own the glowing hill, first to 100 points
+• Boss Battle (level 8): cut the King's trail to knock off his hearts, then face the Queen (spiky traps) and the Wizard (he teleports away)
 
 11 MAPS
-Square, Round, Pillars, Maze and Islands, plus 6 special maps: Saw Mill (blades cut trails), Storm (the arena closes in), Conveyor (belts carry you), Portals (jump across the map, trail and all), Ice Rink (slide fast, turn slowly) and Pinball (bumpers bounce you away).
+Square and Round, then Pillars, Maze, Islands, Saw Mill (blades cut trails), Ice Rink (slide fast, turn slowly), Conveyor (belts carry you), Portals (jump across the map), Pinball (bumpers bounce you away) and Storm (the arena closes in).
 
 POWER-UPS
-Speed, Shield, Freeze, Ghost and Paint Bomb. Grab them before the bots do!
+• Speed: 60% faster for 4 seconds
+• Shield: nobody can cut your trail for 6 seconds
+• Freeze: everyone else moves at half speed for 4 seconds
+• Ghost: cross your own trail safely for 5 seconds
+• Paint Bomb: instantly paint a circle of land around you, even rivals' land
 
 SMART BOTS
-Hunters chase your trail, Turtles play it safe, Explorers take big risks and Collectors go for every coin. Every bot is a Rookie, a Regular or a Pro, and online the bots match your level. Pick Easy, Normal or Hard (Hard pays 1.5× coins).
+Hunters chase your trail, Turtles play it safe, Explorers draw huge loops and Collectors go after every coin. Each bot is a Rookie, a Regular or a Pro. Choose Easy, Normal or Hard (Hard pays 1.5× coins). Online, the bots match the level of the people in the room.
 
 MAKE IT YOURS
-Spend the coins you win on 8 skins (from Ninja to Galaxy), 7 trail effects (Stars, Fire, Rainbow and more) and 5 pets that follow you around. Level up to earn exclusive rewards you can't buy: Ice, Lava and Gold skins, Snow and Lightning trails, and a Fox.
+12 skins, 9 trail effects and 6 pets. Buy them with the coins you win, or earn the exclusive ones by levelling up: Ice, Lava and Gold skins, Snow and Lightning trails, and a Fox. Pick your colour from 8.
 
-ALWAYS SOMETHING TO DO
+ALWAYS SOMETHING NEW
 • 3 new missions every day
-• A daily streak bonus
-• 24 trophies to collect
-• A new event every week: Double Coins, Speed Week, Coin Rain and more
+• A daily streak bonus that grows for a week
+• 24 trophies, 25 coins each
+• A weekly event: Double Coins, Speed Week, Power Frenzy, Coin Rain or Giant Bosses
 • Levels and XP, with coins on every level-up
 
 PLAY YOUR WAY
 • Drag-anywhere joystick or one-thumb tap-to-turn controls
 • Colourblind patterns for every player
 • Low, Medium and High graphics, at 30 or 60 FPS
-• In English, Español, Português, हिन्दी, Bahasa Indonesia, Русский and Türkçe
+• English, Español, Português, हिन्दी, Bahasa Indonesia, Русский and Türkçe
+• A quick 5-step tutorial for new players
 
-PLAY ONLINE OR OFFLINE
-Jump into Online and play people from around the world in rooms of 8, with no waiting: bots fill any empty places. Or play every other mode offline, anywhere, with no internet at all. No ads, no accounts and no in-app purchases, and your progress stays on your phone.
-
-New to the game? A quick 5-step tutorial shows you how to play.
+FREE TO PLAY
+Every mode except Online works offline, anywhere. The game is free with ads: watch an optional video to double your coins after a game, and a short ad plays between some games (never during play, and never in your first games). No accounts and no in-app purchases. Your progress stays on your phone.
 ```
 
 ## Category and tags
