@@ -582,7 +582,83 @@ func _cutscenes() -> void:
 
 
 ## Replays, weekend events and looks you unlock
+## Stands in for the Java ads bridge (Ads.java): an ad loads at once, and when shown it plays
+## for a few frames, then closes, watched to the end (or not, with `skip`)
+class FakeAds extends RefCounted:
+	var st := "idle"
+	var got := false
+	var skip := false
+	var frames := 0
+	var loads := 0
+	func init(_a) -> void: pass
+	func load(_a, _unit) -> void:
+		if st == "idle":
+			st = "ready"
+			loads += 1
+	func show(_a) -> void:
+		st = "showing"
+		got = false
+		frames = 0
+	func state() -> String:
+		if st == "showing":
+			frames += 1
+			if frames > 3:
+				got = not skip
+				st = "closed"
+		return st
+	func earned() -> bool: return got
+	func reset() -> void:
+		if st == "closed" or st == "failed":
+			st = "idle"
+			got = false
+
+
+func _ads() -> void:
+	var fake := FakeAds.new()
+	Services.fake_ads = fake
+	Services.start_ads()
+	ok("Ads: the first rewarded ad is fetched when the game starts", fake.st == "ready" and fake.loads == 1)
+	main.start_level(7)
+	await _frames(3)
+	for t in main.battle.towers:
+		if t.owner != 1:
+			t.owner = 1
+	main.battle.units.clear()
+	await _until(func(): return main.screen_open == "win", 6)
+	var b: Button = main.ui.ad_btn
+	ok("A win offers double coins for an ad, once one is ready", main.screen_open == "win" and b.visible and not b.disabled)
+	var before := int(main.save.coins)
+	var won: int = main.ui._win_coins
+	b.pressed.emit()
+	await _until(func(): return not b.visible, 3)
+	ok("Watching it to the end doubles the coins, and the button goes", int(main.save.coins) == before + won and won > 0 and not b.visible, "coins %d -> %d, win %d" % [before, int(main.save.coins), won])
+	ok("...and the next ad is fetched right away", fake.st == "ready" and fake.loads == 2)
+	fake.skip = true
+	main.start_level(7)
+	await _frames(3)
+	for t in main.battle.towers:
+		t.owner = 1
+	main.battle.units.clear()
+	await _until(func(): return main.screen_open == "win", 6)
+	before = int(main.save.coins)
+	main.ui.ad_btn.pressed.emit()
+	await _until(func(): return not main.ui.ad_btn.visible, 3)
+	ok("An ad closed early gives nothing extra", int(main.save.coins) == before)
+	fake.st = "loading"
+	main.start_level(7)
+	await _frames(3)
+	for t in main.battle.towers:
+		t.owner = 1
+	main.battle.units.clear()
+	await _until(func(): return main.screen_open == "win", 6)
+	ok("No ad ready, no button (never a wait for nothing)", not main.ui.ad_btn.visible)
+	Services.fake_ads = null
+	main.open_menu()
+	ok("Without Android there are no ads at all", not Services.rewarded_ready())
+
+
 func _extras() -> void:
+	await _ads()
 	main.cinematics = false
 	# A battle is written down as it plays, and kept when it ends
 	DirAccess.make_dir_recursive_absolute("user://replays")

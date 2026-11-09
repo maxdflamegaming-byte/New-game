@@ -13,3 +13,4 @@ godot/android/
 
 # Tower Siege: the reminders library is built at export time (android/reminders/build_aar.sh)
 tower-siege-godot/addons/reminders/Reminders.aar
+tower-siege-godot/addons/reminders/ads_version.txt

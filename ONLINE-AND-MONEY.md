@@ -7,7 +7,13 @@ The game already has the places where these go:
 
 All of it is switched **off** (see `godot/scripts/services.gd`).
 
-**Tower Siege** (`tower-siege-godot/`) has the same kind of spots, also switched off: a "Watch an ad: double coins" button on the win screen and coin packs on the Upgrades screen (see `tower-siege-godot/scripts/services.gd`). The same AdMob and Play Console steps below apply; each game needs its own ad unit and products. No ad, purchase or sign-in code is in the app yet, so today the only data that leaves the phone is online play (see `SERVER.md`), and the Play Store forms stay simple.
+**Tower Siege** (`tower-siege-godot/`): the **rewarded ad is built in and on**, with Google's test ids. After a win, if an ad has loaded, the win screen offers "📺 Watch an ad: double coins"; the ad plays only when tapped, and the coins double only if it was watched to the end. It runs through the game's own small bridge to Google's ads library (`tower-siege-godot/android/reminders/src/com/towersiege/ads/Ads.java`, built into the app with the library by `android/reminders/build_aar.sh`), and GitHub checks every APK contains it. Until the game has its own AdMob account the ads are Google's **test ads**: they say "Test Ad" and earn nothing. Coin packs on the Upgrades screen are still off (no Play Console products yet).
+
+To switch Tower Siege to real ads: do steps 1–3 of section 1 below for *Tower Siege*, then
+- put the **App ID** in GitHub: repository **Settings → Secrets and variables → Actions → Variables → New repository variable**, name `ADMOB_APP_ID`, value the App ID (it isn't secret), and
+- send me the **rewarded ad unit ID**: I'll put it in `scripts/services.gd` in place of the test one.
+
+Its privacy page (`tower-siege/privacy.html`) already describes the ads. In Play Console answer **Contains ads: Yes**, and in **Data safety** declare that the app collects the **Device or other IDs** (the advertising ID) and **App interactions**, shared with Google for **Advertising or marketing** and **Analytics**. For players in Europe, AdMob needs a consent message (step 4); the app doesn't show one yet, so until it does, players there may see fewer or no ads. That matters only once the game is offered in Europe.
 
 Switching each one on needs an account and some IDs that only you can create. Do the steps below for the parts you want, then send me the IDs (they're not secret, so they're fine to paste in chat). I'll then add Google's plugins, switch the parts on, update the privacy policy and tell you exactly what to change in Play Console.
 

@@ -163,6 +163,10 @@ jobs:
 
       - name: Export the APK and the App Bundle
         if: github.event_name == 'workflow_dispatch'
+        env:
+          # The game's AdMob app id, once it has one (repository Settings -> Secrets and variables
+          # -> Actions -> Variables -> ADMOB_APP_ID); without it, Google's test id (test ads only)
+          ADMOB_APP_ID: ${{ vars.ADMOB_APP_ID }}
         run: |
           # Every build gets a higher version, so a new one installs over the old one
           v="1.0.${{ github.run_number }}"
@@ -170,7 +174,8 @@ jobs:
           sed -i "s/^version\/code=.*/version\/code=${{ github.run_number }}/; s/^version\/name=.*/version\/name=\"$v\"/" tower-siege-godot/export_presets.cfg
           sed -i "s/^config\/version=.*/config\/version=\"$v\"/" tower-siege-godot/project.godot
           mkdir -p build
-          # The reminders library (scheduled notifications), which addons/reminders adds to the app
+          # The game's Android library (reminders, refresh rate, rewarded ads), which addons/reminders
+          # adds to the app with the Google Mobile Ads library
           sh tower-siege-godot/android/reminders/build_aar.sh "$ANDROID_SDK_ROOT" 36
           "$HOME/godot" --headless --path tower-siege-godot --install-android-build-template --export-release "Android" "$GITHUB_WORKSPACE/build/TowerSiege-$v.apk"
           test -s "build/TowerSiege-$v.apk"
@@ -193,6 +198,11 @@ jobs:
           "$aapt2" dump xmltree --file AndroidManifest.xml build/*.apk | grep -q "ReminderReceiver"
           "$aapt2" dump permissions build/*.apk | grep -q "POST_NOTIFICATIONS"
           echo "Reminders are in the APK."
+          # Rewarded ads: the game's bridge, Google's ads library and the AdMob app id
+          unzip -p build/*.apk 'classes*.dex' | grep -a -q "com/towersiege/ads/Ads"
+          unzip -p build/*.apk 'classes*.dex' | grep -a -q "com/google/android/gms/ads/MobileAds"
+          "$aapt2" dump xmltree --file AndroidManifest.xml build/*.apk | grep -A2 "com.google.android.gms.ads.APPLICATION_ID" | grep -q "ca-app-pub-"
+          echo "Rewarded ads are in the APK (Google Mobile Ads $(cat tower-siege-godot/addons/reminders/ads_version.txt))."
           jarsigner -verify build/*.aab | tail -1
           if [ "$PLAY_READY" != "1" ]; then
             rm build/*.aab # signed with the test key: not for Google Play

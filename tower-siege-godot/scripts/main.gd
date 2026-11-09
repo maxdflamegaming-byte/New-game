@@ -146,6 +146,7 @@ func _ready() -> void:
 	_layout()
 	apply_gfx()
 	_prefer_60hz()
+	Services.start_ads()  # (fetches the first rewarded ad, so one is ready by the first win)
 	open_menu()
 
 
