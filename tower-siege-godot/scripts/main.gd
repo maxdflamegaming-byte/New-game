@@ -140,6 +140,7 @@ func _ready() -> void:
 	add_child(analytics)
 	battle = Battle.new()
 	_connect_battle()
+	analytics.mark_active()          # (once a day: whether players come back)
 	analytics.flush.call_deferred()  # stats left from the last time the game was played
 	get_viewport().size_changed.connect(_layout)
 	_layout()
@@ -231,6 +232,7 @@ func _notification(what: int) -> void:
 			go_back()
 		NOTIFICATION_APPLICATION_RESUMED:
 			_prefer_60hz()
+			analytics.mark_active()  # (a new day may have started while the game was away)
 		NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_APPLICATION_PAUSED:
 			# A call, the notification shade or another app: the battle waits for you
 			if state == "play" and screen_open == "" and not cutscene.playing():

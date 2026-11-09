@@ -9,6 +9,14 @@ here are what the game really has: 60 story levels, then an endless mode.
 Tower Siege: Army Conquest
 ```
 
+## Images
+
+- Phone screenshots (1080 x 1920), in this order: `tower-siege/screenshots/1-level-22.png` to `8-levels.png`
+- Feature graphic (1024 x 500): `tower-siege/feature-graphic.png`
+- App icon (512 x 512): `tower-siege-godot/assets/icon.png` (made by `tests/make_icons.gd`)
+
+They're made from the game itself by `tower-siege/make_store.py` (steps at its top), so they can be made again after the game changes. (The images directly in `store/` are Color Claim's.)
+
 ## Short description (80 characters max)
 
 ```

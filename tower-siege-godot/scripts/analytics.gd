@@ -20,6 +20,31 @@ func enabled() -> bool:
 	return bool(main.save.get("stats", true))
 
 
+## Once a day, whether players come back (retention): [the day this phone first played,
+## "active", days since then, ""]. Days are counted from 1 Jan 1970 (UTC). Still nothing that
+## identifies anyone: the server only adds up how many players who started on a day were back
+## 1, 7, 30 days later. A save from before this existed (progress but no first day) never
+## sends: its first day isn't known, and guessing would make the numbers wrong.
+func mark_active() -> void:
+	if not enabled():
+		return
+	var today := Progress.today()
+	if not main.save.has("first_day"):
+		var veteran: bool = int(main.save.get("level", 1)) > 1 or not main.save.get("stars", {}).is_empty()
+		main.save.first_day = -1 if veteran else today
+	var first := int(main.save.first_day)
+	if first < 0 or int(main.save.get("active_day", -1)) == today:
+		return
+	main.save.active_day = today
+	var rows: Array = main.save.get("stats_rows", [])
+	rows.append([first, "active", maxi(0, today - first), ""])
+	if rows.size() > MOST:
+		rows = rows.slice(rows.size() - MOST)
+	main.save.stats_rows = rows
+	main.write_save()
+	flush(true)
+
+
 ## Something happened in campaign level n (0 = the daily challenge)
 func track(n: int, what: String, secs := 0.0, extra: Variant = "") -> void:
 	if not enabled():

@@ -34,6 +34,7 @@ func _run() -> void:
 	var q := OS.get_environment("GFX")
 	if q != "":
 		main.set_gfx(q)
+	main._told_slow = true  # (drawing without a graphics card is slow: no "running slowly" note)
 	if what.begins_with("level:"):
 		var n := int(what.split(":")[1])
 		main.save.level = 60

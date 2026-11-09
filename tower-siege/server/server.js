@@ -147,6 +147,11 @@ const dirtyTop = () => { topCache = null; };
 // players get stuck: GET /stats?key=STATS_KEY (no STATS_KEY set: no report).
 const STATS_KEY = process.env.STATS_KEY || '';
 let levelStats = {};          // level -> { start, win, lose, quit, winSecs, loseSecs, stars: [1★, 2★, 3★], why: {} }
+// Retention, still anonymous: once a day the app says [first day it was played, 'active',
+// days since then, ''] (days counted from 1 Jan 1970, UTC). Only counts are kept: for each
+// first day, how many players were active 0, 1, 2 ... days later. Day 0 = new players.
+let retention = {};           // first day -> { days since -> players }
+const RET_DAYS = [1, 3, 7, 14, 30];
 let statsDirty = false;
 const statPosts = new Map();  // address -> times it sent stats in the last hour
 function addStats(rows) {
@@ -154,6 +159,14 @@ function addStats(rows) {
     if (!Array.isArray(r)) continue;
     const level = Math.floor(Number(r[0]));
     const what = String(r[1] || '');
+    if (what === 'active') {
+      const cohort = level, d = Math.floor(Number(r[2]));
+      const today = Math.floor(Date.now() / 864e5);
+      if (!(cohort >= 19000 && cohort <= today + 1 && d >= 0 && d <= 400 && cohort + d <= today + 1)) continue;
+      const C = retention[cohort] || (retention[cohort] = {});
+      C[d] = (C[d] || 0) + 1;
+      continue;
+    }
     const secs = Math.max(0, Math.min(3600, Number(r[2]) || 0));
     if (!(level >= 0 && level <= 999) || !['start', 'win', 'lose', 'quit'].includes(what)) continue;
     const L = levelStats[level] || (levelStats[level] = { start: 0, win: 0, lose: 0, quit: 0, winSecs: 0, loseSecs: 0, stars: [0, 0, 0], why: {} });
@@ -171,8 +184,29 @@ function addStats(rows) {
   statsDirty = true;
 }
 setInterval(() => {
-  if (statsDirty && store) { store.set('s:levels', levelStats); statsDirty = false; }
+  if (statsDirty && store) { store.set('s:levels', levelStats); store.set('s:ret', retention); statsDirty = false; }
 }, 30000).unref();
+
+// Day-N retention: of the players who started on a day at least N days ago, the share active N
+// days later. Per first day (the last 30) and over all of them together.
+function retentionTable() {
+  const today = Math.floor(Date.now() / 864e5);
+  const cohorts = Object.keys(retention).map(Number).sort((a, b) => b - a);
+  const share = (list, n) => {
+    let base = 0, back = 0;
+    for (const c of list) {
+      if (c + n > today) continue;  // too recent to know yet
+      base += retention[c][0] || 0;
+      back += retention[c][n] || 0;
+    }
+    return base ? { pct: Math.round(1000 * back / base) / 10, players: base } : null;
+  };
+  return {
+    all: Object.fromEntries(RET_DAYS.map(n => [n, share(cohorts, n)])),
+    days: cohorts.slice(0, 30).map(c => ({ day: new Date(c * 864e5).toISOString().slice(0, 10), new: retention[c][0] || 0,
+      ...Object.fromEntries(RET_DAYS.map(n => [n, share([c], n)])) })),
+  };
+}
 setInterval(() => statPosts.clear(), 3600e3).unref();
 
 function statsReport() {
@@ -185,12 +219,20 @@ function statsReport() {
     return `<tr><td>${l === 0 ? 'daily' : l}</td><td>${L.start}</td><td>${l ? pct(L.start, first) : ''}</td><td>${pct(L.win, L.start)}</td><td>${L.win ? Math.round(L.winSecs / L.win) + ' s' : '-'}</td>` +
       `<td>${L.stars.join(' / ')}</td><td>${pct(L.lose, L.start)}</td><td>${why}</td><td>${pct(L.quit, L.start)}</td></tr>`;
   }).join('\n');
+  const ret = retentionTable();
+  const cell = s => (s ? `${s.pct}%` : '-');
+  const retRows = ret.days.map(d => `<tr><td>${d.day}</td><td>${d.new}</td>${RET_DAYS.map(n => `<td>${cell(d[n])}</td>`).join('')}</tr>`).join('\n');
   return `<!doctype html><meta charset="utf-8"><title>Tower Siege level stats</title>
 <style>body{font:14px system-ui;margin:20px}table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px;text-align:right}th{background:#eef}</style>
 <h1>Tower Siege: campaign levels</h1>
 <p>Anonymous totals from the app. <b>Reached</b>: players who started the level, out of those who started level 1. A high <b>lost</b> or <b>quit</b> share shows where players get stuck.</p>
 <table><tr><th>Level</th><th>Started</th><th>Reached</th><th>Won</th><th>Avg win</th><th>Stars 1/2/3</th><th>Lost</th><th>Why lost</th><th>Quit</th></tr>
-${rows}</table>`;
+${rows}</table>
+<h2>Do players come back?</h2>
+<p>Of the players who first played on a day, the share who played again 1, 3, 7, 14 and 30 days later. Good targets: day 1 at least 30%, day 7 at least 12%.</p>
+<table><tr><th>First played</th><th>New players</th>${RET_DAYS.map(n => `<th>Day ${n}</th>`).join('')}</tr>
+<tr><td><b>All</b></td><td></td>${RET_DAYS.map(n => `<td><b>${cell(ret.all[n])}</b></td>`).join('')}</tr>
+${retRows}</table>`;
 }
 
 // ---------- Matches ----------
@@ -218,7 +260,7 @@ const server = http.createServer((req, res) => {
   }
   if (url.pathname === '/stats' && req.method === 'GET') {
     if (!STATS_KEY || url.searchParams.get('key') !== STATS_KEY) { res.writeHead(404, { 'Content-Type': 'text/plain' }); res.end('Not found'); return; }
-    if (url.searchParams.get('format') === 'json') { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(levelStats)); return; }
+    if (url.searchParams.get('format') === 'json') { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(url.searchParams.get('what') === 'retention' ? retentionTable() : levelStats)); return; }
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
     res.end(statsReport());
     return;
@@ -640,6 +682,7 @@ async function start() {
     if (k.startsWith('p:')) players.set(v.id, v);
     else if (k.startsWith('c:')) clans.set(v.id, v);
     else if (k === 's:levels') levelStats = v || {};
+    else if (k === 's:ret') retention = v || {};
   }
   // Forget accounts that never finished a match and haven't been back for 30 days
   const old = Date.now() - 30 * 864e5;
@@ -656,7 +699,7 @@ async function start() {
 for (const sig of ['SIGTERM', 'SIGINT']) {
   process.on(sig, async () => {
     try {
-      if (statsDirty && store) store.set('s:levels', levelStats);
+      if (statsDirty && store) { store.set('s:levels', levelStats); store.set('s:ret', retention); }
       await store?.close();
     } catch { /* exiting anyway */ }
     process.exit(0);

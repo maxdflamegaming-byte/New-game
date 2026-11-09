@@ -223,6 +223,15 @@ fs.mkdirSync(OUT, { recursive: true });
   ok('The report shows each level', page.includes('<td>5</td><td>2</td>'));
   ok('...and only with its key', (await fetch(`http://127.0.0.1:${PORT}/stats?key=wrong`)).status === 404);
 
+  // ----- Retention: [first day, 'active', days since, ''] once a day, counts only -----
+  const day0 = Math.floor(Date.now() / 864e5) - 10;
+  const act = d => [day0, 'active', d, ''];
+  ok('The app can say it was played today', await post({ v: 1, rows: [act(0), act(0), act(0), act(0), act(1), act(1), act(7), [day0 + 20, 'active', 0, ''], [day0, 'active', 999, ''], [5, 'active', 0, '']] }) === 200);
+  const ret = await fetch(`http://127.0.0.1:${PORT}/stats?key=k&format=json&what=retention`).then(r => r.json());
+  ok('Retention: of 4 new players, 2 came back the next day and 1 a week later; days in the future and nonsense are skipped',
+    ret.all?.['1']?.pct === 50 && ret.all?.['7']?.pct === 25 && ret.all?.['30'] === null && ret.days.length === 1 && ret.days[0].new === 4, JSON.stringify(ret));
+  ok('...and the report shows it', (await fetch(`http://127.0.0.1:${PORT}/stats?key=k`).then(r => r.text())).includes('Do players come back?'));
+
   for (const c of [ann, cat, dan, liar, rude, eve]) c.ws.close();
   server.kill();
 })();

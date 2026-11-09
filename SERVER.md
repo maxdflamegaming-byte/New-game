@@ -128,6 +128,8 @@ The app sends anonymous level stats to the server (`POST /stats`): for each camp
 
 for a table of every level: how many players reached it, the share who won, lost and quit, the average winning time and the stars. A level many players lose or quit is one to make easier or give a better hint. Add `&format=json` for the raw numbers. Without `STATS_KEY` the stats are still collected but there's no report. Players can switch the stats off in the app's Settings.
 
+The same page shows **whether players come back** (retention): once a day the app sends the day it was first played and how many days have passed since, and the server adds these up per starting day. The table gives, for each day's new players, the share who played again 1, 3, 7, 14 and 30 days later, and the total over all days. Targets for a game worth promoting: day 1 at least 30%, day 7 at least 12%. Raw numbers: `&format=json&what=retention`.
+
 ## Rematches (needs this server version)
 
 After an online match, the app's 🔁 Rematch sends `{"t": "rematch"}`. The other player hears `{"t": "rematch", "state": "asked", "name": ...}`; when both have asked, the server starts a new match between them as usual (`match`). If the other player has gone, the answer is `{"state": "gone"}`. Older apps and the web game never send it, so nothing changes for them; until the server is updated, Rematch just waits.

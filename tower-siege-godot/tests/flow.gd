@@ -283,6 +283,39 @@ func _run() -> void:
 	var kinds: Array = main.save.stats_rows.map(func(r): return "%d %s" % [r[0], r[1]])
 	ok("Level stats: a level left for another counts as quit, then start and how it ended", kinds == ["3 start", "3 quit", "3 start", "3 lose"], str(kinds))
 	ok("...and the tests send nothing anywhere", main.analytics._target() == "")
+	# Retention: once a day, [first day, "active", days since, ""]
+	var keep_save: Dictionary = main.save.duplicate(true)
+	main.save.erase("first_day")
+	main.save.erase("active_day")
+	main.save.level = 1
+	main.save.stars = {}
+	main.save.stats_rows = []
+	Progress.test_day = 20400
+	main.analytics.mark_active()
+	main.analytics.mark_active()
+	var day_rows: Array = main.save.stats_rows.filter(func(r): return r[1] == "active")
+	ok("A new player's first day is noted once: day 0", day_rows.size() == 1 and day_rows[0] == [20400, "active", 0, ""], str(day_rows))
+	Progress.test_day = 20407
+	main.analytics.mark_active()
+	day_rows = main.save.stats_rows.filter(func(r): return r[1] == "active")
+	ok("...and coming back a week later says day 7", day_rows.size() == 2 and day_rows[1] == [20400, "active", 7, ""], str(day_rows))
+	main.save.erase("first_day")
+	main.save.erase("active_day")
+	main.save.level = 12
+	main.save.stats_rows = []
+	main.analytics.mark_active()
+	ok("A player from before this (first day unknown) sends nothing, so the numbers aren't skewed", main.save.stats_rows.is_empty() and int(main.save.first_day) == -1)
+	main.save.stats = false
+	main.save.erase("first_day")
+	main.analytics.mark_active()
+	ok("...and nothing is noted with the stats switched off", main.save.stats_rows.is_empty())
+	Progress.test_day = -1
+	# (put the save back in place: other parts of the game hold this same dictionary)
+	for k in main.save.keys():
+		if not keep_save.has(k):
+			main.save.erase(k)
+	for k in keep_save:
+		main.save[k] = keep_save[k]
 	main.ui.show_screen("settings")
 	await _frames(2)
 	main.ui.stats_btn.pressed.emit()
@@ -595,9 +628,9 @@ func _extras() -> void:
 		main.start_event()
 		await _frames(2)
 		ok("Event battle %d starts" % (stage + 1), main.event_on and main.daily and main.state == "play" and main.goal.goal == Events.info(st.kind).goal, "state %s" % main.state)
+		# (every building, gray ones too: the No Supplies event is won only by taking them all)
 		for t in main.battle.towers:
-			if t.owner >= 2:
-				t.owner = 1
+			t.owner = 1
 		main.battle.units.clear()
 		main.step(0.05)
 		await _until(func(): return main.screen_open == "win", 6)
