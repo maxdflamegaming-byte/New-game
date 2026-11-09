@@ -19,7 +19,9 @@ func _initialize() -> void:
 
 func _shot(name: String) -> void:
 	await RenderingServer.frame_post_draw
-	root.get_texture().get_image().save_png("%s/%s.png" % [out, name])
+	var img := root.get_texture().get_image()
+	img.convert(Image.FORMAT_RGB8) # stores want 24-bit PNGs, with no transparency layer
+	img.save_png("%s/%s.png" % [out, name])
 	print("saved ", name)
 
 
