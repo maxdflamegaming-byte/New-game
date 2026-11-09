@@ -58,6 +58,36 @@ func _game(mode: String, map: String, seconds: float) -> void:
 	for c in main.view._top.get_children():
 		c.queue_free()
 	await _wait(1.2)
+	main.tut_card.visible = false # a store picture shows the game, not a hint card
+
+
+## Plays on (shielded) until the boss is close to you, so the picture shows the fight
+func _near_boss() -> void:
+	var w = main.world
+	var boss = null
+	for p in w.players:
+		if p and p.is_boss:
+			boss = p
+	if boss == null:
+		return
+	main.ending = true
+	for i in 60 * 60:
+		if w.me.alive and boss.alive and w.me.pos.distance_to(boss.pos) < 7.0:
+			break
+		for h in w.humans():
+			h.shield = maxf(h.shield, 0.5)
+		w.update(1.0 / 60)
+		for h in w.humans():
+			if not h.alive:
+				w.spawn(h)
+	for h in w.humans():
+		h.shield = 0.0
+	main.ending = false
+	main._snap_camera()
+	for c in main.view._top.get_children():
+		c.queue_free()
+	await _wait(2.5) # the opening banner has gone
+	main.tut_card.visible = false
 
 
 func _run() -> void:
@@ -93,6 +123,7 @@ func _run() -> void:
 	main.prog.stats.king_wins = maxi(1, main.prog.stats.king_wins)
 	main.boss_kind = "queen"
 	await _game("boss", "square", 25.0)
+	await _near_boss()
 	await _shot("2-boss")
 	main._to_menu()
 	main.boss_kind = "king"
