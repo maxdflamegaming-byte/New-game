@@ -63,6 +63,9 @@ func _game(mode: String, map: String, ahead: float, seconds: float) -> void:
 
 
 func _run() -> void:
+	await _wait(0.5) # let the game start up
+	# Never record forever: stop after 2 minutes of video whatever happens
+	create_timer(120.0).timeout.connect(quit)
 	Gfx.level = Gfx.HIGH
 	Gfx.show_fps = false
 	main._apply_gfx()
