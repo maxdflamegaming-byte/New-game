@@ -125,7 +125,15 @@ jobs:
           s = open(p).read()
           old = '"ga_api_secret": "",'
           assert s.count(old) == 1, "placeholder not found"
-          s = s.replace(old, '"ga_api_secret": "%s",' % os.environ["GA_API_SECRET"])
+          secret = os.environ["GA_API_SECRET"].strip()
+          # A common mix-up: the Measurement ID (G-...) pasted instead of the API secret
+          if secret.upper().startswith("G-"):
+              print("::error::GA_API_SECRET holds the Measurement ID (G-...), not the API secret. In Google Analytics: Admin -> Data streams -> your stream -> Measurement Protocol API secrets, copy the Secret value.")
+              raise SystemExit(1)
+          if any(c in secret for c in "\"\\\n") or len(secret) < 10:
+              print("::error::GA_API_SECRET doesn't look like a Google Analytics API secret (too short or has quotes or line breaks).")
+              raise SystemExit(1)
+          s = s.replace(old, '"ga_api_secret": "%s",' % secret)
           open(p, "w").write(s)
           PY
             echo "Google Analytics is on for this build."
